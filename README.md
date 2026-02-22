@@ -22,23 +22,29 @@ FastAPI(백엔드) + React(Vite, 프론트) 기반의 멘탈 체크 MVP 프로�
 ## Project Structure
 ```text
 .
-├── app
-│   ├── main.py
-│   ├── api/
-│   ├── core/
-│   ├── db/
-│   ├── schemas/
-│   ├── services/
-│   └── tests/
+├── backend
+│   ├── app
+│   │   ├── main.py
+│   │   ├── api/
+│   │   ├── core/
+│   │   ├── db/
+│   │   ├── schemas/
+│   │   ├── services/
+│   │   └── tests/
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── .env.example
 ├── frontend
-├── Dockerfile
+├── AI
+├── worker
 ├── docker-compose.yml
-├── requirements.txt
 └── .env.example
 ```
 
 ## Environment Variables
-루트에 `.env` 파일을 두고 사용합니다.
+Docker 기준으로 2개 파일을 사용합니다.
+- 루트 `.env`: compose 포트/치환 변수
+- `backend/.env`: FastAPI 앱 내부 설정
 
 ```env
 APP_NAME=Mental Health Check API
@@ -52,16 +58,20 @@ POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
 POSTGRES_DB=mental_health
 API_PORT=8001
+FRONTEND_PORT=5173
+VITE_API_BASE_URL=http://localhost:8001
 ```
 
 ## Run with Docker (권장)
 ```bash
 cp .env.example .env
+cp backend/.env.example backend/.env
 docker compose up -d --build
 ```
 
 - API: `http://localhost:8001`
 - Swagger: `http://localhost:8001/docs`
+- Frontend: `http://localhost:5173`
 
 상태 확인:
 ```bash
@@ -75,6 +85,7 @@ docker compose down
 
 ## Run Backend Locally
 ```bash
+cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -96,6 +107,7 @@ npm run dev
 
 ## Test
 ```bash
+cd backend
 .venv/bin/pytest app/tests -q
 ```
 

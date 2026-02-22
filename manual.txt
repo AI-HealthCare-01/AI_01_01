@@ -10,3 +10,18 @@ docker compose up -d --build
 남은 작업
 에러/로그
 원하는 완료 조건
+
+실행 방법 (기본)
+
+프로젝트 이동
+cd "/Users/admin/Desktop/Bootcamp/mental_project"
+실행
+docker compose up -d --build
+접속
+API: http://localhost:8001
+Swagger: http://localhost:8001/docs
+Frontend: http://localhost:5173
+상태 확인
+docker compose ps
+종료
+docker compose down

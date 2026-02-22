@@ -18,6 +18,11 @@ from app.main import app  # noqa: E402
 from app.services.scoring import score_phq9  # noqa: E402
 
 
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
 @pytest.fixture(autouse=True)
 async def setup_db() -> None:
     async with engine.begin() as conn:

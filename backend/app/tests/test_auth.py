@@ -55,3 +55,21 @@ async def test_signup_login_and_me() -> None:
         me_res = await client.get("/auth/me", headers={"Authorization": f"Bearer {data['access_token']}"})
         assert me_res.status_code == 200
         assert me_res.json()["email"] == "user1@example.com"
+
+
+@pytest.mark.anyio
+async def test_signup_duplicate_email_returns_409() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post(
+            "/auth/signup",
+            json={"email": "dup@example.com", "password": "StrongPass123", "nickname": "a"},
+        )
+        assert first.status_code == 201
+
+        second = await client.post(
+            "/auth/signup",
+            json={"email": "dup@example.com", "password": "StrongPass123", "nickname": "b"},
+        )
+        assert second.status_code == 409
+        assert second.json()["detail"] == "이미 가입된 이메일입니다."

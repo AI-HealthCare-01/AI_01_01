@@ -26,6 +26,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - ./AI:/AI:ro
     ports:
       - "${API_PORT:-8001}:8000"
 

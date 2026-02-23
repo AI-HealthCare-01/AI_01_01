@@ -57,11 +57,35 @@
   gap: 0.75rem;
 }
 
+.miniGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.presetRow {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.toggleAdvanced {
+  background: #fff;
+  color: #0f766e;
+  border: 1px solid #0f766e;
+}
+
 label {
   font-size: 0.92rem;
   display: grid;
   gap: 0.35rem;
   color: #334155;
+}
+
+.hint {
+  font-size: 0.78rem;
+  color: #64748b;
 }
 
 input,
@@ -130,6 +154,23 @@ button:disabled {
   border-radius: 10px;
 }
 
+.probList {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.probList li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f2f8fa;
+  padding: 0.42rem 0.6rem;
+  border-radius: 8px;
+}
+
 .small {
   color: #64748b;
   font-size: 0.86rem;
@@ -155,5 +196,9 @@ button:disabled {
 
   .status {
     flex-direction: column;
+  }
+
+  .miniGrid {
+    grid-template-columns: 1fr;
   }
 }

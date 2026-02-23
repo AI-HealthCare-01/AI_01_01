@@ -39,18 +39,18 @@ def decode_access_token(token: str) -> dict:
     except ExpiredSignatureError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token expired",
+            detail="토큰이 만료되었습니다.",
         ) from exc
     except InvalidTokenError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
+            detail="유효하지 않은 토큰입니다.",
         ) from exc
 
     subject = payload.get("sub")
     if not isinstance(subject, str):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token subject",
+            detail="토큰 정보가 올바르지 않습니다.",
         )
     return payload

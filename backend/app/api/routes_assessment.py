@@ -9,6 +9,7 @@ from app.db.models import Assessment
 from app.db.session import get_db
 from app.schemas.assessment import (
     PHQ9AssessmentDetailResponse,
+    PHQ9PreviewResponse,
     PHQ9AssessmentResponse,
     PHQ9Answers,
     PHQ9CreateRequest,
@@ -97,6 +98,26 @@ async def list_my_phq9_assessments(
     return [_to_summary_response(item) for item in assessments]
 
 
+@router.post("/phq9/preview", response_model=PHQ9PreviewResponse)
+async def preview_phq9_assessment(payload: PHQ9CreateRequest) -> PHQ9PreviewResponse:
+    # Request Example:
+    # POST /assessments/phq9/preview
+    # {"answers":{"q1":1,"q2":2,"q3":0,"q4":1,"q5":0,"q6":1,"q7":0,"q8":1,"q9":0}}
+    #
+    # Response Example:
+    # 200
+    # {"total_score":6,"severity":"mild","description":"...","disclaimer":"참고용...진단 아님"}
+    answers = payload.answers.model_dump()
+    ordered_scores = [answers[f"q{i}"] for i in range(1, 10)]
+    scored = score_phq9(ordered_scores)
+    return PHQ9PreviewResponse(
+        total_score=scored["total_score"],
+        severity=scored["severity"],
+        description=_description(scored["total_score"], scored["severity"]),
+        disclaimer=DISCLAIMER_TEXT,
+    )
+
+
 @router.get("/phq9/{assessment_id}", response_model=PHQ9AssessmentDetailResponse)
 async def get_my_phq9_assessment(
     assessment_id: UUID,
@@ -112,5 +133,5 @@ async def get_my_phq9_assessment(
     # {"id":"f8b12fcb-3d9d-4f8d-84a5-cb42ca634643","total_score":6,"severity":"mild","description":"...","disclaimer":"참고용...진단 아님","created_at":"...","answers":{"q1":1,"q2":2,"q3":0,"q4":1,"q5":0,"q6":1,"q7":0,"q8":1,"q9":0}}
     assessment = await crud.get_phq9_assessment_by_id(db, current_user.id, assessment_id)
     if not assessment:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assessment not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="검사 결과를 찾을 수 없습니다.")
     return _to_detail_response(assessment)

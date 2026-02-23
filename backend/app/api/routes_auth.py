@@ -22,11 +22,11 @@ async def get_current_user(
     try:
         user_id = UUID(subject)
     except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject") from exc
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="토큰 정보가 올바르지 않습니다.") from exc
 
     user = await crud.get_user_by_id(db, user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="사용자 정보를 찾을 수 없습니다.")
     return UserOut.model_validate(user)
 
 
@@ -41,7 +41,7 @@ async def signup(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> Use
     # {"id":"2b93f6ae-c0e7-4af5-b3a2-287aab4db6d6","email":"user@example.com","nickname":"mira","created_at":"2026-02-21T12:34:56Z"}
     existing = await crud.get_user_by_email(db, payload.email)
     if existing:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 가입된 이메일입니다.")
     user = await crud.create_user(db, payload.email, payload.password, payload.nickname)
     return UserOut.model_validate(user)
 
@@ -57,7 +57,7 @@ async def login(payload: UserLogin, db: AsyncSession = Depends(get_db)) -> Token
     # {"access_token":"<jwt>","token_type":"bearer","expires_in":1800}
     user = await crud.authenticate_user(db, payload.email, payload.password)
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
 
     expires_delta = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     token = create_access_token(subject=str(user.id), expires_delta=expires_delta)

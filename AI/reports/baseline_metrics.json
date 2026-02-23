@@ -1,0 +1,131 @@
+{
+  "seed": 42,
+  "check": {
+    "task": "check_overall_level",
+    "rows": 2985,
+    "features": [
+      "phq_total",
+      "gad_total",
+      "sleep_total",
+      "context_risk_total",
+      "phq9_suicidal_ideation",
+      "daily_functioning",
+      "stressful_event",
+      "social_support",
+      "coping_skill",
+      "motivation_for_change"
+    ],
+    "accuracy": 1.0,
+    "macro_f1": 1.0,
+    "weighted_f1": 1.0,
+    "report": {
+      "0": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 76.0
+      },
+      "1": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 108.0
+      },
+      "2": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 96.0
+      },
+      "3": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 134.0
+      },
+      "4": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 183.0
+      },
+      "accuracy": 1.0,
+      "macro avg": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 597.0
+      },
+      "weighted avg": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 597.0
+      }
+    }
+  },
+  "monitor": {
+    "task": "monitor_trend_label",
+    "rows": 750,
+    "features": [
+      "window_days",
+      "phq_last",
+      "phq_avg_window",
+      "phq_delta",
+      "gad_last",
+      "gad_avg_window",
+      "gad_delta",
+      "sleep_last",
+      "sleep_avg_window",
+      "sleep_delta",
+      "context_risk_last",
+      "context_risk_delta",
+      "mood_avg_window",
+      "mood_delta",
+      "mood_std_window",
+      "sleep_std_window",
+      "worst_mood_7d",
+      "max_drop_mood",
+      "checkin_count_window",
+      "checkin_missing_days",
+      "exercise_days_window",
+      "journal_days_window"
+    ],
+    "accuracy": 0.98,
+    "macro_f1": 0.975,
+    "weighted_f1": 0.98,
+    "report": {
+      "improving": {
+        "precision": 1.0,
+        "recall": 0.9545454545454546,
+        "f1-score": 0.9767441860465116,
+        "support": 22.0
+      },
+      "stable": {
+        "precision": 0.9803921568627451,
+        "recall": 0.9900990099009901,
+        "f1-score": 0.9852216748768473,
+        "support": 101.0
+      },
+      "worsening": {
+        "precision": 0.9629629629629629,
+        "recall": 0.9629629629629629,
+        "f1-score": 0.9629629629629629,
+        "support": 27.0
+      },
+      "accuracy": 0.98,
+      "macro avg": {
+        "precision": 0.981118373275236,
+        "recall": 0.9692024758031358,
+        "f1-score": 0.9749762746287739,
+        "support": 150.0
+      },
+      "weighted avg": {
+        "precision": 0.9801307189542482,
+        "recall": 0.98,
+        "f1-score": 0.979971741703899,
+        "support": 150.0
+      }
+    }
+  }
+}

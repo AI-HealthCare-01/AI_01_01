@@ -39,3 +39,12 @@ class PHQ9AssessmentResponse(BaseModel):
 
 class PHQ9AssessmentDetailResponse(PHQ9AssessmentResponse):
     answers: PHQ9Answers
+
+
+class PHQ9PreviewResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    total_score: int
+    severity: str
+    description: str
+    disclaimer: str = Field(default="이 결과는 참고용이며, 진단 아님 안내입니다.")

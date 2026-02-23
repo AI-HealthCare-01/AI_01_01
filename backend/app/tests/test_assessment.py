@@ -71,6 +71,21 @@ async def test_phq9_create_and_get() -> None:
         assert detail["answers"]["q2"] == 2
 
 
+@pytest.mark.anyio
+async def test_phq9_preview_without_auth() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        preview_res = await client.post(
+            "/assessments/phq9/preview",
+            json={"answers": {"q1": 2, "q2": 2, "q3": 1, "q4": 1, "q5": 1, "q6": 1, "q7": 1, "q8": 1, "q9": 0}},
+        )
+        assert preview_res.status_code == 200
+        data = preview_res.json()
+        assert data["total_score"] == 10
+        assert data["severity"] == "moderate"
+        assert "참고용" in data["disclaimer"]
+
+
 @pytest.mark.parametrize(
     ("scores", "expected_total", "expected_severity"),
     [

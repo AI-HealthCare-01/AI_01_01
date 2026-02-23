@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 
+from app.api.routes_ai import router as ai_router
 from app.api.routes_assessment import router as assessment_router
 from app.api.routes_auth import router as auth_router
 from app.api.routes_chat import router as chat_router
@@ -31,6 +32,7 @@ app.include_router(auth_router)
 app.include_router(assessment_router)
 app.include_router(checkin_router)
 app.include_router(chat_router)
+app.include_router(ai_router)
 
 
 class RootResponse(BaseModel):

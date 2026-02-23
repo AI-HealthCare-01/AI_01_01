@@ -4,7 +4,7 @@ from sqlalchemy import Select, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password, verify_password
-from app.db.models import Assessment, AssessmentType, User
+from app.db.models import Assessment, AssessmentType, ChatEvent, User
 
 
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
@@ -78,3 +78,24 @@ async def get_phq9_assessment_by_id(
     )
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
+
+
+async def create_chat_event(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    user_message: str,
+    assistant_reply: str,
+    extracted: dict,
+    suggested_challenges: list[str],
+) -> ChatEvent:
+    event = ChatEvent(
+        user_id=user_id,
+        user_message=user_message,
+        assistant_reply=assistant_reply,
+        extracted=extracted,
+        suggested_challenges=suggested_challenges,
+    )
+    db.add(event)
+    await db.commit()
+    await db.refresh(event)
+    return event

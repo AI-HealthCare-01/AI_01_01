@@ -61,3 +61,47 @@ class MonitorPredictResponse(BaseModel):
     prediction: str
     probabilities: dict[str, confloat(ge=0.0, le=1.0)]
     model_path: str
+
+
+class DistortionOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    all_or_nothing_count: conint(ge=0, le=20) = 0
+    catastrophizing_count: conint(ge=0, le=20) = 0
+    mind_reading_count: conint(ge=0, le=20) = 0
+    should_statements_count: conint(ge=0, le=20) = 0
+    personalization_count: conint(ge=0, le=20) = 0
+    overgeneralization_count: conint(ge=0, le=20) = 0
+
+
+class NowcastPredictRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    user_id: str
+    date: str
+    distortion_override: DistortionOverride | None = None
+
+
+class NowcastPredictResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    user_id: str
+    date: str
+    dep_pred_0_100: confloat(ge=0, le=100)
+    anx_pred_0_100: confloat(ge=0, le=100)
+    ins_pred_0_100: confloat(ge=0, le=100)
+    symptom_composite_pred_0_100: confloat(ge=0, le=100)
+    dep_severity: str
+    anx_severity: str
+    ins_severity: str
+
+
+class WeeklyDashboardRow(BaseModel):
+    model_config = ConfigDict(extra="allow", strict=False)
+
+
+class WeeklyDashboardResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    user_id: str
+    rows: list[WeeklyDashboardRow]

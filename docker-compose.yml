@@ -28,6 +28,7 @@ services:
         condition: service_healthy
     volumes:
       - ./AI:/AI:ro
+      - ./model:/model:ro
     ports:
       - "${API_PORT:-8001}:8000"
 

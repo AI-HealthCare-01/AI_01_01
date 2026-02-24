@@ -1,6 +1,11 @@
-from fastapi import APIRouter, HTTPException, status
+from dataclasses import asdict
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.routes_auth import get_current_user
 from app.core.config import settings
+from app.db.session import get_db
 from app.schemas.ai import (
     CheckPredictRequest,
     CheckPredictResponse,
@@ -10,8 +15,10 @@ from app.schemas.ai import (
     NowcastPredictResponse,
     WeeklyDashboardResponse,
 )
+from app.schemas.auth import UserOut
 from app.services.ai_inference import predict_check, predict_monitor
-from app.services.nowcast import get_weekly_dashboard_rows, predict_nowcast_for_user_day
+from app.services.nowcast import get_default_weekly_dashboard_rows, get_weekly_dashboard_rows, predict_nowcast_for_user_day
+from app.services.user_dashboard import build_user_weekly_dashboard
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -28,7 +35,7 @@ async def predict_check_level(payload: CheckPredictRequest) -> CheckPredictRespo
     return CheckPredictResponse(
         prediction=pred,
         probabilities=probabilities,
-        model_path=settings.check_model_path,
+        model_path=settings.nowcast_model_dir,
     )
 
 
@@ -63,7 +70,7 @@ async def predict_nowcast(payload: NowcastPredictRequest) -> NowcastPredictRespo
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Nowcast failed: {exc}") from exc
 
-    return NowcastPredictResponse(**result.__dict__)
+    return NowcastPredictResponse(**asdict(result))
 
 
 @router.get("/nowcast/dashboard/{user_id}", response_model=WeeklyDashboardResponse)
@@ -81,3 +88,22 @@ async def get_nowcast_dashboard(user_id: str) -> WeeklyDashboardResponse:
         ) from exc
 
     return WeeklyDashboardResponse(user_id=user_id, rows=rows)
+
+
+@router.get("/nowcast/dashboard/me", response_model=WeeklyDashboardResponse)
+async def get_my_nowcast_dashboard(
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> WeeklyDashboardResponse:
+    try:
+        rows = await build_user_weekly_dashboard(db, current_user.id)
+        if rows:
+            return WeeklyDashboardResponse(user_id=str(current_user.id), rows=rows)
+
+        fallback_user_id, fallback_rows = get_default_weekly_dashboard_rows()
+        return WeeklyDashboardResponse(user_id=fallback_user_id, rows=fallback_rows)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"My dashboard build failed: {exc}",
+        ) from exc

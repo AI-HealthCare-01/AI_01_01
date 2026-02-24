@@ -1,13 +1,17 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, conint, confloat
 
 
 LevelScore = conint(ge=0, le=4)
 LikertScore = conint(ge=0, le=3)
+StressLabel = Literal["없음", "조금", "보통", "심함"]
 
 
 class CheckPredictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
+    # Existing contract fields (do not rename)
     phq_total: conint(ge=0, le=27)
     gad_total: conint(ge=0, le=21)
     sleep_total: conint(ge=0, le=9)
@@ -18,6 +22,11 @@ class CheckPredictRequest(BaseModel):
     social_support: LikertScore
     coping_skill: LikertScore
     motivation_for_change: LikertScore
+
+    # Optional extension fields for survey UI backward compatibility
+    sleep_hours_week_avg: confloat(ge=0, le=24) | None = None
+    exercise_minutes: confloat(ge=0, le=300) | None = None
+    stress_level_label: StressLabel | None = None
 
 
 class CheckPredictResponse(BaseModel):

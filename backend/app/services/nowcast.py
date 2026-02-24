@@ -203,3 +203,14 @@ def get_weekly_dashboard_rows(user_id: str) -> list[dict[str, Any]]:
         rec["week_start_date"] = str(rec["week_start_date"])
         records.append(rec)
     return records
+
+
+def get_default_weekly_dashboard_rows() -> tuple[str, list[dict[str, Any]]]:
+    weekly_path = _ensure_file(settings.nowcast_weekly_output_path)
+    df = pd.read_csv(weekly_path)
+    if df.empty or "user_id" not in df.columns:
+        raise ValueError("Weekly dashboard output is empty.")
+
+    default_user = sorted(df["user_id"].dropna().astype(str).unique().tolist())[0]
+    rows = get_weekly_dashboard_rows(default_user)
+    return default_user, rows

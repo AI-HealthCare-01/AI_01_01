@@ -1,10 +1,11 @@
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import Select, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password, verify_password
-from app.db.models import Assessment, AssessmentType, ChatEvent, User
+from app.db.models import Assessment, AssessmentType, ChatEvent, CheckIn, EmailVerification, User, UserProfile
 
 
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
@@ -33,6 +34,100 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> User
         return None
     if not verify_password(password, user.password_hash):
         return None
+    return user
+
+
+async def create_email_verification(
+    db: AsyncSession,
+    email: str,
+    code: str,
+    expires_at: datetime,
+) -> EmailVerification:
+    # invalidate old active codes for the same email
+    stmt: Select[tuple[EmailVerification]] = select(EmailVerification).where(
+        EmailVerification.email == email,
+        EmailVerification.used.is_(False),
+    )
+    old_rows = (await db.execute(stmt)).scalars().all()
+    for row in old_rows:
+        row.used = True
+
+    ev = EmailVerification(email=email, code=code, expires_at=expires_at, used=False)
+    db.add(ev)
+    await db.commit()
+    await db.refresh(ev)
+    return ev
+
+
+async def consume_email_verification_code(
+    db: AsyncSession,
+    email: str,
+    code: str,
+) -> bool:
+    now = datetime.now(timezone.utc)
+    stmt: Select[tuple[EmailVerification]] = (
+        select(EmailVerification)
+        .where(
+            EmailVerification.email == email,
+            EmailVerification.code == code,
+            EmailVerification.used.is_(False),
+        )
+        .order_by(desc(EmailVerification.created_at))
+    )
+    row = (await db.execute(stmt)).scalar_one_or_none()
+    if not row:
+        return False
+    if row.expires_at.tzinfo is None:
+        expires_at = row.expires_at.replace(tzinfo=timezone.utc)
+    else:
+        expires_at = row.expires_at.astimezone(timezone.utc)
+    if expires_at < now:
+        return False
+
+    row.used = True
+    await db.commit()
+    return True
+
+
+async def get_or_create_user_profile(db: AsyncSession, user_id: uuid.UUID) -> UserProfile:
+    stmt: Select[tuple[UserProfile]] = select(UserProfile).where(UserProfile.user_id == user_id)
+    profile = (await db.execute(stmt)).scalar_one_or_none()
+    if profile:
+        return profile
+
+    profile = UserProfile(user_id=user_id)
+    db.add(profile)
+    await db.commit()
+    await db.refresh(profile)
+    return profile
+
+
+async def update_user_profile(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    nickname: str | None = None,
+    new_password: str | None = None,
+    new_email: str | None = None,
+    phone_number: str | None = None,
+) -> User:
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        raise ValueError("사용자를 찾을 수 없습니다.")
+
+    if nickname is not None:
+        user.nickname = nickname
+    if new_password is not None:
+        user.password_hash = hash_password(new_password)
+    if new_email is not None:
+        user.email = new_email
+
+    profile = await get_or_create_user_profile(db, user_id)
+    if phone_number is not None:
+        profile.phone_number = phone_number
+
+    await db.commit()
+    await db.refresh(user)
     return user
 
 
@@ -99,3 +194,34 @@ async def create_chat_event(
     await db.commit()
     await db.refresh(event)
     return event
+
+
+async def create_checkin(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    mood_score: int,
+    sleep_hours: float | None,
+    exercised: bool,
+    note: str | None,
+) -> CheckIn:
+    row = CheckIn(
+        user_id=user_id,
+        mood_score=mood_score,
+        sleep_hours=sleep_hours,
+        exercised=exercised,
+        note=note,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def get_latest_checkin(db: AsyncSession, user_id: uuid.UUID) -> CheckIn | None:
+    stmt: Select[tuple[CheckIn]] = (
+        select(CheckIn)
+        .where(CheckIn.user_id == user_id)
+        .order_by(desc(CheckIn.created_at))
+        .limit(1)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()

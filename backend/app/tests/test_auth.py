@@ -73,3 +73,40 @@ async def test_signup_duplicate_email_returns_409() -> None:
         )
         assert second.status_code == 409
         assert second.json()["detail"] == "이미 가입된 이메일입니다."
+
+
+@pytest.mark.anyio
+async def test_profile_update_with_email_change() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        signup_res = await client.post(
+            "/auth/signup",
+            json={
+                "email": "profile1@example.com",
+                "password": "StrongPass123",
+                "nickname": "before",
+            },
+        )
+        assert signup_res.status_code == 201
+
+        login_res = await client.post(
+            "/auth/login",
+            json={"email": "profile1@example.com", "password": "StrongPass123"},
+        )
+        token = login_res.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        patch_res = await client.patch(
+            "/auth/me/profile",
+            headers=headers,
+            json={
+                "nickname": "after",
+                "phone_number": "010-1111-2222",
+                "new_email": "profile2@example.com",
+            },
+        )
+        assert patch_res.status_code == 200
+        data = patch_res.json()
+        assert data["nickname"] == "after"
+        assert data["email"] == "profile2@example.com"
+        assert data["phone_number"] == "010-1111-2222"

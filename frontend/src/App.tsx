@@ -89,6 +89,13 @@ type WeeklyDashboardResponse = {
   rows: WeeklyDashboardRow[]
 }
 
+type PHQ9AssessmentSummary = {
+  id: string
+  total_score: number
+  severity: string
+  created_at: string
+}
+
 type AssessmentState = {
   phq9: LikertValue[]
   gad7: LikertValue[]
@@ -218,7 +225,7 @@ function buildPayload(assessment: AssessmentState): CheckPredictRequest {
 }
 
 function App() {
-  const [page, setPage] = useState<PageKey>('assessment')
+  const [page, setPage] = useState<PageKey>('account')
   const [myTab, setMyTab] = useState<MyPageTab>('dashboard')
 
   const [token, setToken] = useState<string>(() => localStorage.getItem('access_token') ?? '')
@@ -230,6 +237,7 @@ function App() {
   const [signupEmail, setSignupEmail] = useState('')
   const [signupPassword, setSignupPassword] = useState('')
   const [signupNickname, setSignupNickname] = useState('')
+  const [showSignupForm, setShowSignupForm] = useState(false)
 
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
@@ -247,6 +255,7 @@ function App() {
   const [cbtCheckinSleep, setCbtCheckinSleep] = useState('')
 
   const [dashboard, setDashboard] = useState<WeeklyDashboardResponse | null>(null)
+  const [phqHistory, setPhqHistory] = useState<PHQ9AssessmentSummary[]>([])
 
   const [profile, setProfile] = useState<ProfileOut | null>(null)
   const [profileNickname, setProfileNickname] = useState('')
@@ -264,10 +273,12 @@ function App() {
     if (!token) {
       setMe(null)
       setProfile(null)
+      setPhqHistory([])
       return
     }
     void loadProfile()
     void loadMyProfile()
+    void loadPhqHistory()
   }, [token])
 
   useEffect(() => {
@@ -323,8 +334,12 @@ function App() {
         }),
       })
       if (!response.ok) throw new Error(await extractApiError(response))
-      const data = (await response.json()) as UserOut
-      setMessage(`회원가입 완료: ${data.email}`)
+      await response.json()
+      setMessage('계정이 생성되었습니다.')
+      setShowSignupForm(false)
+      setSignupEmail('')
+      setSignupPassword('')
+      setSignupNickname('')
     } catch (error) {
       setMessage(`회원가입 오류: ${(error as Error).message}`)
     } finally {
@@ -436,6 +451,7 @@ function App() {
         if (!saveRes.ok) throw new Error(await extractApiError(saveRes))
         await saveRes.json()
         await loadMyDashboard()
+        await loadPhqHistory()
       }
 
       setMessage('검사 결과가 생성되었습니다. 대시보드에 즉시 반영됩니다.')
@@ -598,6 +614,18 @@ function App() {
     }
   }
 
+  async function loadPhqHistory() {
+    if (!token) return
+    try {
+      const response = await fetch(`${API_BASE}/assessments/phq9`, { headers: authHeaders })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      const data = (await response.json()) as PHQ9AssessmentSummary[]
+      setPhqHistory(data)
+    } catch (error) {
+      setMessage(`검사 이력 조회 오류: ${(error as Error).message}`)
+    }
+  }
+
   async function handleNicknameSave() {
     if (!token) {
       setMessage('로그인 후 이용 가능합니다.')
@@ -707,6 +735,39 @@ function App() {
     Number(assessment.context.motivation_for_change || 0)
   const latestWeekly = dashboard?.rows?.length ? dashboard.rows[dashboard.rows.length - 1] : null
   const prevWeekly = dashboard && dashboard.rows.length > 1 ? dashboard.rows[dashboard.rows.length - 2] : null
+  const chartRows = useMemo(() => {
+    if (!dashboard?.rows?.length) return []
+    return dashboard.rows.map((row) => ({
+      dateLabel: new Date(row.week_start_date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }),
+      composite: row.symptom_composite_pred_0_100,
+      dep: row.dep_week_pred_0_100,
+      anx: row.anx_week_pred_0_100,
+      ins: row.ins_week_pred_0_100,
+    }))
+  }, [dashboard])
+  const chartWidth = 760
+  const chartHeight = 280
+  const chartPadding = { top: 20, right: 24, bottom: 44, left: 46 }
+  const plotWidth = chartWidth - chartPadding.left - chartPadding.right
+  const plotHeight = chartHeight - chartPadding.top - chartPadding.bottom
+  const xStep = chartRows.length > 1 ? plotWidth / (chartRows.length - 1) : 0
+  const yTicks = [0, 25, 50, 75, 100]
+  const points = chartRows.map((row, idx) => {
+    const x = chartPadding.left + (chartRows.length > 1 ? idx * xStep : plotWidth / 2)
+    const y = chartPadding.top + ((100 - Math.max(0, Math.min(100, row.composite))) / 100) * plotHeight
+    return { ...row, x, y, idx }
+  })
+  const depPolylinePoints = points
+    .map((p) => `${p.x},${chartPadding.top + ((100 - Math.max(0, Math.min(100, p.dep))) / 100) * plotHeight}`)
+    .join(' ')
+  const anxPolylinePoints = points
+    .map((p) => `${p.x},${chartPadding.top + ((100 - Math.max(0, Math.min(100, p.anx))) / 100) * plotHeight}`)
+    .join(' ')
+  const insPolylinePoints = points
+    .map((p) => `${p.x},${chartPadding.top + ((100 - Math.max(0, Math.min(100, p.ins))) / 100) * plotHeight}`)
+    .join(' ')
+  const compositePolylinePoints = points.map((p) => `${p.x},${p.y}`).join(' ')
+  const xLabelStep = Math.max(1, Math.ceil(chartRows.length / 6))
 
   return (
     <main className="page">
@@ -934,44 +995,93 @@ function App() {
                       <p className="small">
                         현재 상태: <strong>{riskBand(latestWeekly.symptom_composite_pred_0_100)}</strong> (composite {latestWeekly.symptom_composite_pred_0_100.toFixed(1)})
                       </p>
-                      <div className="dashboardStats">
-                        <article className="dashboardCard">
-                          <p>종합 점수</p>
-                          <strong>{latestWeekly.symptom_composite_pred_0_100.toFixed(1)}</strong>
-                          <span>변화 {deltaText(latestWeekly.symptom_composite_pred_0_100, prevWeekly?.symptom_composite_pred_0_100)}</span>
-                        </article>
-                        <article className="dashboardCard">
-                          <p>우울 (DEP)</p>
-                          <strong>{latestWeekly.dep_week_pred_0_100.toFixed(1)}</strong>
-                          <span>변화 {deltaText(latestWeekly.dep_week_pred_0_100, prevWeekly?.dep_week_pred_0_100)}</span>
-                        </article>
-                        <article className="dashboardCard">
-                          <p>불안 (ANX)</p>
-                          <strong>{latestWeekly.anx_week_pred_0_100.toFixed(1)}</strong>
-                          <span>변화 {deltaText(latestWeekly.anx_week_pred_0_100, prevWeekly?.anx_week_pred_0_100)}</span>
-                        </article>
-                        <article className="dashboardCard">
-                          <p>불면 (INS)</p>
-                          <strong>{latestWeekly.ins_week_pred_0_100.toFixed(1)}</strong>
-                          <span>변화 {deltaText(latestWeekly.ins_week_pred_0_100, prevWeekly?.ins_week_pred_0_100)}</span>
-                        </article>
-                      </div>
+                      <p className="small">
+                        최근 변화: {deltaText(latestWeekly.symptom_composite_pred_0_100, prevWeekly?.symptom_composite_pred_0_100)}
+                      </p>
                     </>
                   )}
-                  <ul className="probList">
-                    {dashboard.rows.map((row) => (
-                      <li key={row.week_start_date}>
-                        <span>
-                          {row.week_start_date} | composite {row.symptom_composite_pred_0_100.toFixed(1)} | alert {row.alert_level ?? 'low'}
-                        </span>
-                        <strong>
-                          dep {row.dep_week_pred_0_100.toFixed(1)} / anx {row.anx_week_pred_0_100.toFixed(1)} / ins {row.ins_week_pred_0_100.toFixed(1)}
-                        </strong>
-                      </li>
-                    ))}
-                  </ul>
+                  <section className="lineChartSection">
+                    <h3>종합 점수 추이</h3>
+                    <div className="lineChartLegend">
+                      <span><i className="legendSwatch legendComposite" />종합(강조)</span>
+                      <span><i className="legendSwatch legendDep" />DEP</span>
+                      <span><i className="legendSwatch legendAnx" />ANX</span>
+                      <span><i className="legendSwatch legendIns" />INS</span>
+                    </div>
+                    {points.length === 0 ? (
+                      <p className="small">그래프에 표시할 점수가 없습니다.</p>
+                    ) : (
+                      <>
+                        <div className="lineChartWrap">
+                          <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-label="날짜별 종합점수 추이">
+                            {yTicks.map((tick) => {
+                              const y = chartPadding.top + ((100 - tick) / 100) * plotHeight
+                              return (
+                                <g key={`y-${tick}`}>
+                                  <line x1={chartPadding.left} x2={chartWidth - chartPadding.right} y1={y} y2={y} className="chartGridLine" />
+                                  <text x={chartPadding.left - 8} y={y + 4} textAnchor="end" className="chartAxisText">{tick}</text>
+                                </g>
+                              )
+                            })}
+                            <line x1={chartPadding.left} x2={chartPadding.left} y1={chartPadding.top} y2={chartHeight - chartPadding.bottom} className="chartAxisLine" />
+                            <line
+                              x1={chartPadding.left}
+                              x2={chartWidth - chartPadding.right}
+                              y1={chartHeight - chartPadding.bottom}
+                              y2={chartHeight - chartPadding.bottom}
+                              className="chartAxisLine"
+                            />
+                            {points.length > 1 && (
+                              <>
+                                <polyline points={depPolylinePoints} fill="none" className="chartSeriesSub chartSeriesDep" />
+                                <polyline points={anxPolylinePoints} fill="none" className="chartSeriesSub chartSeriesAnx" />
+                                <polyline points={insPolylinePoints} fill="none" className="chartSeriesSub chartSeriesIns" />
+                                <polyline points={compositePolylinePoints} fill="none" className="chartSeriesLine" />
+                              </>
+                            )}
+                            {points.map((point) => (
+                              <g key={`point-${point.idx}`}>
+                                <circle cx={point.x} cy={point.y} r={4} className="chartPoint" />
+                                {(point.idx % xLabelStep === 0 || point.idx === points.length - 1) && (
+                                  <text x={point.x} y={chartHeight - chartPadding.bottom + 18} textAnchor="middle" className="chartAxisText">
+                                    {point.dateLabel}
+                                  </text>
+                                )}
+                              </g>
+                            ))}
+                          </svg>
+                        </div>
+                        <p className="small">X축: 날짜 / Y축: 종합점수(0~100)</p>
+                      </>
+                    )}
+                  </section>
                 </>
               )}
+
+              <section className="historySection">
+                <h3>심리검사 점수 추이 (PHQ-9)</h3>
+                {phqHistory.length === 0 ? (
+                  <p className="small">아직 저장된 PHQ-9 검사 이력이 없습니다.</p>
+                ) : (
+                  <>
+                    <div className="historyChart">
+                      {phqHistory
+                        .slice()
+                        .reverse()
+                        .map((item) => (
+                          <div className="historyBarRow" key={item.id}>
+                            <span className="historyDate">{new Date(item.created_at).toLocaleString('ko-KR')}</span>
+                            <div className="historyBarTrack">
+                              <div className="historyBarFill" style={{ width: `${(item.total_score / 27) * 100}%` }} />
+                            </div>
+                            <strong className="historyScore">{item.total_score}</strong>
+                          </div>
+                        ))}
+                    </div>
+                    <p className="small">X축: 날짜시간 / Y축: PHQ-9 점수(0~27)</p>
+                  </>
+                )}
+              </section>
             </article>
           )}
 
@@ -1049,27 +1159,8 @@ function App() {
       )}
 
       {page === 'account' && (
-        <section className="grid">
-          <article className="panel">
-            <h2>회원가입</h2>
-            <form onSubmit={handleSignup} className="form">
-              <label>
-                Email
-                <input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} required />
-              </label>
-              <label>
-                Password
-                <input type="password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} minLength={8} required />
-              </label>
-              <label>
-                Nickname
-                <input value={signupNickname} onChange={(e) => setSignupNickname(e.target.value)} required />
-              </label>
-              <button disabled={loading}>Create Account</button>
-            </form>
-          </article>
-
-          <article className="panel">
+        <section className="panel">
+          <article>
             <h2>로그인</h2>
             <form onSubmit={handleLogin} className="form">
               <label>
@@ -1080,13 +1171,46 @@ function App() {
                 Password
                 <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} minLength={8} required />
               </label>
+              {me && (
+                <p className="badge">Signed in as {me.nickname} ({me.email})</p>
+              )}
+              {!me && <p className="small">계정이 없는경우 회원가입을 하셔야합니다</p>}
               <div className="actions">
                 <button disabled={loading}>Login</button>
                 <button type="button" className="ghost" onClick={logout}>Logout</button>
               </div>
             </form>
             <p className="mono">API: {API_BASE}</p>
-            {me && <p className="badge">Signed in as {me.nickname} ({me.email})</p>}
+          </article>
+
+          <hr style={{ border: 0, borderTop: '1px solid #dbe7eb', margin: '1.1rem 0' }} />
+
+          <article>
+            <h3>회원가입</h3>
+            {!showSignupForm ? (
+              <div className="actions">
+                <button type="button" className="ghost" onClick={() => setShowSignupForm(true)}>회원가입</button>
+              </div>
+            ) : (
+              <form onSubmit={handleSignup} className="form">
+                <label>
+                  Email
+                  <input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} required />
+                </label>
+                <label>
+                  Password
+                  <input type="password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} minLength={8} required />
+                </label>
+                <label>
+                  Nickname
+                  <input value={signupNickname} onChange={(e) => setSignupNickname(e.target.value)} required />
+                </label>
+                <div className="actions">
+                  <button disabled={loading}>회원가입 신청</button>
+                  <button type="button" className="ghost" onClick={() => setShowSignupForm(false)}>취소</button>
+                </div>
+              </form>
+            )}
           </article>
         </section>
       )}

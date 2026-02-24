@@ -198,37 +198,153 @@ button:disabled {
   text-align: left;
 }
 
-.dashboardStats {
-  margin-top: 0.5rem;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.6rem;
-}
-
-.dashboardCard {
-  border: 1px solid #d6e2e8;
+.lineChartSection {
+  margin-top: 0.75rem;
+  border: 1px solid #dbe7eb;
   border-radius: 12px;
-  background: #f7fbfc;
-  padding: 0.6rem;
+  padding: 0.7rem;
+  background: #fbfdfe;
 }
 
-.dashboardCard p {
-  margin: 0;
+.lineChartSection h3 {
+  margin: 0 0 0.55rem;
+}
+
+.lineChartLegend {
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
   font-size: 0.8rem;
-  color: #5b6f7b;
+  color: #475569;
 }
 
-.dashboardCard strong {
-  display: block;
-  margin-top: 0.2rem;
-  font-size: 1.15rem;
+.lineChartLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
-.dashboardCard span {
+.legendSwatch {
+  width: 14px;
+  height: 3px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.legendComposite {
+  background: #0f766e;
+}
+
+.legendDep {
+  background: #60a5fa;
+}
+
+.legendAnx {
+  background: #f59e0b;
+}
+
+.legendIns {
+  background: #a78bfa;
+}
+
+.lineChartWrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.lineChartWrap svg {
+  width: 100%;
+  min-width: 620px;
+  height: auto;
   display: block;
-  margin-top: 0.1rem;
+}
+
+.chartAxisLine {
+  stroke: #94a3b8;
+  stroke-width: 1;
+}
+
+.chartGridLine {
+  stroke: #e2e8f0;
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.chartSeriesLine {
+  stroke: #0f766e;
+  stroke-width: 3.2;
+}
+
+.chartSeriesSub {
+  stroke-width: 1.6;
+  opacity: 0.48;
+}
+
+.chartSeriesDep {
+  stroke: #60a5fa;
+}
+
+.chartSeriesAnx {
+  stroke: #f59e0b;
+}
+
+.chartSeriesIns {
+  stroke: #a78bfa;
+}
+
+.chartPoint {
+  fill: #0f766e;
+  stroke: #ffffff;
+  stroke-width: 1;
+}
+
+.chartAxisText {
+  font-size: 11px;
+  fill: #475569;
+}
+
+.historySection {
+  margin-top: 1rem;
+  border-top: 1px solid #dbe7eb;
+  padding-top: 0.8rem;
+}
+
+.historySection h3 {
+  margin: 0 0 0.5rem;
+}
+
+.historyChart {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.historyBarRow {
+  display: grid;
+  grid-template-columns: 180px 1fr 40px;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.historyDate {
   font-size: 0.78rem;
-  color: #607483;
+  color: #475569;
+}
+
+.historyBarTrack {
+  height: 10px;
+  background: #e5edf1;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.historyBarFill {
+  height: 100%;
+  background: linear-gradient(90deg, #0f766e, #0ea5e9);
+}
+
+.historyScore {
+  font-size: 0.85rem;
 }
 
 .status {
@@ -336,8 +452,9 @@ button:disabled {
     position: static;
   }
 
-  .dashboardStats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .historyBarRow {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
   }
 }
 

@@ -1,0 +1,85 @@
+.adminPage {
+  display: grid;
+  gap: 1rem;
+}
+
+.adminTitle {
+  margin: 0;
+}
+
+.adminToolbar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.adminToolbar input {
+  min-width: 220px;
+}
+
+.adminStatGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.adminStatCard {
+  border: 1px solid #d6e2e8;
+  border-radius: 12px;
+  padding: 0.8rem;
+  background: #f8fbfc;
+}
+
+.adminStatLabel {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #5b6b76;
+}
+
+.adminStatValue {
+  font-size: 1.4rem;
+}
+
+.adminSection {
+  border: 1px solid #d6e2e8;
+  border-radius: 14px;
+  padding: 0.9rem;
+  background: #fff;
+}
+
+.adminSection h3 {
+  margin: 0 0 0.7rem;
+}
+
+.adminTableWrap {
+  overflow: auto;
+}
+
+.adminTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.adminTable th,
+.adminTable td {
+  border-bottom: 1px solid #e5edf1;
+  text-align: left;
+  padding: 0.55rem 0.45rem;
+  white-space: nowrap;
+}
+
+.adminTable th {
+  color: #425563;
+  background: #f5f9fb;
+}
+
+.adminDanger {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.adminMuted {
+  color: #607483;
+}

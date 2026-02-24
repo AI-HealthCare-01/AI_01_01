@@ -63,19 +63,6 @@
   gap: 0.75rem;
 }
 
-.presetRow {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.toggleAdvanced {
-  background: #fff;
-  color: #0f766e;
-  border: 1px solid #0f766e;
-}
-
 label {
   font-size: 0.92rem;
   display: grid;
@@ -89,11 +76,16 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   border: 1px solid #b7c7d1;
   border-radius: 10px;
   padding: 0.55rem 0.65rem;
   font-size: 0.95rem;
+}
+
+textarea {
+  resize: vertical;
 }
 
 button {
@@ -114,6 +106,7 @@ button:disabled {
 .actions {
   display: flex;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .ghost {
@@ -138,22 +131,6 @@ button:disabled {
   margin: 0.35rem 0;
 }
 
-.history {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.5rem;
-}
-
-.history li {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.5rem 0.6rem;
-  background: #f2f8fa;
-  border-radius: 10px;
-}
-
 .probList {
   list-style: none;
   margin: 0.6rem 0 0;
@@ -166,6 +143,7 @@ button:disabled {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
   background: #f2f8fa;
   padding: 0.42rem 0.6rem;
   border-radius: 8px;
@@ -176,6 +154,83 @@ button:disabled {
   font-size: 0.86rem;
 }
 
+.mypageLayout {
+  margin-top: 1.2rem;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.mySidebar {
+  position: sticky;
+  top: 1rem;
+}
+
+.sideMenu {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.sideMenu button {
+  width: 100%;
+  text-align: left;
+}
+
+.myMainPanel {
+  min-height: 420px;
+}
+
+.profileBlocks {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.profileBlock {
+  border: 1px solid #d6e2e8;
+  border-radius: 12px;
+  background: #fbfdfe;
+  padding: 0.7rem;
+}
+
+.profileBlockHeader {
+  width: 100%;
+  text-align: left;
+}
+
+.dashboardStats {
+  margin-top: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.dashboardCard {
+  border: 1px solid #d6e2e8;
+  border-radius: 12px;
+  background: #f7fbfc;
+  padding: 0.6rem;
+}
+
+.dashboardCard p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #5b6f7b;
+}
+
+.dashboardCard strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 1.15rem;
+}
+
+.dashboardCard span {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.78rem;
+  color: #607483;
+}
+
 .status {
   margin-top: 1rem;
   display: flex;
@@ -183,6 +238,20 @@ button:disabled {
   gap: 1rem;
   font-size: 0.88rem;
   color: #334155;
+}
+
+@media (max-width: 920px) {
+  .mypageLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .mySidebar {
+    position: static;
+  }
+
+  .dashboardStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -201,4 +270,21 @@ button:disabled {
   .miniGrid {
     grid-template-columns: 1fr;
   }
+}
+
+.questionBlock {
+  margin-top: 0.5rem;
+}
+
+.questionBlock h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.questionList {
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 0.3rem;
+  display: grid;
+  gap: 0.65rem;
 }

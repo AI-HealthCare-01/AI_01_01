@@ -1,5 +1,0 @@
-seed: 42
-check_accuracy: 1.0
-check_macro_f1: 1.0
-monitor_accuracy: 0.98
-monitor_macro_f1: 0.975

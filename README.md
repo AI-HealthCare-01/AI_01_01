@@ -1,20 +1,20 @@
 # Mental Health Check API + Frontend (MVP)
 
-FastAPI(백엔드) + React(Vite, 프론트) 기반의 멘탈 체크 MVP 프로젝트입니다.
+FastAPI(백엔드) + React(Vite, 프론트) 기반 멘탈헬스 MVP입니다.
 
 주의: 이 프로젝트의 결과는 **참고용**이며, **의료적 진단이 아닙니다**.
 
-## Features
-- 회원가입 / 로그인 (JWT Access Token, 30분 만료)
-- PHQ-9 설문 저장 / 조회
-- PHQ-9 점수 계산 및 위험 단계 분류
-- PostgreSQL + SQLAlchemy 2.0 async
-- Docker Compose로 API + DB 실행
-- React 프론트에서 백엔드 연동 (Auth + PHQ-9)
+## Added in This Update
+- `model/`의 nowcast 모델(`dep/anx/ins .joblib`)을 백엔드에 연결
+- 주간 대시보드 API 추가 (`week_delta`, `severity`, `composite`, `alert`)
+- `OPENAI_API_KEY` 기반 CBT 채팅 API 추가
+- CBT 대화에서 인지왜곡/정서 지표 추출 및 DB 저장
+- 프론트에 CBT 채팅 + nowcast 대시보드 탭 추가
 
 ## Tech Stack
 - Backend: Python 3.11, FastAPI, SQLAlchemy 2.0 (async), asyncpg
 - Auth: bcrypt, PyJWT
+- AI/Model: scikit-learn, pandas, joblib, OpenAI API
 - DB: PostgreSQL 16
 - Frontend: React + Vite + TypeScript
 - Infra: Docker / Docker Compose
@@ -23,28 +23,15 @@ FastAPI(백엔드) + React(Vite, 프론트) 기반의 멘탈 체크 MVP 프로�
 ```text
 .
 ├── backend
-│   ├── app
-│   │   ├── main.py
-│   │   ├── api/
-│   │   ├── core/
-│   │   ├── db/
-│   │   ├── schemas/
-│   │   ├── services/
-│   │   └── tests/
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── .env.example
 ├── frontend
+├── model
 ├── AI
 ├── worker
-├── docker-compose.yml
-└── .env.example
+└── docker-compose.yml
 ```
 
 ## Environment Variables
-Docker 기준으로 2개 파일을 사용합니다.
-- 루트 `.env`: compose 포트/치환 변수
-- `backend/.env`: FastAPI 앱 내부 설정
+루트 `.env` + `backend/.env`를 함께 사용합니다.
 
 ```env
 APP_NAME=Mental Health Check API
@@ -54,6 +41,16 @@ JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/mental_health
 
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4.1-mini
+
+CHECK_MODEL_PATH=/AI/models/baseline_check_overall_level.joblib
+MONITOR_MODEL_PATH=/AI/models/baseline_monitor_trend_label.joblib
+NOWCAST_MODEL_DIR=/model/models
+NOWCAST_DATA_PATH=/model/data/derived/train_user_day_nowcast.csv
+NOWCAST_CBT_RAW_PATH=/model/data/raw/cbt_session.csv
+NOWCAST_WEEKLY_OUTPUT_PATH=/model/outputs/nowcast_user_week_dashboard.csv
+
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
 POSTGRES_DB=mental_health
@@ -62,7 +59,7 @@ FRONTEND_PORT=5173
 VITE_API_BASE_URL=http://localhost:8001
 ```
 
-## Run with Docker (권장)
+## Run with Docker
 ```bash
 cp .env.example .env
 cp backend/.env.example backend/.env
@@ -73,69 +70,22 @@ docker compose up -d --build
 - Swagger: `http://localhost:8001/docs`
 - Frontend: `http://localhost:5173`
 
-상태 확인:
-```bash
-docker compose ps
-```
-
-중지:
-```bash
-docker compose down
-```
-
-## Run Backend Locally
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-set -a; source .env; set +a
-uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
-```
-
-## Run Frontend Locally
-```bash
-cd frontend
-cp .env.example .env
-npm install
-npm run dev
-```
-
-- Frontend: `http://localhost:5173`
-- 기본 API 대상: `http://localhost:8001`
-
-## Test
-```bash
-cd backend
-.venv/bin/pytest app/tests -q
-```
-
 ## Main API Endpoints
 - `POST /auth/signup`
 - `POST /auth/login`
 - `GET /auth/me`
 - `POST /assessments/phq9`
 - `GET /assessments/phq9`
-- `GET /assessments/phq9/{assessment_id}`
+- `POST /chat/cbt` (JWT 필요)
+- `POST /ai/check/predict`
+- `POST /ai/monitor/predict`
+- `POST /ai/nowcast/predict`
+- `GET /ai/nowcast/dashboard/{user_id}`
 
-## Common Issues
-
-### 1) Docker daemon not running
-```bash
-open -a Docker
-docker info
-```
-
-### 2) Port conflict (`8000`/`8001` already in use)
-`docker-compose.yml`의 `API_PORT` 또는 포트 매핑을 변경하세요.
-
-### 3) `npm ERR! enoent ... package.json`
-`frontend` 폴더에서 실행해야 합니다.
-```bash
-cd frontend
-npm run dev
-```
+## Notes
+- `POST /chat/cbt`는 답변 + 지표 추출(`distortion` 포함) 결과를 저장합니다.
+- `GET /ai/nowcast/dashboard/{user_id}`는 현재 synthetic user 기준(`U000001` 등)입니다.
+- nowcast 모델은 `model/models/*.joblib`를 그대로 로드합니다.
 
 ## Disclaimer
 본 서비스는 자기 점검을 위한 참고 도구입니다. 의료 진단/치료 판단에 사용하지 마세요.

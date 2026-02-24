@@ -1,13 +1,17 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, conint, confloat
 
 
 LevelScore = conint(ge=0, le=4)
 LikertScore = conint(ge=0, le=3)
+StressLabel = Literal["없음", "조금", "보통", "심함"]
 
 
 class CheckPredictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
+    # Existing contract fields (do not rename)
     phq_total: conint(ge=0, le=27)
     gad_total: conint(ge=0, le=21)
     sleep_total: conint(ge=0, le=9)
@@ -18,6 +22,11 @@ class CheckPredictRequest(BaseModel):
     social_support: LikertScore
     coping_skill: LikertScore
     motivation_for_change: LikertScore
+
+    # Optional extension fields for survey UI backward compatibility
+    sleep_hours_week_avg: confloat(ge=0, le=24) | None = None
+    exercise_minutes: confloat(ge=0, le=300) | None = None
+    stress_level_label: StressLabel | None = None
 
 
 class CheckPredictResponse(BaseModel):
@@ -61,3 +70,47 @@ class MonitorPredictResponse(BaseModel):
     prediction: str
     probabilities: dict[str, confloat(ge=0.0, le=1.0)]
     model_path: str
+
+
+class DistortionOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    all_or_nothing_count: conint(ge=0, le=20) = 0
+    catastrophizing_count: conint(ge=0, le=20) = 0
+    mind_reading_count: conint(ge=0, le=20) = 0
+    should_statements_count: conint(ge=0, le=20) = 0
+    personalization_count: conint(ge=0, le=20) = 0
+    overgeneralization_count: conint(ge=0, le=20) = 0
+
+
+class NowcastPredictRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    user_id: str
+    date: str
+    distortion_override: DistortionOverride | None = None
+
+
+class NowcastPredictResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    user_id: str
+    date: str
+    dep_pred_0_100: confloat(ge=0, le=100)
+    anx_pred_0_100: confloat(ge=0, le=100)
+    ins_pred_0_100: confloat(ge=0, le=100)
+    symptom_composite_pred_0_100: confloat(ge=0, le=100)
+    dep_severity: str
+    anx_severity: str
+    ins_severity: str
+
+
+class WeeklyDashboardRow(BaseModel):
+    model_config = ConfigDict(extra="allow", strict=False)
+
+
+class WeeklyDashboardResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    user_id: str
+    rows: list[WeeklyDashboardRow]

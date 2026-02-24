@@ -32,7 +32,7 @@ def _get_admin_emails() -> set[str]:
 async def require_admin(current_user: UserOut = Depends(get_current_user)) -> UserOut:
     admin_emails = _get_admin_emails()
     if not admin_emails or current_user.email.lower() not in admin_emails:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="관리자 권한이 필요합니다.")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="관리자 계정이 아닙니다.")
     return current_user
 
 

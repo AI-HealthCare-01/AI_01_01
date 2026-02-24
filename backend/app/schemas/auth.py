@@ -69,8 +69,17 @@ class ProfileUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     nickname: NicknameStr | None = None
-    phone_number: PhoneStr | None = None
     current_password: PasswordStr | None = None
     new_password: PasswordStr | None = None
-    new_email: EmailStrLite | None = None
-    new_email_verification_code: VerificationCodeStr | None = None
+
+
+class PasswordVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    current_password: PasswordStr
+
+
+class PasswordVerifyResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    matched: bool

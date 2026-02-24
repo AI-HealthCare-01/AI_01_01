@@ -16,7 +16,13 @@ async function request<T>(path: string, token: string): Promise<T> {
   })
 
   if (!response.ok) {
-    const detail = await response.text()
+    let detail = ''
+    try {
+      const body = (await response.json()) as { detail?: string }
+      if (typeof body.detail === 'string') detail = body.detail
+    } catch {
+      detail = await response.text()
+    }
     throw new Error(detail || `HTTP ${response.status}`)
   }
 

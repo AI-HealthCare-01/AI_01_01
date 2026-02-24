@@ -10,6 +10,8 @@ from app.db.session import get_db
 from app.schemas.auth import (
     EmailVerificationRequest,
     EmailVerificationResponse,
+    PasswordVerifyRequest,
+    PasswordVerifyResponse,
     ProfileOut,
     ProfileUpdateRequest,
     TokenResponse,
@@ -101,18 +103,25 @@ async def update_my_profile(
         if not verify_password(payload.current_password, user.password_hash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="현재 비밀번호가 일치하지 않습니다.")
 
-    if payload.new_email is not None:
-        existing = await crud.get_user_by_email(db, payload.new_email)
-        if existing and existing.id != current_user.id:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 사용 중인 이메일입니다.")
-
     updated = await crud.update_user_profile(
         db,
         current_user.id,
         nickname=payload.nickname,
         new_password=payload.new_password,
-        new_email=payload.new_email,
-        phone_number=payload.phone_number,
     )
     profile = await crud.get_or_create_user_profile(db, current_user.id)
     return ProfileOut(email=updated.email, nickname=updated.nickname, phone_number=profile.phone_number)
+
+
+@router.post("/me/password/verify", response_model=PasswordVerifyResponse)
+async def verify_my_current_password(
+    payload: PasswordVerifyRequest,
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PasswordVerifyResponse:
+    user = await crud.get_user_by_id(db, current_user.id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다.")
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="현재 비밀번호가 일치하지 않습니다.")
+    return PasswordVerifyResponse(matched=True)

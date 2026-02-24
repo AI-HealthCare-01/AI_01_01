@@ -76,7 +76,7 @@ async def test_signup_duplicate_email_returns_409() -> None:
 
 
 @pytest.mark.anyio
-async def test_profile_update_with_email_change() -> None:
+async def test_profile_update_nickname_and_password_only() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         signup_res = await client.post(
@@ -101,12 +101,48 @@ async def test_profile_update_with_email_change() -> None:
             headers=headers,
             json={
                 "nickname": "after",
-                "phone_number": "010-1111-2222",
-                "new_email": "profile2@example.com",
+                "current_password": "StrongPass123",
+                "new_password": "EvenStrongPass456",
             },
         )
         assert patch_res.status_code == 200
         data = patch_res.json()
         assert data["nickname"] == "after"
-        assert data["email"] == "profile2@example.com"
-        assert data["phone_number"] == "010-1111-2222"
+        assert data["email"] == "profile1@example.com"
+
+        relogin_old = await client.post(
+            "/auth/login",
+            json={"email": "profile1@example.com", "password": "StrongPass123"},
+        )
+        assert relogin_old.status_code == 401
+
+        relogin_new = await client.post(
+            "/auth/login",
+            json={"email": "profile1@example.com", "password": "EvenStrongPass456"},
+        )
+        assert relogin_new.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_verify_current_password_endpoint() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        signup_res = await client.post(
+            "/auth/signup",
+            json={"email": "verifypw@example.com", "password": "StrongPass123", "nickname": "verify"},
+        )
+        assert signup_res.status_code == 201
+
+        login_res = await client.post(
+            "/auth/login",
+            json={"email": "verifypw@example.com", "password": "StrongPass123"},
+        )
+        token = login_res.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        ok = await client.post("/auth/me/password/verify", headers=headers, json={"current_password": "StrongPass123"})
+        assert ok.status_code == 200
+        assert ok.json()["matched"] is True
+
+        bad = await client.post("/auth/me/password/verify", headers=headers, json={"current_password": "WrongPass123"})
+        assert bad.status_code == 401

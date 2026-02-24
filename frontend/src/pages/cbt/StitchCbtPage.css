@@ -1,0 +1,497 @@
+.cbtV2 {
+  width: min(1260px, 96vw);
+  margin: 0 auto;
+  padding: 0.8rem 0.4rem 1.6rem;
+  color: #212121;
+}
+
+.v2Top {
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.2rem 0.45rem 0.85rem;
+}
+
+.v2Logo {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.v2LogoMark {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #0a0a0a;
+  color: #abf391;
+  display: grid;
+  place-items: center;
+  font-size: 1.05rem;
+}
+
+.v2LogoName {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 700;
+}
+
+.v2LogoSub {
+  margin: 0;
+  font-size: 0.66rem;
+  color: #8f8f8f;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.v2SessionWrap {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.v2LiveBtn {
+  border: 1px solid #dfdfdf;
+  border-radius: 999px;
+  background: #f7f7f7;
+  color: #787878;
+  height: 32px;
+  padding: 0 0.9rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.v2LiveBtn .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #97ef83;
+}
+
+.v2Avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 28%, #d5d39f, #95c3ad);
+}
+
+.v2Main {
+  display: grid;
+  grid-template-columns: 2.55fr 1fr;
+  gap: 1rem;
+}
+
+.v2ChatCard {
+  border: 1.4px solid #656565;
+  border-radius: 34px;
+  background: #f5f5f5;
+  min-height: 740px;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+}
+
+.v2ChatHead {
+  min-height: 96px;
+  border-bottom: 1px solid #e5e5e5;
+  padding: 1.1rem 1.35rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.v2ChatIdentity {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.v2MochiFace {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #e9efeb;
+  border: 1px solid #d8d8d8;
+  display: grid;
+  place-items: center;
+}
+
+.v2MochiName {
+  margin: 0;
+  font-size: 1.04rem;
+  font-weight: 700;
+}
+
+.v2MochiSub {
+  margin: 0;
+  color: #959595;
+  font-size: 0.86rem;
+}
+
+.v2Dots {
+  color: #9f9f9f;
+  font-size: 1.15rem;
+}
+
+.v2Messages {
+  padding: 1.5rem 1.4rem 0.7rem;
+  display: grid;
+  align-content: start;
+  gap: 0.38rem;
+}
+
+.v2Bubble {
+  border-radius: 30px;
+  padding: 1rem 1.25rem;
+  max-width: 78%;
+  line-height: 1.45;
+  font-size: 1.07rem;
+}
+
+.v2Bubble.assistant {
+  border: 1px solid #dedede;
+  background: #f1f2f3;
+  color: #3b3b3b;
+}
+
+.v2Bubble.user {
+  justify-self: end;
+  background: #070707;
+  color: #f5f5f5;
+}
+
+.v2Time {
+  margin: 0.1rem 0 1rem 0.3rem;
+  color: #c2c2c2;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.v2Time.right {
+  justify-self: end;
+  margin-right: 0.2rem;
+}
+
+.v2Composer {
+  margin: 0.6rem 1rem 0.25rem;
+  border: 1px solid #e4e4e4;
+  border-radius: 999px;
+  background: #f0f1f2;
+  min-height: 56px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.45rem 0.4rem 1rem;
+}
+
+.v2Composer input {
+  border: none;
+  background: transparent;
+  font-size: 1.02rem;
+  color: #555;
+  outline: none;
+}
+
+.v2Composer button {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: #040404;
+  color: #ececec;
+  font-size: 1.1rem;
+}
+
+.v2ChipRow {
+  padding: 0.35rem 1rem 1rem;
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.v2ChipRow span {
+  border: 1px solid #e2e2e2;
+  border-radius: 999px;
+  background: #f5f5f5;
+  color: #b2b2b2;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.28rem 0.7rem;
+}
+
+.v2Right {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+}
+
+.v2Panel {
+  border: 1.4px solid #656565;
+  border-radius: 40px;
+  background: #f5f5f5;
+  padding: 1rem 1rem 1.1rem;
+}
+
+.v2PanelHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.v2PanelHead .title {
+  margin: 0;
+  font-size: 1.03rem;
+  font-weight: 700;
+}
+
+.v2PanelHead .sub {
+  margin: 0.1rem 0 0;
+  color: #b3b3b3;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.v2Trend {
+  width: 100%;
+  height: 168px;
+}
+
+.v2Trend .ghostBars rect {
+  fill: #efefef;
+}
+
+.v2Trend path {
+  fill: none;
+  stroke: #dddddd;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.v2Trend .good {
+  fill: #9ceb8a;
+}
+
+.v2Trend .bad {
+  fill: #070707;
+}
+
+.v2Stability {
+  margin-top: 0.15rem;
+  border: 1px solid #e8e8e8;
+  border-radius: 15px;
+  padding: 0.45rem 0.55rem;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.v2Stability span {
+  font-size: 0.64rem;
+  color: #a9a9a9;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.v2Stability .bar {
+  height: 3px;
+  background: #ebebeb;
+  border-radius: 999px;
+}
+
+.v2Stability .bar i {
+  display: block;
+  height: 100%;
+  background: #95ef82;
+  border-radius: 999px;
+}
+
+.v2Stability strong {
+  font-size: 0.76rem;
+}
+
+.v2Bars {
+  margin-top: 0.7rem;
+  min-height: 130px;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.25rem;
+  align-items: end;
+}
+
+.v2BarCol {
+  display: grid;
+  justify-items: center;
+  gap: 0.18rem;
+}
+
+.v2BarCol i {
+  width: 82%;
+  border-radius: 12px 12px 4px 4px;
+  background: #ece2f8;
+}
+
+.v2BarCol:nth-child(3) i {
+  background: #d7bdf2;
+}
+
+.v2BarCol:nth-child(5) i {
+  background: #f3dfd6;
+}
+
+.v2BarCol span {
+  color: #cbcbcb;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.v2TipCard {
+  border-radius: 40px;
+  background: #050505;
+  color: #f0f0f0;
+  padding: 1.1rem 1.1rem 1rem;
+}
+
+.tipTitle {
+  margin: 0;
+  color: #f5f5f5;
+  font-size: 0.94rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.36rem;
+}
+
+.tipLamp {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #9cef84;
+  display: inline-block;
+  position: relative;
+}
+
+.tipLamp::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 9px;
+  width: 2px;
+  height: 4px;
+  border-radius: 2px;
+  background: #9cef84;
+}
+
+.tipBody {
+  margin: 0.8rem 0;
+  color: #c6c6c6;
+  line-height: 1.5;
+}
+
+.tipActions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #282828;
+  padding-top: 0.7rem;
+  gap: 0.5rem;
+}
+
+.tipActions label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #d7d7d7;
+  font-size: 0.76rem;
+}
+
+.tipActions button {
+  border: none;
+  background: transparent;
+  color: #9cef84;
+  font-weight: 700;
+}
+
+.tipInputs {
+  margin-top: 0.6rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.tipInputs input {
+  height: 32px;
+  border: 1px solid #2f2f2f;
+  border-radius: 8px;
+  background: #101010;
+  color: #f0f0f0;
+  padding: 0 0.45rem;
+}
+
+.v2Dock {
+  margin: -0.9rem auto 0;
+  width: 360px;
+  height: 72px;
+  border: 1px solid #dddddd;
+  border-radius: 40px;
+  background: #f2f2f2;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.v2Dock button {
+  min-width: 62px;
+  height: 34px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #a7a7a7;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0 0.55rem;
+}
+
+.v2Dock button.active {
+  background: #050505;
+  color: #8ef07d;
+}
+
+.v2Message {
+  margin: 0.5rem 0 0;
+  color: #b1b1b1;
+  font-size: 0.74rem;
+  text-align: center;
+}
+
+@media (max-width: 1024px) {
+  .v2Main {
+    grid-template-columns: 1fr;
+  }
+
+  .v2ChatCard {
+    min-height: 620px;
+  }
+}
+
+@media (max-width: 700px) {
+  .cbtV2 {
+    width: 98vw;
+  }
+
+  .v2Composer {
+    margin-left: 0.7rem;
+    margin-right: 0.7rem;
+  }
+
+  .tipInputs {
+    grid-template-columns: 1fr;
+  }
+}

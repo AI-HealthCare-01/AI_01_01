@@ -1,0 +1,219 @@
+.saWrap {
+  width: min(980px, 95vw);
+  margin: 0 auto;
+  padding: 0.8rem 0 2rem;
+}
+
+.saHead {
+  min-height: 56px;
+  border-top: 4px solid #b4f39f;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.saBrand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.saLogo {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #0a0a0a;
+  color: #9ef283;
+  display: grid;
+  place-items: center;
+}
+
+.saBrandName {
+  margin: 0;
+  font-weight: 700;
+}
+
+.saBrandSub {
+  margin: 0;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  color: #a0a0a0;
+  font-weight: 700;
+}
+
+.saProgress p {
+  margin: 0;
+  font-size: 0.62rem;
+  color: #ababab;
+  letter-spacing: 0.05em;
+}
+
+.saProgress strong {
+  font-size: 0.8rem;
+}
+
+.saTitleBlock {
+  margin-top: 1rem;
+}
+
+.saTitleBlock h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.saTitleBlock p {
+  margin: 0.45rem 0 0;
+  color: #757575;
+}
+
+.saForm {
+  margin-top: 1.3rem;
+  display: grid;
+  gap: 1.2rem;
+}
+
+.saCard {
+  border: 1.4px solid #6a6a6a;
+  border-radius: 30px;
+  background: #f8f8f8;
+  padding: 1.3rem 1.3rem 1rem;
+}
+
+.saSection {
+  margin: 0;
+  display: inline-block;
+  border-radius: 999px;
+  background: #ece3f7;
+  color: #6d5d86;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.5rem;
+}
+
+.saSection.sectionGreen {
+  background: #daf8ce;
+  color: #4c7e40;
+}
+
+.saCard h2 {
+  margin: 0.42rem 0 0.85rem;
+  font-size: 1.2rem;
+}
+
+.saQuestion {
+  margin-top: 0.85rem;
+}
+
+.saQuestion.isInvalid {
+  border: 1px solid #f2a9a9;
+  border-radius: 14px;
+  background: #fff6f6;
+  padding: 0.55rem;
+}
+
+.saQuestionScroll {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 0.35rem;
+}
+
+.saQuestionScrollSleep {
+  max-height: 260px;
+}
+
+.saQuestion p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.saOptions {
+  margin-top: 0.55rem;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.saOptionBtn {
+  min-height: 44px;
+  border: 1px solid #dadada;
+  border-radius: 12px;
+  background: #f4f4f4;
+  display: grid;
+  gap: 0.05rem;
+  place-items: center;
+  color: #888;
+  padding: 0.2rem 0.15rem;
+}
+
+.saOptionBtn strong {
+  font-size: 0.8rem;
+  color: #4f4f4f;
+}
+
+.saOptionBtn span {
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.saOptionBtn.isActive {
+  color: #1d1d1d;
+}
+
+.saOptionBtn.tone-0.isActive {
+  border-color: #73d76a;
+  background: #e9ffe1;
+}
+
+.saOptionBtn.tone-1.isActive {
+  border-color: #c8d16b;
+  background: #f8fdd9;
+}
+
+.saOptionBtn.tone-2.isActive {
+  border-color: #e1b067;
+  background: #fff0d8;
+}
+
+.saOptionBtn.tone-3.isActive {
+  border-color: #e08b8b;
+  background: #ffe3e3;
+}
+
+.saContextList {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.saSubmit {
+  width: min(340px, 95%);
+  justify-self: center;
+  min-height: 52px;
+  border: none;
+  border-radius: 16px;
+  background: #a7ef92;
+  color: #13200f;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.saResult {
+  margin: 1rem auto 0;
+  width: min(680px, 95%);
+  border: 1px solid #d6e6d1;
+  border-radius: 16px;
+  background: #f4fff0;
+  padding: 0.8rem 1rem;
+}
+
+.saResult p {
+  margin: 0.22rem 0;
+}
+
+@media (max-width: 820px) {
+  .saOptions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

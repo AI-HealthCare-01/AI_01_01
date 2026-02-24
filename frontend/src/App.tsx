@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
+import AdminPage from './pages/admin/AdminPage'
 
-type PageKey = 'assessment' | 'cbt' | 'mypage' | 'account'
+type PageKey = 'assessment' | 'cbt' | 'mypage' | 'admin' | 'account'
 type MyPageTab = 'dashboard' | 'profile'
 type LikertValue = '' | '0' | '1' | '2' | '3'
 
@@ -41,7 +42,10 @@ type CheckPredictResponse = {
 type ProfileOut = {
   email: string
   nickname: string
-  phone_number: string | null
+}
+
+type PasswordVerifyResponse = {
+  matched: boolean
 }
 
 type ChatRole = 'user' | 'assistant'
@@ -165,6 +169,17 @@ function severityToKorean(level: number): string {
   return '매우 높은 수준'
 }
 
+function riskBand(score: number): string {
+  if (score >= 75) return '고위험'
+  if (score >= 50) return '중위험'
+  return '안정'
+}
+
+function deltaText(current: number, prev?: number): string {
+  if (prev == null) return '-'
+  return `${(current - prev).toFixed(1)}`
+}
+
 async function extractApiError(response: Response): Promise<string> {
   try {
     const data = (await response.json()) as { detail?: string }
@@ -235,10 +250,10 @@ function App() {
 
   const [profile, setProfile] = useState<ProfileOut | null>(null)
   const [profileNickname, setProfileNickname] = useState('')
-  const [profilePhone, setProfilePhone] = useState('')
-  const [profileNewEmail, setProfileNewEmail] = useState('')
   const [profileCurrentPw, setProfileCurrentPw] = useState('')
   const [profileNewPw, setProfileNewPw] = useState('')
+  const [profilePanel, setProfilePanel] = useState<'none' | 'nickname' | 'password'>('none')
+  const [passwordVerified, setPasswordVerified] = useState(false)
 
   const authHeaders = useMemo(
     () => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }),
@@ -284,10 +299,10 @@ function App() {
       const data = (await response.json()) as ProfileOut
       setProfile(data)
       setProfileNickname(data.nickname)
-      setProfilePhone(data.phone_number ?? '')
-      setProfileNewEmail('')
       setProfileCurrentPw('')
       setProfileNewPw('')
+      setProfilePanel('none')
+      setPasswordVerified(false)
     } catch (error) {
       setMessage(`MyPage profile load error: ${(error as Error).message}`)
     }
@@ -583,24 +598,13 @@ function App() {
     }
   }
 
-  async function handleProfileSave(event: FormEvent) {
-    event.preventDefault()
+  async function handleNicknameSave() {
     if (!token) {
       setMessage('로그인 후 이용 가능합니다.')
       return
     }
-
-    const payload: Record<string, string> = {}
-    if (profile && profileNickname !== profile.nickname) payload.nickname = profileNickname
-    if (profilePhone !== (profile?.phone_number ?? '')) payload.phone_number = profilePhone
-    if (profileNewPw) {
-      payload.current_password = profileCurrentPw
-      payload.new_password = profileNewPw
-    }
-    if (profileNewEmail) payload.new_email = profileNewEmail
-
-    if (Object.keys(payload).length === 0) {
-      setMessage('변경된 값이 없습니다.')
+    if (!profile || profileNickname.trim() === '' || profileNickname === profile.nickname) {
+      setMessage('변경된 닉네임이 없습니다.')
       return
     }
 
@@ -609,14 +613,81 @@ function App() {
       const response = await fetch(`${API_BASE}/auth/me/profile`, {
         method: 'PATCH',
         headers: authHeaders,
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ nickname: profileNickname }),
       })
       if (!response.ok) throw new Error(await extractApiError(response))
       await loadMyProfile()
       await loadProfile()
-      setMessage('회원정보가 수정되었습니다.')
+      setMessage('닉네임이 수정되었습니다.')
+      window.alert('완료되었습니다!')
     } catch (error) {
-      setMessage(`회원정보 수정 오류: ${(error as Error).message}`)
+      setMessage(`닉네임 수정 오류: ${(error as Error).message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleVerifyCurrentPassword() {
+    if (!token) {
+      setMessage('로그인 후 이용 가능합니다.')
+      return
+    }
+    if (profileCurrentPw.trim() === '') {
+      setMessage('현재 비밀번호를 입력하세요.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_BASE}/auth/me/password/verify`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ current_password: profileCurrentPw }),
+      })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      const data = (await response.json()) as PasswordVerifyResponse
+      setPasswordVerified(data.matched)
+      if (data.matched) setMessage('현재 비밀번호 확인 완료')
+    } catch (error) {
+      setPasswordVerified(false)
+      setMessage(`비밀번호 확인 오류: ${(error as Error).message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handlePasswordSave() {
+    if (!token) {
+      setMessage('로그인 후 이용 가능합니다.')
+      return
+    }
+    if (!passwordVerified) {
+      setMessage('현재 비밀번호 확인을 먼저 진행하세요.')
+      return
+    }
+    if (profileNewPw.trim() === '') {
+      setMessage('변경할 비밀번호를 입력하세요.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_BASE}/auth/me/profile`, {
+        method: 'PATCH',
+        headers: authHeaders,
+        body: JSON.stringify({
+          current_password: profileCurrentPw,
+          new_password: profileNewPw,
+        }),
+      })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      setProfileCurrentPw('')
+      setProfileNewPw('')
+      setPasswordVerified(false)
+      setMessage('비밀번호가 수정되었습니다.')
+      window.alert('완료되었습니다!')
+    } catch (error) {
+      setMessage(`비밀번호 수정 오류: ${(error as Error).message}`)
     } finally {
       setLoading(false)
     }
@@ -634,6 +705,8 @@ function App() {
     Number(assessment.context.social_support || 0) +
     Number(assessment.context.coping_skill || 0) +
     Number(assessment.context.motivation_for_change || 0)
+  const latestWeekly = dashboard?.rows?.length ? dashboard.rows[dashboard.rows.length - 1] : null
+  const prevWeekly = dashboard && dashboard.rows.length > 1 ? dashboard.rows[dashboard.rows.length - 2] : null
 
   return (
     <main className="page">
@@ -648,6 +721,7 @@ function App() {
           <button className={page === 'assessment' ? '' : 'ghost'} onClick={() => setPage('assessment')}>검사</button>
           <button className={page === 'cbt' ? '' : 'ghost'} onClick={() => setPage('cbt')}>CBT 채팅</button>
           <button className={page === 'mypage' ? '' : 'ghost'} onClick={() => setPage('mypage')}>마이페이지</button>
+          <button className={page === 'admin' ? '' : 'ghost'} onClick={() => setPage('admin')}>관리자</button>
           <button className={page === 'account' ? '' : 'ghost'} onClick={() => setPage('account')}>회원/로그인</button>
         </div>
       </section>
@@ -853,14 +927,50 @@ function App() {
               <p className="small">데이터가 생길 때마다 일 단위로 즉시 반영됩니다.</p>
               <div className="actions"><button disabled={loading} onClick={() => void loadMyDashboard()}>내 대시보드 조회</button></div>
               {dashboard && (
-                <ul className="probList" style={{ marginTop: '0.8rem' }}>
-                  {dashboard.rows.map((row) => (
-                    <li key={row.week_start_date}>
-                      <span>{row.week_start_date}</span>
-                      <strong>composite {row.symptom_composite_pred_0_100.toFixed(1)} | alert {row.alert_level ?? 'low'}</strong>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <p>최근 주차 수: {dashboard.rows.length}</p>
+                  {latestWeekly && (
+                    <>
+                      <p className="small">
+                        현재 상태: <strong>{riskBand(latestWeekly.symptom_composite_pred_0_100)}</strong> (composite {latestWeekly.symptom_composite_pred_0_100.toFixed(1)})
+                      </p>
+                      <div className="dashboardStats">
+                        <article className="dashboardCard">
+                          <p>종합 점수</p>
+                          <strong>{latestWeekly.symptom_composite_pred_0_100.toFixed(1)}</strong>
+                          <span>변화 {deltaText(latestWeekly.symptom_composite_pred_0_100, prevWeekly?.symptom_composite_pred_0_100)}</span>
+                        </article>
+                        <article className="dashboardCard">
+                          <p>우울 (DEP)</p>
+                          <strong>{latestWeekly.dep_week_pred_0_100.toFixed(1)}</strong>
+                          <span>변화 {deltaText(latestWeekly.dep_week_pred_0_100, prevWeekly?.dep_week_pred_0_100)}</span>
+                        </article>
+                        <article className="dashboardCard">
+                          <p>불안 (ANX)</p>
+                          <strong>{latestWeekly.anx_week_pred_0_100.toFixed(1)}</strong>
+                          <span>변화 {deltaText(latestWeekly.anx_week_pred_0_100, prevWeekly?.anx_week_pred_0_100)}</span>
+                        </article>
+                        <article className="dashboardCard">
+                          <p>불면 (INS)</p>
+                          <strong>{latestWeekly.ins_week_pred_0_100.toFixed(1)}</strong>
+                          <span>변화 {deltaText(latestWeekly.ins_week_pred_0_100, prevWeekly?.ins_week_pred_0_100)}</span>
+                        </article>
+                      </div>
+                    </>
+                  )}
+                  <ul className="probList">
+                    {dashboard.rows.map((row) => (
+                      <li key={row.week_start_date}>
+                        <span>
+                          {row.week_start_date} | composite {row.symptom_composite_pred_0_100.toFixed(1)} | alert {row.alert_level ?? 'low'}
+                        </span>
+                        <strong>
+                          dep {row.dep_week_pred_0_100.toFixed(1)} / anx {row.anx_week_pred_0_100.toFixed(1)} / ins {row.ins_week_pred_0_100.toFixed(1)}
+                        </strong>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
             </article>
           )}
@@ -868,31 +978,72 @@ function App() {
           {myTab === 'profile' && (
             <article className="panel myMainPanel">
               <h2>회원정보수정</h2>
-              <form onSubmit={handleProfileSave} className="form">
-                <label>
-                  닉네임
-                  <input value={profileNickname} onChange={(e) => setProfileNickname(e.target.value)} />
-                </label>
-                <label>
-                  전화번호
-                  <input value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)} placeholder="010-1234-5678" />
-                </label>
-                <label>
-                  새 이메일
-                  <input value={profileNewEmail} onChange={(e) => setProfileNewEmail(e.target.value)} />
-                </label>
-                <label>
-                  현재 비밀번호
-                  <input type="password" value={profileCurrentPw} onChange={(e) => setProfileCurrentPw(e.target.value)} />
-                </label>
-                <label>
-                  새 비밀번호
-                  <input type="password" value={profileNewPw} onChange={(e) => setProfileNewPw(e.target.value)} />
-                </label>
-                <button disabled={loading}>저장</button>
-              </form>
-              {profile && <p className="small">현재 이메일: {profile.email}</p>}
+              <div className="profileBlocks">
+                <section className="profileBlock">
+                  <button
+                    type="button"
+                    className="profileBlockHeader"
+                    onClick={() => setProfilePanel(profilePanel === 'nickname' ? 'none' : 'nickname')}
+                  >
+                    닉네임 수정하기
+                  </button>
+                  {profilePanel === 'nickname' && (
+                    <div className="form">
+                      <p className="small">현재 닉네임: {profile?.nickname ?? '-'}</p>
+                      <label>
+                        변경할 닉네임
+                        <input value={profileNickname} onChange={(e) => setProfileNickname(e.target.value)} />
+                      </label>
+                      <div className="actions">
+                        <button type="button" disabled={loading} onClick={() => void handleNicknameSave()}>닉네임 저장</button>
+                      </div>
+                    </div>
+                  )}
+                </section>
+
+                <section className="profileBlock">
+                  <button
+                    type="button"
+                    className="profileBlockHeader"
+                    onClick={() => setProfilePanel(profilePanel === 'password' ? 'none' : 'password')}
+                  >
+                    비밀번호 수정하기
+                  </button>
+                  {profilePanel === 'password' && (
+                    <div className="form">
+                      <label>
+                        현재 비밀번호
+                        <input type="password" value={profileCurrentPw} onChange={(e) => setProfileCurrentPw(e.target.value)} />
+                      </label>
+                      <div className="actions">
+                        <button type="button" disabled={loading} onClick={() => void handleVerifyCurrentPassword()}>현재 비밀번호 확인</button>
+                      </div>
+                      {passwordVerified && (
+                        <>
+                          <label>
+                            변경할 비밀번호
+                            <input type="password" value={profileNewPw} onChange={(e) => setProfileNewPw(e.target.value)} />
+                          </label>
+                          <div className="actions">
+                            <button type="button" disabled={loading} onClick={() => void handlePasswordSave()}>비밀번호 저장</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </section>
+              </div>
             </article>
+          )}
+        </section>
+      )}
+
+      {page === 'admin' && (
+        <section className="panel">
+          {!token ? (
+            <p>로그인을 먼저 해주세요.</p>
+          ) : (
+            <AdminPage token={token} />
           )}
         </section>
       )}

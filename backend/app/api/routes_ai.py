@@ -73,23 +73,6 @@ async def predict_nowcast(payload: NowcastPredictRequest) -> NowcastPredictRespo
     return NowcastPredictResponse(**asdict(result))
 
 
-@router.get("/nowcast/dashboard/{user_id}", response_model=WeeklyDashboardResponse)
-async def get_nowcast_dashboard(user_id: str) -> WeeklyDashboardResponse:
-    try:
-        rows = get_weekly_dashboard_rows(user_id=user_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Dashboard load failed: {exc}",
-        ) from exc
-
-    return WeeklyDashboardResponse(user_id=user_id, rows=rows)
-
-
 @router.get("/nowcast/dashboard/me", response_model=WeeklyDashboardResponse)
 async def get_my_nowcast_dashboard(
     current_user: UserOut = Depends(get_current_user),
@@ -107,3 +90,20 @@ async def get_my_nowcast_dashboard(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"My dashboard build failed: {exc}",
         ) from exc
+
+ 
+@router.get("/nowcast/dashboard/{user_id}", response_model=WeeklyDashboardResponse)
+async def get_nowcast_dashboard(user_id: str) -> WeeklyDashboardResponse:
+    try:
+        rows = get_weekly_dashboard_rows(user_id=user_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Dashboard load failed: {exc}",
+        ) from exc
+
+    return WeeklyDashboardResponse(user_id=user_id, rows=rows)

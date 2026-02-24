@@ -108,8 +108,6 @@ async def update_user_profile(
     *,
     nickname: str | None = None,
     new_password: str | None = None,
-    new_email: str | None = None,
-    phone_number: str | None = None,
 ) -> User:
     user = await get_user_by_id(db, user_id)
     if not user:
@@ -119,12 +117,6 @@ async def update_user_profile(
         user.nickname = nickname
     if new_password is not None:
         user.password_hash = hash_password(new_password)
-    if new_email is not None:
-        user.email = new_email
-
-    profile = await get_or_create_user_profile(db, user_id)
-    if phone_number is not None:
-        profile.phone_number = phone_number
 
     await db.commit()
     await db.refresh(user)

@@ -375,8 +375,21 @@ button:disabled {
   gap: 0.8rem;
 }
 
+.careTabs {
+  margin-top: 0.2rem;
+}
+
 .cbtTopInputs {
   margin-bottom: 0.2rem;
+}
+
+.checkinPanel {
+  border: 1px solid #dbe7eb;
+  border-radius: 14px;
+  background: #fbfefe;
+  padding: 0.8rem;
+  display: grid;
+  gap: 0.7rem;
 }
 
 .chatShell {
@@ -434,6 +447,26 @@ button:disabled {
   border-radius: 12px;
   padding: 0.65rem;
   background: #ffffff;
+}
+
+.summaryCard {
+  border: 1px solid #d6e2e8;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.summaryCard h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.summaryCard p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
 .chatComposer {

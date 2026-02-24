@@ -5,6 +5,7 @@ import AdminPage from './pages/admin/AdminPage'
 
 type PageKey = 'assessment' | 'cbt' | 'mypage' | 'admin' | 'account'
 type MyPageTab = 'dashboard' | 'profile'
+type CareTab = 'checkin' | 'diary'
 type LikertValue = '' | '0' | '1' | '2' | '3'
 
 type UserOut = {
@@ -72,6 +73,13 @@ type ChatResponse = {
   challenge_completed?: boolean
   completed_challenge?: string | null
   completion_message?: string | null
+  summary_card?: {
+    situation: string
+    self_blame_signal: string
+    reframe: string
+    next_action: string
+    encouragement: string
+  }
 }
 
 type WeeklyDashboardRow = {
@@ -227,6 +235,7 @@ function buildPayload(assessment: AssessmentState): CheckPredictRequest {
 function App() {
   const [page, setPage] = useState<PageKey>('account')
   const [myTab, setMyTab] = useState<MyPageTab>('dashboard')
+  const [careTab, setCareTab] = useState<CareTab>('checkin')
 
   const [token, setToken] = useState<string>(() => localStorage.getItem('access_token') ?? '')
   const [me, setMe] = useState<UserOut | null>(null)
@@ -253,6 +262,9 @@ function App() {
   const [challengeStatus, setChallengeStatus] = useState<Record<string, boolean>>({})
   const [cbtCheckinMood, setCbtCheckinMood] = useState('')
   const [cbtCheckinSleep, setCbtCheckinSleep] = useState('')
+  const [checkinExerciseMinutes, setCheckinExerciseMinutes] = useState('')
+  const [checkinStressLevel, setCheckinStressLevel] = useState<'none' | 'mild' | 'high'>('none')
+  const [checkinNote, setCheckinNote] = useState('')
 
   const [dashboard, setDashboard] = useState<WeeklyDashboardResponse | null>(null)
   const [phqHistory, setPhqHistory] = useState<PHQ9AssessmentSummary[]>([])
@@ -465,7 +477,7 @@ function App() {
   async function handleChatSubmit(event: FormEvent) {
     event.preventDefault()
     if (!token) {
-      setMessage('CBT 채팅은 로그인 후 사용 가능합니다.')
+      setMessage('감정일기 대화는 로그인 후 사용 가능합니다.')
       return
     }
 
@@ -476,7 +488,7 @@ function App() {
     }
 
     setLoading(true)
-    setMessage('CBT 대화 분석 중...')
+    setMessage('감정일기 분석 중...')
 
     const historyForRequest = chatHistory.slice(-12)
     setChatHistory((prev) => [...prev, { role: 'user', content: text }])
@@ -518,34 +530,17 @@ function App() {
         setChallengeStatus((prev) => ({ ...prev, [data.completed_challenge as string]: true }))
       }
 
-      setMessage('CBT 응답 및 지표 추출 완료')
+      setMessage('감정일기 응답 및 지표 추출 완료')
     } catch (error) {
-      setMessage(`CBT 채팅 오류: ${(error as Error).message}`)
+      setMessage(`감정일기 오류: ${(error as Error).message}`)
     } finally {
       setLoading(false)
     }
   }
 
-  function startChallenge(challenge: string) {
-    setActiveChallenge(challenge)
-    setChallengePhase('start')
-    setChatHistory((prev) => [
-      ...prev,
-      {
-        role: 'assistant',
-        content: `좋아요. '${challenge}' 챌린지를 지금부터 함께 진행할게요. 준비되면 현재 상황을 한 문장으로 알려주세요.`,
-      },
-    ])
-    setMessage(`선택한 챌린지: ${challenge}`)
-  }
-
   async function handleSaveCbtCheckin() {
     if (!token) {
       setMessage('체크인 저장은 로그인 후 가능합니다.')
-      return
-    }
-    if (!chatResult) {
-      setMessage('먼저 CBT 대화를 진행해주세요.')
       return
     }
     if (cbtCheckinMood === '') {
@@ -555,6 +550,7 @@ function App() {
 
     const mood = Number(cbtCheckinMood)
     const sleep = cbtCheckinSleep === '' ? null : Number(cbtCheckinSleep)
+    const exerciseMinutes = checkinExerciseMinutes === '' ? null : Number(checkinExerciseMinutes)
     if (Number.isNaN(mood) || mood < 1 || mood > 10) {
       setMessage('기분 점수는 1~10 범위여야 합니다.')
       return
@@ -563,9 +559,19 @@ function App() {
       setMessage('수면 시간은 0~24 범위여야 합니다.')
       return
     }
+    if (exerciseMinutes != null && (Number.isNaN(exerciseMinutes) || exerciseMinutes < 0 || exerciseMinutes > 300)) {
+      setMessage('운동 시간은 0~300분 범위여야 합니다.')
+      return
+    }
 
-    const challenges = chatResult.suggested_challenges
+    const challenges = chatResult?.suggested_challenges ?? []
     const completedCount = challenges.filter((c) => challengeStatus[c]).length
+    const noteParts = [
+      `stress:${checkinStressLevel}`,
+      exerciseMinutes == null ? null : `exercise_min:${exerciseMinutes}`,
+      checkinNote.trim() === '' ? null : `memo:${checkinNote.trim()}`,
+      activeChallenge ? `active_challenge:${activeChallenge}` : null,
+    ].filter(Boolean)
 
     setLoading(true)
     try {
@@ -575,8 +581,8 @@ function App() {
         body: JSON.stringify({
           mood_score: mood,
           sleep_hours: sleep,
-          exercised: completedCount > 0,
-          note: activeChallenge ? `active_challenge:${activeChallenge}` : 'cbt_checkin',
+          exercised: (exerciseMinutes ?? 0) > 0 || completedCount > 0,
+          note: noteParts.length ? noteParts.join(' | ') : 'mindcare_checkin',
           challenge_completed_count: completedCount,
           challenge_total_count: challenges.length,
         }),
@@ -584,9 +590,12 @@ function App() {
       if (!response.ok) throw new Error(await extractApiError(response))
       await response.json()
       await loadMyDashboard()
-      setMessage(`대화 마치기 완료 (챌린지 ${completedCount}/${challenges.length})`)
+      setMessage(`체크인 저장 완료 (챌린지 ${completedCount}/${challenges.length})`)
       setCbtCheckinMood('')
       setCbtCheckinSleep('')
+      setCheckinExerciseMinutes('')
+      setCheckinStressLevel('none')
+      setCheckinNote('')
     } catch (error) {
       setMessage(`체크인 저장 오류: ${(error as Error).message}`)
     } finally {
@@ -768,19 +777,18 @@ function App() {
     .join(' ')
   const compositePolylinePoints = points.map((p) => `${p.x},${p.y}`).join(' ')
   const xLabelStep = Math.max(1, Math.ceil(chartRows.length / 6))
-
   return (
     <main className="page">
       <header className="hero">
         <p className="kicker">Mind Check Console</p>
         <h1>서비스 콘솔</h1>
-        <p className="subtitle">설문 문항 선택, CBT 대화형 챌린지, 실시간 추세 반영 대시보드</p>
+        <p className="subtitle">설문 문항 선택, 오늘의 마음돌봄, 실시간 추세 반영 대시보드</p>
       </header>
 
       <section className="panel">
         <div className="actions">
           <button className={page === 'assessment' ? '' : 'ghost'} onClick={() => setPage('assessment')}>검사</button>
-          <button className={page === 'cbt' ? '' : 'ghost'} onClick={() => setPage('cbt')}>CBT 채팅</button>
+          <button className={page === 'cbt' ? '' : 'ghost'} onClick={() => setPage('cbt')}>오늘의 마음돌봄</button>
           <button className={page === 'mypage' ? '' : 'ghost'} onClick={() => setPage('mypage')}>마이페이지</button>
           <button className={page === 'admin' ? '' : 'ghost'} onClick={() => setPage('admin')}>관리자</button>
           <button className={page === 'account' ? '' : 'ghost'} onClick={() => setPage('account')}>회원/로그인</button>
@@ -894,81 +902,93 @@ function App() {
 
       {page === 'cbt' && (
         <section className="panel cbtPanel">
-          <h2>CBT 대화 코치</h2>
-          <p className="small">대화를 통해 상태 지표를 추출하고, 선택한 챌린지를 단계별로 함께 진행합니다.</p>
+          <h2>오늘의 마음돌봄</h2>
+          <p className="small">체크인으로 하루 상태를 기록하고, 감정일기 대화와 오늘의 작은 행동 챌린지로 회복 루틴을 만들어요.</p>
 
-          <div className="miniGrid cbtTopInputs">
-            <label>
-              오늘의 기분 점수 (1~10)
-              <input value={cbtCheckinMood} onChange={(e) => setCbtCheckinMood(e.target.value)} inputMode="numeric" placeholder="예: 6" />
-            </label>
-            <label>
-              오늘 수면 시간 (선택)
-              <input value={cbtCheckinSleep} onChange={(e) => setCbtCheckinSleep(e.target.value)} inputMode="decimal" placeholder="예: 6.5" />
-            </label>
+          <div className="actions careTabs">
+            <button className={careTab === 'checkin' ? '' : 'ghost'} type="button" onClick={() => setCareTab('checkin')}>체크인</button>
+            <button className={careTab === 'diary' ? '' : 'ghost'} type="button" onClick={() => setCareTab('diary')}>감정일기</button>
           </div>
 
-          <div className="chatShell">
-            <div className="chatMessages">
-              {chatHistory.length === 0 && (
-                <div className="chatEmpty">오늘 있었던 일이나 마음 상태를 편하게 적어주세요. 제가 대화를 이어가며 지표를 추출하고 챌린지를 함께 진행할게요.</div>
-              )}
-              {chatHistory.map((turn, idx) => (
-                <div key={`turn-${idx}`} className={`chatBubble ${turn.role === 'user' ? 'chatUser' : 'chatAssistant'}`}>
-                  <strong>{turn.role === 'user' ? '나' : '코치'}</strong>
-                  <p>{turn.content}</p>
-                </div>
-              ))}
+          {careTab === 'checkin' && (
+            <article className="checkinPanel">
+              <div className="miniGrid cbtTopInputs">
+                <label>
+                  오늘의 기분 점수 (1~10)
+                  <input value={cbtCheckinMood} onChange={(e) => setCbtCheckinMood(e.target.value)} inputMode="numeric" placeholder="예: 6" />
+                </label>
+                <label>
+                  지난밤 수면시간 (시간)
+                  <input value={cbtCheckinSleep} onChange={(e) => setCbtCheckinSleep(e.target.value)} inputMode="decimal" placeholder="예: 6.5" />
+                </label>
+                <label>
+                  오늘 운동 시간 (분)
+                  <input value={checkinExerciseMinutes} onChange={(e) => setCheckinExerciseMinutes(e.target.value)} inputMode="numeric" placeholder="예: 20" />
+                </label>
+                <label>
+                  오늘 스트레스 강도
+                  <select value={checkinStressLevel} onChange={(e) => setCheckinStressLevel(e.target.value as 'none' | 'mild' | 'high')}>
+                    <option value="none">없음</option>
+                    <option value="mild">조금 있음</option>
+                    <option value="high">심함</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                한 줄 메모 (선택)
+                <input value={checkinNote} onChange={(e) => setCheckinNote(e.target.value)} placeholder="예: 오후에 회의가 길어서 피곤했음" />
+              </label>
+              <div className="actions">
+                <button type="button" disabled={loading} onClick={() => void handleSaveCbtCheckin()}>체크인 저장</button>
+              </div>
+            </article>
+          )}
 
-              {chatResult?.challenge_step_prompt && (
-                <div className="chatBubble chatAssistant">
-                  <strong>다음 단계</strong>
-                  <p>{chatResult.challenge_step_prompt}</p>
+          {careTab === 'diary' && (
+            <div className="chatShell">
+              <div className="chatMessages">
+                {chatHistory.length === 0 && (
+                  <div className="chatEmpty">오늘 있었던 일, 감정, 자동으로 떠오른 생각을 편하게 적어주세요. 대화 후 현재 상태와 핵심 패턴을 요약해드릴게요.</div>
+                )}
+                {chatHistory.map((turn, idx) => (
+                  <div key={`turn-${idx}`} className={`chatBubble ${turn.role === 'user' ? 'chatUser' : 'chatAssistant'}`}>
+                    <strong>{turn.role === 'user' ? '나' : '마음코치'}</strong>
+                    <p>{turn.content}</p>
+                  </div>
+                ))}
+                {chatResult?.challenge_step_prompt && (
+                  <div className="chatBubble chatAssistant">
+                    <strong>마음코치 제안</strong>
+                    <p>{chatResult.challenge_step_prompt}</p>
+                  </div>
+                )}
+              </div>
+              <form onSubmit={handleChatSubmit} className="chatComposer">
+                <textarea
+                  value={chatMessage}
+                  onChange={(e) => setChatMessage(e.target.value)}
+                  rows={3}
+                  placeholder="예: 오전에는 괜찮았는데, 오후에 작은 실수 후 불안이 크게 올라왔어요."
+                />
+                <div className="actions">
+                  <button disabled={loading}>대화 보내기</button>
+                  {activeChallenge && (
+                    <button type="button" className="ghost" onClick={() => setChallengePhase('reflect')}>회고 모드</button>
+                  )}
                 </div>
+              </form>
+              {chatResult && (
+                <section className="summaryCard">
+                  <h3>오늘의 요약 카드</h3>
+                  <p><strong>무슨 일이 있었나요:</strong> {chatResult.summary_card?.situation ?? '대화 내용을 바탕으로 정리 중입니다.'}</p>
+                  <p><strong>자책/압박 신호:</strong> {chatResult.summary_card?.self_blame_signal ?? '자책 신호를 분석 중입니다.'}</p>
+                  <p><strong>상담 후 재해석:</strong> {chatResult.summary_card?.reframe ?? '지금 감정을 안전하게 해석하는 문장을 생성 중입니다.'}</p>
+                  <p><strong>오늘의 다음 행동:</strong> {chatResult.summary_card?.next_action ?? '오늘 바로 할 수 있는 행동을 제안 중입니다.'}</p>
+                  <p><strong>마음코치 응원:</strong> {chatResult.summary_card?.encouragement ?? chatResult.reply}</p>
+                </section>
               )}
             </div>
-
-            {activeChallenge && (
-              <p className="small">진행 중 챌린지: <strong>{activeChallenge}</strong></p>
-            )}
-
-            {chatResult && (
-              <div className="challengeArea">
-                <p className="small"><strong>챌린지 선택</strong></p>
-                <div className="actions">
-                  {chatResult.suggested_challenges.map((c) => (
-                    <button key={c} type="button" className="ghost" onClick={() => startChallenge(c)}>{c}</button>
-                  ))}
-                </div>
-                <ul className="probList">
-                  {chatResult.suggested_challenges.map((c) => (
-                    <li key={`status-${c}`}>
-                      <span>{c}</span>
-                      <strong>{challengeStatus[c] ? '완료' : '진행 전/진행 중'}</strong>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <form onSubmit={handleChatSubmit} className="chatComposer">
-              <textarea
-                value={chatMessage}
-                onChange={(e) => setChatMessage(e.target.value)}
-                rows={3}
-                placeholder="오늘 있었던 일, 감정, 떠오른 생각을 입력하세요"
-              />
-              <div className="actions">
-                <button disabled={loading}>보내기</button>
-                {activeChallenge && (
-                  <button type="button" className="ghost" onClick={() => setChallengePhase('reflect')}>회고 모드</button>
-                )}
-                <button type="button" disabled={loading} onClick={() => void handleSaveCbtCheckin()}>
-                  대화 마치기
-                </button>
-              </div>
-            </form>
-          </div>
+          )}
         </section>
       )}
 

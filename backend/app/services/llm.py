@@ -28,6 +28,7 @@ class CBTLLMResult:
     reply: str
     extracted: dict[str, Any]
     suggested_challenges: list[str]
+    summary_card: dict[str, str]
     active_challenge: str | None = None
     challenge_step_prompt: str | None = None
     challenge_completed: bool = False
@@ -45,6 +46,18 @@ def _default_extracted() -> dict[str, Any]:
     }
 
 
+def _default_summary_card(user_message: str) -> dict[str, str]:
+    cleaned = user_message.strip().replace("\n", " ")
+    situation = cleaned[:120] if cleaned else "오늘 있었던 일을 아직 자세히 적지 않았습니다."
+    return {
+        "situation": situation,
+        "self_blame_signal": "스스로를 탓하는 생각이 올라왔는지 함께 확인이 필요합니다.",
+        "reframe": "지금의 감정은 나의 부족함이 아니라, 과한 부담과 스트레스에 대한 자연스러운 반응일 수 있습니다.",
+        "next_action": "오늘은 사실 1개, 떠오른 생각 1개, 균형 잡힌 대안 생각 1개를 짧게 기록해보세요.",
+        "encouragement": "지금 이렇게 마음을 돌아보는 행동 자체가 회복을 위한 중요한 시작입니다.",
+    }
+
+
 def _fallback_heuristic(
     user_message: str,
     active_challenge: str | None = None,
@@ -52,6 +65,7 @@ def _fallback_heuristic(
 ) -> CBTLLMResult:
     text = user_message.lower()
     extracted = _default_extracted()
+    summary_card = _default_summary_card(user_message)
 
     keyword_map = {
         "catastrophizing_count": ["망", "끝", "큰일", "catastroph", "worst"],
@@ -104,6 +118,7 @@ def _fallback_heuristic(
             reply=reply,
             extracted=extracted,
             suggested_challenges=challenges,
+            summary_card=summary_card,
             active_challenge=active_challenge,
             challenge_step_prompt=step,
             challenge_completed=challenge_completed,
@@ -120,6 +135,7 @@ def _fallback_heuristic(
         reply=reply,
         extracted=extracted,
         suggested_challenges=challenges,
+        summary_card=summary_card,
         active_challenge=None,
         challenge_step_prompt=step,
     )
@@ -152,6 +168,18 @@ def _extract_json_block(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _normalize_summary_card(payload: dict[str, Any], user_message: str) -> dict[str, str]:
+    default = _default_summary_card(user_message)
+    out: dict[str, str] = {}
+    for key in ["situation", "self_blame_signal", "reframe", "next_action", "encouragement"]:
+        raw = payload.get(key, default[key])
+        text = str(raw).strip()
+        if not text:
+            text = default[key]
+        out[key] = text[:280]
+    return out
+
+
 def generate_cbt_reply(
     user_message: str,
     active_challenge: str | None = None,
@@ -174,13 +202,18 @@ def generate_cbt_reply(
         )
 
     system_prompt = (
-        "You are a CBT coach for depression, anxiety, and insomnia support. "
-        "Never diagnose. Keep tone safe and practical. "
+        "You are a warm CBT coach for depression, anxiety, and insomnia support. "
+        "Never diagnose or prescribe medication. Keep tone empathic, validating, and practical. "
+        "If user shows self-blame or guilt, explicitly normalize emotion and reduce shame. "
+        "Use short Korean sentences suitable for app UI. "
         "Also extract indicators from the user's text every turn. "
-        "Return strict JSON with keys: reply, extracted, suggested_challenges, active_challenge, challenge_step_prompt, challenge_completed, completed_challenge, completion_message. "
+        "Return strict JSON with keys: reply, extracted, suggested_challenges, summary_card, active_challenge, challenge_step_prompt, challenge_completed, completed_challenge, completion_message. "
         "extracted must include distress_0_10, rumination_0_10, avoidance_0_10, sleep_difficulty_0_10, "
         "and distortion object with all_or_nothing_count, catastrophizing_count, mind_reading_count, "
         "should_statements_count, personalization_count, overgeneralization_count. "
+        "summary_card must include 5 keys: situation, self_blame_signal, reframe, next_action, encouragement. "
+        "reframe should sound like '그건 네 잘못이 전부는 아니다' style without blaming user. "
+        "next_action should be one concrete action user can do today."
         "suggested_challenges must be 3 short actionable CBT challenges. "
         "challenge_completed must be true only when there is clear textual evidence of completion. "
         "When challenge_completed is true, completion_message should be '챌린지 수행을 완료하였습니다.'. "
@@ -216,6 +249,7 @@ def generate_cbt_reply(
     fallback = _fallback_heuristic(user_message, active_challenge=active_challenge, challenge_phase=challenge_phase)
     reply = str(parsed.get("reply", "")).strip()[:1500] or fallback.reply
     extracted = _normalize_extracted(parsed.get("extracted", {}))
+    summary_card = _normalize_summary_card(parsed.get("summary_card", {}), user_message)
 
     challenges_raw = parsed.get("suggested_challenges", [])
     challenges = [str(x).strip()[:120] for x in challenges_raw if str(x).strip()][:3]
@@ -237,6 +271,7 @@ def generate_cbt_reply(
         reply=reply,
         extracted=extracted,
         suggested_challenges=challenges,
+        summary_card=summary_card,
         active_challenge=selected_str,
         challenge_step_prompt=step_prompt,
         challenge_completed=challenge_completed,

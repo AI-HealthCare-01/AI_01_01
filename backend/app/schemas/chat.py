@@ -44,6 +44,16 @@ class ChatRequest(BaseModel):
     conversation_history: list[ChatTurn] = Field(default_factory=list)
 
 
+class SummaryCard(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    situation: str
+    self_blame_signal: str
+    reframe: str
+    next_action: str
+    encouragement: str
+
+
 class ChatResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -57,3 +67,4 @@ class ChatResponse(BaseModel):
     challenge_completed: bool = False
     completed_challenge: str | None = None
     completion_message: str | None = None
+    summary_card: SummaryCard

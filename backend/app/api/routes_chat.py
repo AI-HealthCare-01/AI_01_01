@@ -39,6 +39,7 @@ async def chat_cbt(
         reply=result.reply,
         extracted=result.extracted,
         suggested_challenges=result.suggested_challenges,
+        summary_card=result.summary_card,
         active_challenge=result.active_challenge,
         challenge_step_prompt=result.challenge_step_prompt,
         challenge_completed=result.challenge_completed,

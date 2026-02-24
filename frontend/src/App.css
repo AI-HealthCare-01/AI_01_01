@@ -190,6 +190,93 @@ button:disabled {
   color: #334155;
 }
 
+.questionBlock {
+  margin-top: 0.5rem;
+}
+
+.questionBlock h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.questionList {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.cbtPanel {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.cbtTopInputs {
+  margin-bottom: 0.2rem;
+}
+
+.chatShell {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid #dbe7eb;
+  border-radius: 14px;
+  padding: 0.8rem;
+  background: #fbfefe;
+}
+
+.chatMessages {
+  display: grid;
+  gap: 0.55rem;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.chatEmpty {
+  background: #eef7f7;
+  border: 1px dashed #9cc5c0;
+  border-radius: 12px;
+  padding: 0.8rem;
+  color: #1f2937;
+  font-size: 0.9rem;
+}
+
+.chatBubble {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid #d6e5ea;
+}
+
+.chatBubble p {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+.chatUser {
+  background: #f1f9f7;
+  margin-left: 8%;
+}
+
+.chatAssistant {
+  background: #f8fafc;
+  margin-right: 8%;
+}
+
+.challengeArea {
+  border: 1px solid #dce9ee;
+  border-radius: 12px;
+  padding: 0.65rem;
+  background: #ffffff;
+}
+
+.chatComposer {
+  display: grid;
+  gap: 0.55rem;
+  border-top: 1px solid #e2ecef;
+  padding-top: 0.7rem;
+}
+
 @media (max-width: 920px) {
   .mypageLayout {
     grid-template-columns: 1fr;
@@ -216,21 +303,10 @@ button:disabled {
   .miniGrid {
     grid-template-columns: 1fr;
   }
-}
 
-.questionBlock {
-  margin-top: 0.5rem;
-}
-
-.questionBlock h3 {
-  margin: 0 0 0.35rem;
-  font-size: 1rem;
-}
-
-.questionList {
-  max-height: 280px;
-  overflow-y: auto;
-  padding-right: 0.3rem;
-  display: grid;
-  gap: 0.65rem;
+  .chatUser,
+  .chatAssistant {
+    margin-left: 0;
+    margin-right: 0;
+  }
 }

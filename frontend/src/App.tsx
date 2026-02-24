@@ -44,6 +44,13 @@ type ProfileOut = {
   phone_number: string | null
 }
 
+type ChatRole = 'user' | 'assistant'
+
+type ChatTurn = {
+  role: ChatRole
+  content: string
+}
+
 type ChatResponse = {
   reply: string
   disclaimer: string
@@ -56,6 +63,11 @@ type ChatResponse = {
     distortion: Record<string, number>
   }
   suggested_challenges: string[]
+  active_challenge?: string | null
+  challenge_step_prompt?: string | null
+  challenge_completed?: boolean
+  completed_challenge?: string | null
+  completion_message?: string | null
 }
 
 type WeeklyDashboardRow = {
@@ -89,39 +101,39 @@ type AssessmentState = {
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8001'
 
 const LIKERT_OPTIONS: Array<{ value: LikertValue; label: string }> = [
-  { value: '', label: '선택하세요' },
-  { value: '0', label: '0: 전혀 없음' },
-  { value: '1', label: '1: 며칠 동안' },
-  { value: '2', label: '2: 절반 이상' },
-  { value: '3', label: '3: 거의 매일' },
+  { value: '', label: '선택해주세요' },
+  { value: '0', label: '전혀 그렇지 않았어요' },
+  { value: '1', label: '가끔 그랬어요' },
+  { value: '2', label: '자주 그랬어요' },
+  { value: '3', label: '거의 대부분 그랬어요' },
 ]
 
 const PHQ9_QUESTIONS = [
-  '흥미/즐거움 저하',
-  '우울감/절망감',
-  '수면 문제(잠들기/유지/과다수면)',
-  '피로감/기력 저하',
-  '식욕 저하/과식',
-  '자책감/실패감',
-  '집중 곤란',
-  '행동 지연/초조',
-  '자해/자살 사고',
+  '하루 중 즐거움이나 흥미가 줄어든 느낌이 있었나요?',
+  '마음이 가라앉거나 희망이 줄어든 느낌이 있었나요?',
+  '잠들기 어렵거나 자주 깨는 등 수면이 불편했나요?',
+  '평소보다 쉽게 피곤해지고 기운이 떨어졌나요?',
+  '식욕이 줄거나 반대로 많이 먹게 되는 변화가 있었나요?',
+  '스스로를 부정적으로 보거나 자책하는 마음이 들었나요?',
+  '집중이 잘 안 되어 일이나 대화가 어렵게 느껴졌나요?',
+  '몸이나 생각의 속도가 너무 느리거나, 반대로 너무 들뜬 느낌이 있었나요?',
+  '나를 해치고 싶거나 삶을 포기하고 싶은 생각이 스쳐간 적이 있었나요?',
 ]
 
 const GAD7_QUESTIONS = [
-  '초조/불안/긴장',
-  '걱정을 멈추기 어려움',
-  '과도한 걱정',
-  '이완 어려움',
-  '안절부절 못함',
-  '쉽게 짜증/예민',
-  '끔찍한 일에 대한 두려움',
+  '긴장되거나 불안한 상태가 자주 이어졌나요?',
+  '걱정이 시작되면 멈추기 어렵다고 느꼈나요?',
+  '여러 일을 한꺼번에 걱정하게 되는 날이 많았나요?',
+  '몸과 마음의 긴장을 풀기 어렵다고 느꼈나요?',
+  '가만히 쉬어도 마음이 계속 불편하고 안절부절했나요?',
+  '사소한 일에도 예민해지거나 짜증이 늘었나요?',
+  '앞으로 나쁜 일이 생길까 봐 걱정이 커졌나요?',
 ]
 
 const SLEEP_QUESTIONS = [
-  '잠들기 어려움',
-  '수면 유지 어려움/자주 깸',
-  '수면 문제로 인한 낮 기능 저하',
+  '잠들기까지 시간이 오래 걸리거나 쉽게 잠들지 못했나요?',
+  '자는 중간에 자주 깨거나 다시 잠들기 어려웠나요?',
+  '수면 문제 때문에 낮 시간의 컨디션이 떨어졌나요?',
 ]
 
 function initLikertArray(length: number): LikertValue[] {
@@ -210,11 +222,15 @@ function App() {
   const [assessment, setAssessment] = useState<AssessmentState>(defaultAssessment)
   const [checkPrediction, setCheckPrediction] = useState<CheckPredictResponse | null>(null)
 
-  const [chatMessage, setChatMessage] = useState('요즘 잠이 너무 안 오고, 다 망할 것 같다는 생각이 자주 들어요.')
+  const [chatMessage, setChatMessage] = useState('')
+  const [chatHistory, setChatHistory] = useState<ChatTurn[]>([])
   const [chatResult, setChatResult] = useState<ChatResponse | null>(null)
+  const [activeChallenge, setActiveChallenge] = useState('')
+  const [challengePhase, setChallengePhase] = useState<'start' | 'continue' | 'reflect'>('continue')
+  const [challengeStatus, setChallengeStatus] = useState<Record<string, boolean>>({})
   const [cbtCheckinMood, setCbtCheckinMood] = useState('')
   const [cbtCheckinSleep, setCbtCheckinSleep] = useState('')
-  const [challengeChecks, setChallengeChecks] = useState<boolean[]>([])
+
   const [dashboard, setDashboard] = useState<WeeklyDashboardResponse | null>(null)
 
   const [profile, setProfile] = useState<ProfileOut | null>(null)
@@ -230,10 +246,6 @@ function App() {
   )
 
   useEffect(() => {
-    setChallengeChecks(chatResult ? chatResult.suggested_challenges.map(() => false) : [])
-  }, [chatResult])
-
-  useEffect(() => {
     if (!token) {
       setMe(null)
       setProfile(null)
@@ -242,6 +254,17 @@ function App() {
     void loadProfile()
     void loadMyProfile()
   }, [token])
+
+  useEffect(() => {
+    if (!chatResult) return
+    setChallengeStatus((prev) => {
+      const next = { ...prev }
+      for (const challenge of chatResult.suggested_challenges) {
+        if (next[challenge] == null) next[challenge] = false
+      }
+      return next
+    })
+  }, [chatResult])
 
   async function loadProfile() {
     try {
@@ -351,13 +374,10 @@ function App() {
   }
 
   function validateAssessment(): string | null {
-    if (assessment.phq9.some((v) => v === '')) return 'PHQ-9 문항을 모두 선택해주세요.'
-    if (assessment.gad7.some((v) => v === '')) return 'GAD-7 문항을 모두 선택해주세요.'
+    if (assessment.phq9.some((v) => v === '')) return '우울 문항을 모두 선택해주세요.'
+    if (assessment.gad7.some((v) => v === '')) return '불안 문항을 모두 선택해주세요.'
     if (assessment.sleep.some((v) => v === '')) return '수면 문항을 모두 선택해주세요.'
-
-    const contextValues = Object.values(assessment.context)
-    if (contextValues.some((v) => v === '')) return '맥락 문항을 모두 선택해주세요.'
-
+    if (Object.values(assessment.context).some((v) => v === '')) return '생활 맥락 문항을 모두 선택해주세요.'
     return null
   }
 
@@ -380,7 +400,30 @@ function App() {
       if (!response.ok) throw new Error(await extractApiError(response))
       const data = (await response.json()) as CheckPredictResponse
       setCheckPrediction(data)
-      setMessage('검사 결과가 생성되었습니다.')
+
+      if (token) {
+        const answers = {
+          q1: Number(assessment.phq9[0]),
+          q2: Number(assessment.phq9[1]),
+          q3: Number(assessment.phq9[2]),
+          q4: Number(assessment.phq9[3]),
+          q5: Number(assessment.phq9[4]),
+          q6: Number(assessment.phq9[5]),
+          q7: Number(assessment.phq9[6]),
+          q8: Number(assessment.phq9[7]),
+          q9: Number(assessment.phq9[8]),
+        }
+        const saveRes = await fetch(`${API_BASE}/assessments/phq9`, {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({ answers }),
+        })
+        if (!saveRes.ok) throw new Error(await extractApiError(saveRes))
+        await saveRes.json()
+        await loadMyDashboard()
+      }
+
+      setMessage('검사 결과가 생성되었습니다. 대시보드에 즉시 반영됩니다.')
     } catch (error) {
       setMessage(`검사 오류: ${(error as Error).message}`)
     } finally {
@@ -394,17 +437,56 @@ function App() {
       setMessage('CBT 채팅은 로그인 후 사용 가능합니다.')
       return
     }
+
+    const text = chatMessage.trim()
+    if (!text) {
+      setMessage('대화 내용을 입력하세요.')
+      return
+    }
+
     setLoading(true)
     setMessage('CBT 대화 분석 중...')
+
+    const historyForRequest = chatHistory.slice(-12)
+    setChatHistory((prev) => [...prev, { role: 'user', content: text }])
+
     try {
+      const payload: Record<string, unknown> = {
+        message: text,
+        conversation_history: historyForRequest,
+      }
+      if (activeChallenge) {
+        payload.active_challenge = activeChallenge
+        payload.challenge_phase = challengePhase
+      }
+
       const response = await fetch(`${API_BASE}/chat/cbt`, {
         method: 'POST',
         headers: authHeaders,
-        body: JSON.stringify({ message: chatMessage }),
+        body: JSON.stringify(payload),
       })
       if (!response.ok) throw new Error(await extractApiError(response))
       const data = (await response.json()) as ChatResponse
+
+      setChatHistory((prev) => {
+        const next: ChatTurn[] = [...prev, { role: 'assistant', content: data.reply }]
+        if (data.challenge_completed && data.completion_message) {
+          next.push({ role: 'assistant', content: data.completion_message })
+        }
+        return next
+      })
       setChatResult(data)
+      setChatMessage('')
+
+      if (data.active_challenge) {
+        setActiveChallenge(data.active_challenge)
+        setChallengePhase(data.challenge_completed ? 'reflect' : 'continue')
+      }
+
+      if (data.challenge_completed && data.completed_challenge) {
+        setChallengeStatus((prev) => ({ ...prev, [data.completed_challenge as string]: true }))
+      }
+
       setMessage('CBT 응답 및 지표 추출 완료')
     } catch (error) {
       setMessage(`CBT 채팅 오류: ${(error as Error).message}`)
@@ -413,17 +495,30 @@ function App() {
     }
   }
 
+  function startChallenge(challenge: string) {
+    setActiveChallenge(challenge)
+    setChallengePhase('start')
+    setChatHistory((prev) => [
+      ...prev,
+      {
+        role: 'assistant',
+        content: `좋아요. '${challenge}' 챌린지를 지금부터 함께 진행할게요. 준비되면 현재 상황을 한 문장으로 알려주세요.`,
+      },
+    ])
+    setMessage(`선택한 챌린지: ${challenge}`)
+  }
+
   async function handleSaveCbtCheckin() {
     if (!token) {
       setMessage('체크인 저장은 로그인 후 가능합니다.')
       return
     }
     if (!chatResult) {
-      setMessage('먼저 CBT 응답을 받아 챌린지를 생성하세요.')
+      setMessage('먼저 CBT 대화를 진행해주세요.')
       return
     }
     if (cbtCheckinMood === '') {
-      setMessage('체크인 기분 점수(1~10)를 입력하세요.')
+      setMessage('오늘의 기분 점수(1~10)를 입력하세요.')
       return
     }
 
@@ -438,8 +533,8 @@ function App() {
       return
     }
 
-    const completedCount = challengeChecks.filter(Boolean).length
-    const totalCount = chatResult.suggested_challenges.length
+    const challenges = chatResult.suggested_challenges
+    const completedCount = challenges.filter((c) => challengeStatus[c]).length
 
     setLoading(true)
     try {
@@ -450,14 +545,15 @@ function App() {
           mood_score: mood,
           sleep_hours: sleep,
           exercised: completedCount > 0,
-          note: 'CBT challenge checkin',
+          note: activeChallenge ? `active_challenge:${activeChallenge}` : 'cbt_checkin',
           challenge_completed_count: completedCount,
-          challenge_total_count: totalCount,
+          challenge_total_count: challenges.length,
         }),
       })
       if (!response.ok) throw new Error(await extractApiError(response))
       await response.json()
-      setMessage(`체크인 저장 완료 (챌린지 ${completedCount}/${totalCount})`)
+      await loadMyDashboard()
+      setMessage(`대화 마치기 완료 (챌린지 ${completedCount}/${challenges.length})`)
       setCbtCheckinMood('')
       setCbtCheckinSleep('')
     } catch (error) {
@@ -544,7 +640,7 @@ function App() {
       <header className="hero">
         <p className="kicker">Mind Check Console</p>
         <h1>서비스 콘솔</h1>
-        <p className="subtitle">설문 문항 선택으로 점수를 자동 계산해 모델 추론에 사용합니다.</p>
+        <p className="subtitle">설문 문항 선택, CBT 대화형 챌린지, 실시간 추세 반영 대시보드</p>
       </header>
 
       <section className="panel">
@@ -562,7 +658,7 @@ function App() {
 
           <form onSubmit={handleSurveySubmit} className="form">
             <article className="panel questionBlock">
-              <h3>PHQ-9 (우울)</h3>
+              <h3>우울 관련 문항 (PHQ-9)</h3>
               <p className="small">자동 총점: {phqTotal} / 27</p>
               <div className="questionList">
                 {PHQ9_QUESTIONS.map((q, idx) => (
@@ -579,7 +675,7 @@ function App() {
             </article>
 
             <article className="panel questionBlock">
-              <h3>GAD-7 (불안)</h3>
+              <h3>불안 관련 문항 (GAD-7)</h3>
               <p className="small">자동 총점: {gadTotal} / 21</p>
               <div className="questionList">
                 {GAD7_QUESTIONS.map((q, idx) => (
@@ -596,7 +692,7 @@ function App() {
             </article>
 
             <article className="panel questionBlock">
-              <h3>수면 지표 (0~9)</h3>
+              <h3>수면 관련 문항</h3>
               <p className="small">자동 총점: {sleepTotal} / 9</p>
               <div className="questionList">
                 {SLEEP_QUESTIONS.map((q, idx) => (
@@ -613,35 +709,35 @@ function App() {
             </article>
 
             <article className="panel questionBlock">
-              <h3>맥락 위험 지표</h3>
+              <h3>생활 맥락 체크</h3>
               <p className="small">자동 총점: {contextTotal} / 15</p>
               <div className="questionList">
                 <label>
-                  일상 기능 저하
+                  최근 일상생활(학업/업무/집안일)을 해내는 데 어려움이 느껴졌나요?
                   <select value={assessment.context.daily_functioning} onChange={(e) => setContextAnswer('daily_functioning', e.target.value as LikertValue)}>
                     {LIKERT_OPTIONS.map((opt) => <option key={`ctx-daily-${opt.value}`} value={opt.value}>{opt.label}</option>)}
                   </select>
                 </label>
                 <label>
-                  스트레스 사건 영향
+                  최근 스트레스 사건이 마음 상태에 크게 영향을 준다고 느꼈나요?
                   <select value={assessment.context.stressful_event} onChange={(e) => setContextAnswer('stressful_event', e.target.value as LikertValue)}>
                     {LIKERT_OPTIONS.map((opt) => <option key={`ctx-stress-${opt.value}`} value={opt.value}>{opt.label}</option>)}
                   </select>
                 </label>
                 <label>
-                  사회적 지지 부족
+                  힘든 상황에서 도움을 요청하거나 기대기 어렵다고 느꼈나요?
                   <select value={assessment.context.social_support} onChange={(e) => setContextAnswer('social_support', e.target.value as LikertValue)}>
                     {LIKERT_OPTIONS.map((opt) => <option key={`ctx-social-${opt.value}`} value={opt.value}>{opt.label}</option>)}
                   </select>
                 </label>
                 <label>
-                  대처 어려움
+                  불편한 감정을 다루는 나만의 방법이 부족하다고 느꼈나요?
                   <select value={assessment.context.coping_skill} onChange={(e) => setContextAnswer('coping_skill', e.target.value as LikertValue)}>
                     {LIKERT_OPTIONS.map((opt) => <option key={`ctx-coping-${opt.value}`} value={opt.value}>{opt.label}</option>)}
                   </select>
                 </label>
                 <label>
-                  변화 동기 저하
+                  지금 상태를 바꿔보고 싶은 마음이 잘 생기지 않았나요?
                   <select value={assessment.context.motivation_for_change} onChange={(e) => setContextAnswer('motivation_for_change', e.target.value as LikertValue)}>
                     {LIKERT_OPTIONS.map((opt) => <option key={`ctx-motivation-${opt.value}`} value={opt.value}>{opt.label}</option>)}
                   </select>
@@ -662,55 +758,82 @@ function App() {
       )}
 
       {page === 'cbt' && (
-        <section className="panel">
-          <h2>CBT 채팅</h2>
-          <form onSubmit={handleChatSubmit} className="form">
-            <label>
-              메시지
-              <textarea value={chatMessage} onChange={(e) => setChatMessage(e.target.value)} rows={5} />
-            </label>
-            <button disabled={loading}>CBT 응답 받기</button>
-          </form>
-          {chatResult && (
-            <div className="result">
-              <p><strong>코치 응답:</strong> {chatResult.reply}</p>
-              <p><strong>추천 챌린지(완료 체크):</strong></p>
-              <ul className="probList">
-                {chatResult.suggested_challenges.map((c, idx) => (
-                  <li key={c}>
-                    <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={challengeChecks[idx] ?? false}
-                        onChange={(e) => {
-                          setChallengeChecks((prev) => {
-                            const next = [...prev]
-                            next[idx] = e.target.checked
-                            return next
-                          })
-                        }}
-                      />
-                      <span>{c}</span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
+        <section className="panel cbtPanel">
+          <h2>CBT 대화 코치</h2>
+          <p className="small">대화를 통해 상태 지표를 추출하고, 선택한 챌린지를 단계별로 함께 진행합니다.</p>
 
-              <div className="miniGrid" style={{ marginTop: '0.6rem' }}>
-                <label>
-                  오늘 기분 점수 (1~10)
-                  <input value={cbtCheckinMood} onChange={(e) => setCbtCheckinMood(e.target.value)} inputMode="numeric" />
-                </label>
-                <label>
-                  오늘 수면 시간
-                  <input value={cbtCheckinSleep} onChange={(e) => setCbtCheckinSleep(e.target.value)} inputMode="decimal" />
-                </label>
-              </div>
-              <div className="actions" style={{ marginTop: '0.6rem' }}>
-                <button type="button" disabled={loading} onClick={() => void handleSaveCbtCheckin()}>체크인/챌린지 저장</button>
-              </div>
+          <div className="miniGrid cbtTopInputs">
+            <label>
+              오늘의 기분 점수 (1~10)
+              <input value={cbtCheckinMood} onChange={(e) => setCbtCheckinMood(e.target.value)} inputMode="numeric" placeholder="예: 6" />
+            </label>
+            <label>
+              오늘 수면 시간 (선택)
+              <input value={cbtCheckinSleep} onChange={(e) => setCbtCheckinSleep(e.target.value)} inputMode="decimal" placeholder="예: 6.5" />
+            </label>
+          </div>
+
+          <div className="chatShell">
+            <div className="chatMessages">
+              {chatHistory.length === 0 && (
+                <div className="chatEmpty">오늘 있었던 일이나 마음 상태를 편하게 적어주세요. 제가 대화를 이어가며 지표를 추출하고 챌린지를 함께 진행할게요.</div>
+              )}
+              {chatHistory.map((turn, idx) => (
+                <div key={`turn-${idx}`} className={`chatBubble ${turn.role === 'user' ? 'chatUser' : 'chatAssistant'}`}>
+                  <strong>{turn.role === 'user' ? '나' : '코치'}</strong>
+                  <p>{turn.content}</p>
+                </div>
+              ))}
+
+              {chatResult?.challenge_step_prompt && (
+                <div className="chatBubble chatAssistant">
+                  <strong>다음 단계</strong>
+                  <p>{chatResult.challenge_step_prompt}</p>
+                </div>
+              )}
             </div>
-          )}
+
+            {activeChallenge && (
+              <p className="small">진행 중 챌린지: <strong>{activeChallenge}</strong></p>
+            )}
+
+            {chatResult && (
+              <div className="challengeArea">
+                <p className="small"><strong>챌린지 선택</strong></p>
+                <div className="actions">
+                  {chatResult.suggested_challenges.map((c) => (
+                    <button key={c} type="button" className="ghost" onClick={() => startChallenge(c)}>{c}</button>
+                  ))}
+                </div>
+                <ul className="probList">
+                  {chatResult.suggested_challenges.map((c) => (
+                    <li key={`status-${c}`}>
+                      <span>{c}</span>
+                      <strong>{challengeStatus[c] ? '완료' : '진행 전/진행 중'}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <form onSubmit={handleChatSubmit} className="chatComposer">
+              <textarea
+                value={chatMessage}
+                onChange={(e) => setChatMessage(e.target.value)}
+                rows={3}
+                placeholder="오늘 있었던 일, 감정, 떠오른 생각을 입력하세요"
+              />
+              <div className="actions">
+                <button disabled={loading}>보내기</button>
+                {activeChallenge && (
+                  <button type="button" className="ghost" onClick={() => setChallengePhase('reflect')}>회고 모드</button>
+                )}
+                <button type="button" disabled={loading} onClick={() => void handleSaveCbtCheckin()}>
+                  대화 마치기
+                </button>
+              </div>
+            </form>
+          </div>
         </section>
       )}
 
@@ -727,9 +850,18 @@ function App() {
           {myTab === 'dashboard' && (
             <article className="panel myMainPanel">
               <h2>My Dashboard</h2>
-              <p className="small">로그인 사용자의 실제 입력(체크인/CBT/설문) 기반으로 계산합니다.</p>
+              <p className="small">데이터가 생길 때마다 일 단위로 즉시 반영됩니다.</p>
               <div className="actions"><button disabled={loading} onClick={() => void loadMyDashboard()}>내 대시보드 조회</button></div>
-              {dashboard && <p>최근 주차 수: {dashboard.rows.length}</p>}
+              {dashboard && (
+                <ul className="probList" style={{ marginTop: '0.8rem' }}>
+                  {dashboard.rows.map((row) => (
+                    <li key={row.week_start_date}>
+                      <span>{row.week_start_date}</span>
+                      <strong>composite {row.symptom_composite_pred_0_100.toFixed(1)} | alert {row.alert_level ?? 'low'}</strong>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </article>
           )}
 

@@ -1,8 +1,10 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, conint, constr
 
 MessageStr = constr(min_length=1, max_length=1200)
+ChallengeStr = constr(min_length=1, max_length=160)
 
 
 class DistortionMetrics(BaseModel):
@@ -26,10 +28,20 @@ class ExtractedIndicators(BaseModel):
     distortion: DistortionMetrics
 
 
+class ChatTurn(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    role: Literal["user", "assistant"]
+    content: MessageStr
+
+
 class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     message: MessageStr = Field(description="사용자 입력 메시지")
+    active_challenge: ChallengeStr | None = None
+    challenge_phase: Literal["start", "continue", "reflect"] | None = None
+    conversation_history: list[ChatTurn] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):
@@ -40,3 +52,8 @@ class ChatResponse(BaseModel):
     timestamp: datetime
     extracted: ExtractedIndicators
     suggested_challenges: list[str]
+    active_challenge: str | None = None
+    challenge_step_prompt: str | None = None
+    challenge_completed: bool = False
+    completed_challenge: str | None = None
+    completion_message: str | None = None

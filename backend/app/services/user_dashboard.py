@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 import json
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -229,27 +229,21 @@ async def build_user_weekly_dashboard(db: AsyncSession, user_id: UUID) -> list[d
             }
         )
 
-    weekly: dict[date, list[dict[str, Any]]] = defaultdict(list)
-    for row in day_scores:
-        week_start = row["date"] - timedelta(days=row["date"].weekday())
-        weekly[week_start].append(row)
-
     rows: list[dict[str, Any]] = []
-    for week_start in sorted(weekly.keys()):
-        items = weekly[week_start]
-        dep_week = _mean([x["dep"] for x in items]) or 50.0
-        anx_week = _mean([x["anx"] for x in items]) or 50.0
-        ins_week = _mean([x["ins"] for x in items]) or 50.0
-        composite = (dep_week + anx_week + ins_week) / 3.0
+    for row in sorted(day_scores, key=lambda x: x["date"]):
+        dep_score = row["dep"]
+        anx_score = row["anx"]
+        ins_score = row["ins"]
+        composite = (dep_score + anx_score + ins_score) / 3.0
 
         rows.append(
             {
-                "week_start_date": str(week_start),
-                "dep_week_pred_0_100": dep_week,
-                "anx_week_pred_0_100": anx_week,
-                "ins_week_pred_0_100": ins_week,
+                "week_start_date": str(row["date"]),
+                "dep_week_pred_0_100": dep_score,
+                "anx_week_pred_0_100": anx_score,
+                "ins_week_pred_0_100": ins_score,
                 "symptom_composite_pred_0_100": composite,
-                "active_days": len(items),
+                "active_days": 1,
             }
         )
 

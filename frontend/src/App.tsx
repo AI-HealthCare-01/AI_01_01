@@ -239,6 +239,7 @@ function App() {
 
   const [token, setToken] = useState<string>(() => localStorage.getItem('access_token') ?? '')
   const [me, setMe] = useState<UserOut | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('Ready.')
@@ -286,12 +287,23 @@ function App() {
       setMe(null)
       setProfile(null)
       setPhqHistory([])
+      setIsAdmin(false)
       return
     }
     void loadProfile()
     void loadMyProfile()
     void loadPhqHistory()
+    void loadAdminAccess()
   }, [token])
+
+  async function loadAdminAccess() {
+    try {
+      const response = await fetch(`${API_BASE}/admin/summary`, { headers: authHeaders })
+      setIsAdmin(response.ok)
+    } catch {
+      setIsAdmin(false)
+    }
+  }
 
   useEffect(() => {
     if (!chatResult) return
@@ -790,7 +802,7 @@ function App() {
           <button className={page === 'assessment' ? '' : 'ghost'} onClick={() => setPage('assessment')}>검사</button>
           <button className={page === 'cbt' ? '' : 'ghost'} onClick={() => setPage('cbt')}>오늘의 마음돌봄</button>
           <button className={page === 'mypage' ? '' : 'ghost'} onClick={() => setPage('mypage')}>마이페이지</button>
-          <button className={page === 'admin' ? '' : 'ghost'} onClick={() => setPage('admin')}>관리자</button>
+          {isAdmin && <button className={page === 'admin' ? '' : 'ghost'} onClick={() => setPage('admin')}>관리자</button>}
           <button className={page === 'account' ? '' : 'ghost'} onClick={() => setPage('account')}>회원/로그인</button>
         </div>
       </section>
@@ -1172,6 +1184,8 @@ function App() {
         <section className="panel">
           {!token ? (
             <p>로그인을 먼저 해주세요.</p>
+          ) : !isAdmin ? (
+            <p>관리자 계정이 아닙니다.</p>
           ) : (
             <AdminPage token={token} />
           )}

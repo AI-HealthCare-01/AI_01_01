@@ -1,41 +1,38 @@
 .page {
-  width: min(1100px, 92vw);
+  width: min(1180px, 94vw);
   margin: 0 auto;
-  padding: 2rem 0 3rem;
+  padding: 1.6rem 0 3rem;
 }
 
 .hero {
   background: linear-gradient(130deg, #0f766e, #155e75);
   color: #f8fafc;
   border-radius: 24px;
-  padding: 2rem;
-  box-shadow: 0 18px 40px rgba(15, 118, 110, 0.35);
+  padding: 1.8rem;
+  box-shadow: 0 18px 40px rgba(15, 118, 110, 0.32);
+}
+
+.landingHero {
+  margin-bottom: 1rem;
 }
 
 .kicker {
   margin: 0;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   font-size: 0.72rem;
-  opacity: 0.9;
+  opacity: 0.95;
 }
 
 .hero h1 {
-  margin: 0.6rem 0;
-  font-size: clamp(1.7rem, 2.5vw, 2.6rem);
+  margin: 0.5rem 0;
+  font-size: clamp(1.45rem, 2.3vw, 2.3rem);
 }
 
 .subtitle {
   margin: 0;
-  max-width: 68ch;
+  max-width: 64ch;
   opacity: 0.95;
-}
-
-.grid {
-  margin-top: 1.2rem;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1rem;
 }
 
 .panel {
@@ -44,35 +41,35 @@
   border-radius: 18px;
   padding: 1rem;
   box-shadow: 0 10px 24px rgba(16, 24, 40, 0.07);
+  margin-top: 0.9rem;
 }
 
 .panel h2 {
-  margin: 0 0 0.8rem;
+  margin: 0 0 0.75rem;
   font-size: 1.1rem;
 }
 
+h3 {
+  margin: 0 0 0.45rem;
+}
+
 .form,
-.questionGrid {
+.questionList {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.72rem;
 }
 
 .miniGrid {
   display: grid;
+  gap: 0.7rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
 }
 
 label {
-  font-size: 0.92rem;
   display: grid;
-  gap: 0.35rem;
+  gap: 0.32rem;
   color: #334155;
-}
-
-.hint {
-  font-size: 0.78rem;
-  color: #64748b;
+  font-size: 0.92rem;
 }
 
 input,
@@ -80,7 +77,7 @@ select,
 textarea {
   border: 1px solid #b7c7d1;
   border-radius: 10px;
-  padding: 0.55rem 0.65rem;
+  padding: 0.54rem 0.65rem;
   font-size: 0.95rem;
 }
 
@@ -90,50 +87,176 @@ textarea {
 
 button {
   background: #0f766e;
-  color: #ffffff;
+  color: #fff;
   border: none;
   border-radius: 10px;
-  padding: 0.62rem 0.9rem;
+  padding: 0.62rem 0.92rem;
   font-weight: 700;
   cursor: pointer;
 }
 
 button:disabled {
-  opacity: 0.6;
+  opacity: 0.62;
   cursor: not-allowed;
 }
 
-.actions {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
 .ghost {
-  background: #ffffff;
+  background: #fff;
   color: #0f766e;
   border: 1px solid #0f766e;
 }
 
-.badge {
-  margin-top: 0.6rem;
-  font-size: 0.87rem;
-  color: #115e59;
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.48rem;
 }
 
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.8rem;
-  color: #475569;
+.hint,
+.small {
+  font-size: 0.82rem;
+  color: #64748b;
 }
 
 .result p {
-  margin: 0.35rem 0;
+  margin: 0.26rem 0;
+}
+
+.questionBlock {
+  margin-top: 0.35rem;
+}
+
+.topNavPanel {
+  position: sticky;
+  top: 0.4rem;
+  z-index: 20;
+}
+
+.topBar {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brandBox {
+  display: grid;
+  gap: 0.08rem;
+}
+
+.brandBox strong {
+  color: #0f766e;
+}
+
+.accountPanel {
+  max-width: 740px;
+  margin: 0 auto;
+}
+
+.accountModeTabs {
+  margin-bottom: 0.35rem;
+}
+
+.cbtLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 0.85rem;
+}
+
+.cbtMain {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.careTabs {
+  margin-bottom: 0.2rem;
+}
+
+.chatShell {
+  border: 1px solid #dbe7eb;
+  border-radius: 14px;
+  padding: 0.75rem;
+  background: #fbfefe;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.chatMessages {
+  max-height: 420px;
+  overflow-y: auto;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.chatEmpty {
+  border: 1px dashed #9cc5c0;
+  border-radius: 10px;
+  background: #eef7f7;
+  padding: 0.7rem;
+}
+
+.chatBubble {
+  border: 1px solid #d6e5ea;
+  border-radius: 11px;
+  padding: 0.62rem 0.7rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.chatBubble p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.chatUser {
+  background: #f1f9f7;
+  margin-left: 9%;
+}
+
+.chatAssistant {
+  background: #f8fafc;
+  margin-right: 9%;
+}
+
+.chatComposer {
+  border-top: 1px solid #e1ecef;
+  padding-top: 0.6rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.chatInputRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: stretch;
+}
+
+.chatInputRow textarea {
+  width: 100%;
+}
+
+.chatSendBtn {
+  min-width: 110px;
+}
+
+.chatFinishBtn {
+  width: 100%;
+}
+
+.cbtSide {
+  display: grid;
+  gap: 0.72rem;
+  align-content: start;
+}
+
+.sideCard {
+  margin-top: 0;
 }
 
 .probList {
   list-style: none;
-  margin: 0.6rem 0 0;
+  margin: 0.55rem 0 0;
   padding: 0;
   display: grid;
   gap: 0.4rem;
@@ -141,35 +264,29 @@ button:disabled {
 
 .probList li {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 0.75rem;
+  justify-content: space-between;
+  gap: 0.65rem;
   background: #f2f8fa;
-  padding: 0.42rem 0.6rem;
   border-radius: 8px;
-}
-
-.small {
-  color: #64748b;
-  font-size: 0.86rem;
+  padding: 0.44rem 0.56rem;
 }
 
 .mypageLayout {
-  margin-top: 1.2rem;
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
-  gap: 1rem;
+  gap: 0.9rem;
   align-items: start;
 }
 
 .mySidebar {
   position: sticky;
-  top: 1rem;
+  top: 0.7rem;
 }
 
 .sideMenu {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.5rem;
 }
 
 .sideMenu button {
@@ -178,173 +295,7 @@ button:disabled {
 }
 
 .myMainPanel {
-  min-height: 420px;
-}
-
-.profileBlocks {
-  display: grid;
-  gap: 0.8rem;
-}
-
-.profileBlock {
-  border: 1px solid #d6e2e8;
-  border-radius: 12px;
-  background: #fbfdfe;
-  padding: 0.7rem;
-}
-
-.profileBlockHeader {
-  width: 100%;
-  text-align: left;
-}
-
-.lineChartSection {
-  margin-top: 0.75rem;
-  border: 1px solid #dbe7eb;
-  border-radius: 12px;
-  padding: 0.7rem;
-  background: #fbfdfe;
-}
-
-.lineChartSection h3 {
-  margin: 0 0 0.55rem;
-}
-
-.lineChartLegend {
-  display: flex;
-  gap: 0.7rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.5rem;
-  font-size: 0.8rem;
-  color: #475569;
-}
-
-.lineChartLegend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.legendSwatch {
-  width: 14px;
-  height: 3px;
-  border-radius: 999px;
-  display: inline-block;
-}
-
-.legendComposite {
-  background: #0f766e;
-}
-
-.legendDep {
-  background: #60a5fa;
-}
-
-.legendAnx {
-  background: #f59e0b;
-}
-
-.legendIns {
-  background: #a78bfa;
-}
-
-.lineChartWrap {
-  width: 100%;
-  overflow-x: auto;
-}
-
-.lineChartWrap svg {
-  width: 100%;
-  min-width: 620px;
-  height: auto;
-  display: block;
-}
-
-.chartAxisLine {
-  stroke: #94a3b8;
-  stroke-width: 1;
-}
-
-.chartGridLine {
-  stroke: #e2e8f0;
-  stroke-width: 1;
-  stroke-dasharray: 3 4;
-}
-
-.chartSeriesLine {
-  stroke: #0f766e;
-  stroke-width: 3.2;
-}
-
-.chartSeriesSub {
-  stroke-width: 1.6;
-  opacity: 0.48;
-}
-
-.chartSeriesDep {
-  stroke: #60a5fa;
-}
-
-.chartSeriesAnx {
-  stroke: #f59e0b;
-}
-
-.chartSeriesIns {
-  stroke: #a78bfa;
-}
-
-.chartPoint {
-  fill: #0f766e;
-  stroke: #ffffff;
-  stroke-width: 1;
-}
-
-.chartAxisText {
-  font-size: 11px;
-  fill: #475569;
-}
-
-.historySection {
-  margin-top: 1rem;
-  border-top: 1px solid #dbe7eb;
-  padding-top: 0.8rem;
-}
-
-.historySection h3 {
-  margin: 0 0 0.5rem;
-}
-
-.historyChart {
-  display: grid;
-  gap: 0.45rem;
-}
-
-.historyBarRow {
-  display: grid;
-  grid-template-columns: 180px 1fr 40px;
-  gap: 0.55rem;
-  align-items: center;
-}
-
-.historyDate {
-  font-size: 0.78rem;
-  color: #475569;
-}
-
-.historyBarTrack {
-  height: 10px;
-  background: #e5edf1;
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.historyBarFill {
-  height: 100%;
-  background: linear-gradient(90deg, #0f766e, #0ea5e9);
-}
-
-.historyScore {
-  font-size: 0.85rem;
+  min-height: 500px;
 }
 
 .status {
@@ -356,127 +307,11 @@ button:disabled {
   color: #334155;
 }
 
-.questionBlock {
-  margin-top: 0.5rem;
-}
+@media (max-width: 980px) {
+  .cbtLayout {
+    grid-template-columns: 1fr;
+  }
 
-.questionBlock h3 {
-  margin: 0 0 0.35rem;
-  font-size: 1rem;
-}
-
-.questionList {
-  display: grid;
-  gap: 0.65rem;
-}
-
-.cbtPanel {
-  display: grid;
-  gap: 0.8rem;
-}
-
-.careTabs {
-  margin-top: 0.2rem;
-}
-
-.cbtTopInputs {
-  margin-bottom: 0.2rem;
-}
-
-.checkinPanel {
-  border: 1px solid #dbe7eb;
-  border-radius: 14px;
-  background: #fbfefe;
-  padding: 0.8rem;
-  display: grid;
-  gap: 0.7rem;
-}
-
-.chatShell {
-  display: grid;
-  gap: 0.75rem;
-  border: 1px solid #dbe7eb;
-  border-radius: 14px;
-  padding: 0.8rem;
-  background: #fbfefe;
-}
-
-.chatMessages {
-  display: grid;
-  gap: 0.55rem;
-  max-height: 420px;
-  overflow-y: auto;
-  padding-right: 0.2rem;
-}
-
-.chatEmpty {
-  background: #eef7f7;
-  border: 1px dashed #9cc5c0;
-  border-radius: 12px;
-  padding: 0.8rem;
-  color: #1f2937;
-  font-size: 0.9rem;
-}
-
-.chatBubble {
-  display: grid;
-  gap: 0.25rem;
-  padding: 0.65rem 0.75rem;
-  border-radius: 12px;
-  border: 1px solid #d6e5ea;
-}
-
-.chatBubble p {
-  margin: 0;
-  white-space: pre-wrap;
-  line-height: 1.45;
-}
-
-.chatUser {
-  background: #f1f9f7;
-  margin-left: 8%;
-}
-
-.chatAssistant {
-  background: #f8fafc;
-  margin-right: 8%;
-}
-
-.challengeArea {
-  border: 1px solid #dce9ee;
-  border-radius: 12px;
-  padding: 0.65rem;
-  background: #ffffff;
-}
-
-.summaryCard {
-  border: 1px solid #d6e2e8;
-  border-radius: 12px;
-  background: #ffffff;
-  padding: 0.75rem;
-  display: grid;
-  gap: 0.45rem;
-}
-
-.summaryCard h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.summaryCard p {
-  margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.4;
-}
-
-.chatComposer {
-  display: grid;
-  gap: 0.55rem;
-  border-top: 1px solid #e2ecef;
-  padding-top: 0.7rem;
-}
-
-@media (max-width: 920px) {
   .mypageLayout {
     grid-template-columns: 1fr;
   }
@@ -484,33 +319,25 @@ button:disabled {
   .mySidebar {
     position: static;
   }
-
-  .historyBarRow {
-    grid-template-columns: 1fr;
-    gap: 0.25rem;
-  }
 }
 
-@media (max-width: 640px) {
-  .page {
-    padding-top: 1rem;
-  }
-
-  .hero {
-    padding: 1.4rem;
-  }
-
-  .status {
-    flex-direction: column;
-  }
-
+@media (max-width: 680px) {
   .miniGrid {
     grid-template-columns: 1fr;
+  }
+
+  .topBar {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .chatUser,
   .chatAssistant {
     margin-left: 0;
     margin-right: 0;
+  }
+
+  .status {
+    flex-direction: column;
   }
 }

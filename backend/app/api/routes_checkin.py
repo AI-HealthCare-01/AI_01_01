@@ -13,13 +13,26 @@ from app.schemas.checkin import CheckinCreateRequest, CheckinOut, CheckinRespons
 router = APIRouter(prefix="/checkins", tags=["checkin"])
 
 
-def _build_checkin_note(note: str | None, completed: int, total: int) -> str:
-    payload = {
-        "note": note or "",
-        "challenge_completed_count": completed,
-        "challenge_total_count": total,
+def _build_checkin_note(payload: CheckinCreateRequest) -> str:
+    lifestyle = {
+        "steps_today": payload.steps_today,
+        "exercise_minutes_today": payload.exercise_minutes_today,
+        "daylight_minutes_today": payload.daylight_minutes_today,
+        "screen_time_min_today": payload.screen_time_min_today,
+        "meal_regularity_0_10_today": payload.meal_regularity_0_10_today,
+        "caffeine_after_2pm_flag_today": payload.caffeine_after_2pm_flag_today,
+        "alcohol_flag_today": payload.alcohol_flag_today,
+        "sleep_onset_latency_min_today": payload.sleep_onset_latency_min_today,
+        "awakenings_count_today": payload.awakenings_count_today,
+        "sleep_quality_0_10_today": payload.sleep_quality_0_10_today,
     }
-    return json.dumps(payload, ensure_ascii=False)
+    payload_dict = {
+        "note": payload.note or "",
+        "challenge_completed_count": payload.challenge_completed_count,
+        "challenge_total_count": payload.challenge_total_count,
+        "lifestyle": lifestyle,
+    }
+    return json.dumps(payload_dict, ensure_ascii=False)
 
 
 def _parse_checkin_note(raw_note: str | None) -> tuple[str | None, int, int]:
@@ -48,8 +61,8 @@ async def create_checkin(
         user_id=current_user.id,
         mood_score=payload.mood_score,
         sleep_hours=payload.sleep_hours,
-        exercised=(payload.exercised or payload.challenge_completed_count > 0),
-        note=_build_checkin_note(payload.note, payload.challenge_completed_count, payload.challenge_total_count),
+        exercised=(payload.exercised or payload.challenge_completed_count > 0 or (payload.exercise_minutes_today or 0) > 0),
+        note=_build_checkin_note(payload),
     )
 
     note, completed, total = _parse_checkin_note(row.note)

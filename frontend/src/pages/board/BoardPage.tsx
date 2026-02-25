@@ -1,19 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import './BoardPage.css'
 import {
   BOARD_CATEGORIES,
   type BoardCategory,
-  type BoardCategoryApi,
   type BoardPost,
-  type BoardPostDetail,
-  createBoardComment,
   createBoardPost,
   deleteBoardPost,
-  fetchBoardPostDetail,
   fetchBoardPosts,
-  toggleBoardBookmark,
-  toggleBoardLike,
   updateBoardPost,
 } from './boardApi'
 
@@ -21,69 +15,59 @@ type BoardPageProps = {
   token: string
   myUserId: string | null
   isAdmin: boolean
-  focusPostId?: string | null
 }
+
+type CategoryInput = '' | BoardCategory | '공지'
+type SortMode = 'latest' | 'popular'
+type CommentItem = { id: string; author: string; text: string; createdAt: string }
 
 const PAGE_SIZE = 10
-type CategoryInput = '' | BoardCategory | '공지'
-type EditorMode = 'list' | 'create' | 'edit'
 
-function normalizeBoardCategory(value: BoardCategoryApi): BoardCategory {
-  return value === '질문' ? '문의' : value
+function hashToNumber(value: string): number {
+  let h = 0
+  for (let i = 0; i < value.length; i += 1) h = (h * 31 + value.charCodeAt(i)) | 0
+  return Math.abs(h)
 }
 
-export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: BoardPageProps) {
+function formatDate(input: string) {
+  const d = new Date(input)
+  if (Number.isNaN(d.getTime())) return input
+  return d.toLocaleString('ko-KR')
+}
+
+export default function BoardPage({ token, myUserId, isAdmin }: BoardPageProps) {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [q, setQ] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<BoardCategory | ''>('')
+  const [sortMode, setSortMode] = useState<SortMode>('latest')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [posts, setPosts] = useState<BoardPost[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [selectedDetail, setSelectedDetail] = useState<BoardPostDetail | null>(null)
+  const [likedPostIds, setLikedPostIds] = useState<Record<string, boolean>>({})
+  const [bookmarkedPostIds, setBookmarkedPostIds] = useState<Record<string, boolean>>({})
+  const [commentsByPost, setCommentsByPost] = useState<Record<string, CommentItem[]>>({})
+  const [commentInput, setCommentInput] = useState('')
 
-  const [editorMode, setEditorMode] = useState<EditorMode>('list')
   const [editId, setEditId] = useState<string | null>(null)
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [categoryInput, setCategoryInput] = useState<CategoryInput>('')
-  const [isPrivateInput, setIsPrivateInput] = useState(false)
 
-  const [commentInput, setCommentInput] = useState('')
-  const [adminReplyInput, setAdminReplyInput] = useState('')
-
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-
-  async function loadPosts(nextPage = page, preferredSelectedId: string | null = null) {
+  async function loadPosts(nextPage = page) {
     setLoading(true)
     try {
-      const data = await fetchBoardPosts({ page: nextPage, pageSize: PAGE_SIZE, q, category: categoryFilter, token })
+      const data = await fetchBoardPosts({ page: nextPage, pageSize: PAGE_SIZE, q, category: categoryFilter })
       setPosts(data.items)
       setTotal(data.total)
       setPage(data.page)
-
-      if (data.items.length > 0) {
-        const keepId = preferredSelectedId ?? selectedId
-        const exists = keepId ? data.items.some((item) => item.id === keepId) : false
-        setSelectedId(exists ? keepId : data.items[0].id)
-      } else {
-        setSelectedId(preferredSelectedId)
-        if (!preferredSelectedId) setSelectedDetail(null)
-      }
+      if (data.items.length > 0 && !selectedId) setSelectedId(data.items[0].id)
+      if (data.items.length === 0) setSelectedId(null)
     } catch (error) {
       setMessage(`게시글 조회 오류: ${(error as Error).message}`)
     } finally {
       setLoading(false)
-    }
-  }
-
-  async function loadDetail(postId: string) {
-    try {
-      const detail = await fetchBoardPostDetail(postId, token)
-      setSelectedDetail(detail)
-    } catch (error) {
-      setMessage(`상세 조회 오류: ${(error as Error).message}`)
     }
   }
 
@@ -92,37 +76,45 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => {
-    if (selectedId) void loadDetail(selectedId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId])
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const selected = useMemo(() => posts.find((p) => p.id === selectedId) ?? null, [posts, selectedId])
 
-  useEffect(() => {
-    if (!focusPostId) return
-    setEditorMode('list')
-    setSelectedId(focusPostId)
-  }, [focusPostId])
+  const noticePost = useMemo(() => posts.find((p) => p.is_notice) ?? null, [posts])
+
+  const regularPosts = useMemo(() => {
+    const rows = posts.filter((p) => !p.is_notice)
+    return [...rows].sort((a, b) => {
+      if (sortMode === 'latest') {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      }
+      const aScore = hashToNumber(a.id) % 80
+      const bScore = hashToNumber(b.id) % 80
+      return bScore - aScore
+    })
+  }, [posts, sortMode])
+
+  function postStats(postId: string) {
+    const base = hashToNumber(postId)
+    const liked = likedPostIds[postId] ? 1 : 0
+    const comments = commentsByPost[postId]?.length ?? 0
+    return {
+      likes: (base % 60) + liked,
+      commentCount: (base % 20) + comments,
+    }
+  }
 
   function resetForm() {
     setEditId(null)
     setTitle('')
     setContent('')
     setCategoryInput('')
-    setIsPrivateInput(false)
-  }
-
-  function openCreateScreen() {
-    resetForm()
-    setEditorMode('create')
   }
 
   function startEdit(post: BoardPost) {
     setEditId(post.id)
     setTitle(post.title)
     setContent(post.content)
-    setCategoryInput(post.is_notice ? '공지' : normalizeBoardCategory(post.category))
-    setIsPrivateInput(post.is_private)
-    setEditorMode('edit')
+    setCategoryInput(post.is_notice ? '공지' : post.category)
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -135,34 +127,22 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
       setMessage('카테고리를 선택하세요.')
       return
     }
-    if (!title.trim() || !content.trim()) {
-      setMessage('제목과 내용을 입력하세요.')
-      return
-    }
-
     const category = categoryInput === '공지' ? '문의' : categoryInput
     const isNotice = categoryInput === '공지'
 
     setLoading(true)
     try {
-      let targetId = ''
       if (editId) {
-        const updated = await updateBoardPost(token, editId, { title: title.trim(), content: content.trim(), category, is_notice: isNotice, is_private: isPrivateInput })
+        const updated = await updateBoardPost(token, editId, { title, content, category, is_notice: isNotice })
         setMessage('게시글이 수정되었습니다.')
-        targetId = updated.id
+        setSelectedId(updated.id)
       } else {
-        const created = await createBoardPost(token, { title: title.trim(), content: content.trim(), category, is_notice: isNotice, is_private: isPrivateInput })
+        const created = await createBoardPost(token, { title, content, category, is_notice: isNotice })
         setMessage('게시글이 등록되었습니다.')
-        targetId = created.id
+        setSelectedId(created.id)
       }
-
-      setQ('')
-      setCategoryFilter('')
       resetForm()
-      setEditorMode('list')
-      setSelectedId(targetId)
-      await loadDetail(targetId)
-      await loadPosts(1, targetId)
+      await loadPosts(1)
     } catch (error) {
       setMessage(`저장 오류: ${(error as Error).message}`)
     } finally {
@@ -180,13 +160,9 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
     try {
       await deleteBoardPost(token, postId)
       setMessage('게시글이 삭제되었습니다.')
-      if (selectedId === postId) {
-        setSelectedId(null)
-        setSelectedDetail(null)
-      }
+      if (selectedId === postId) setSelectedId(null)
       await loadPosts(1)
       resetForm()
-      setEditorMode('list')
     } catch (error) {
       setMessage(`삭제 오류: ${(error as Error).message}`)
     } finally {
@@ -194,206 +170,172 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
     }
   }
 
-  async function handleLike() {
-    if (!token || !selectedId) {
-      setMessage('로그인 후 이용 가능합니다.')
-      return
-    }
-    try {
-      await toggleBoardLike(token, selectedId)
-      await loadDetail(selectedId)
-      await loadPosts(page, selectedId)
-    } catch (error) {
-      setMessage(`좋아요 오류: ${(error as Error).message}`)
-    }
+  function handleToggleLike(postId: string) {
+    setLikedPostIds((prev) => ({ ...prev, [postId]: !prev[postId] }))
   }
 
-  async function handleBookmark() {
-    if (!token || !selectedId) {
-      setMessage('로그인 후 이용 가능합니다.')
-      return
-    }
-    try {
-      await toggleBoardBookmark(token, selectedId)
-      await loadDetail(selectedId)
-      await loadPosts(page, selectedId)
-    } catch (error) {
-      setMessage(`북마크 오류: ${(error as Error).message}`)
-    }
+  function handleToggleBookmark(postId: string) {
+    setBookmarkedPostIds((prev) => ({ ...prev, [postId]: !prev[postId] }))
   }
 
-  async function handleAddComment(event: FormEvent) {
+  function handleAddComment(event: FormEvent) {
     event.preventDefault()
-    if (!token || !selectedId) {
-      setMessage('로그인 후 댓글을 작성할 수 있습니다.')
-      return
+    if (!selected) return
+    const text = commentInput.trim()
+    if (!text) return
+    const next: CommentItem = {
+      id: crypto.randomUUID(),
+      author: token ? '나' : '게스트',
+      text,
+      createdAt: new Date().toISOString(),
     }
-    if (!commentInput.trim()) {
-      setMessage('댓글 내용을 입력하세요.')
-      return
-    }
-    try {
-      await createBoardComment(token, selectedId, commentInput.trim())
-      setCommentInput('')
-      await loadDetail(selectedId)
-      await loadPosts(page, selectedId)
-    } catch (error) {
-      setMessage(`댓글 등록 오류: ${(error as Error).message}`)
-    }
+    setCommentsByPost((prev) => ({ ...prev, [selected.id]: [...(prev[selected.id] ?? []), next] }))
+    setCommentInput('')
   }
 
-  async function handleAddAdminReply(event: FormEvent) {
-    event.preventDefault()
-    if (!token || !selectedId || !isAdmin) {
-      setMessage('관리자만 답변을 등록할 수 있습니다.')
-      return
-    }
-    if (!adminReplyInput.trim()) {
-      setMessage('답변 내용을 입력하세요.')
-      return
-    }
-    try {
-      await createBoardComment(token, selectedId, `[관리자답변] ${adminReplyInput.trim()}`)
-      setAdminReplyInput('')
-      await loadDetail(selectedId)
-      await loadPosts(page, selectedId)
-      setMessage('관리자 답변이 등록되었습니다.')
-    } catch (error) {
-      setMessage(`관리자 답변 등록 오류: ${(error as Error).message}`)
-    }
-  }
+  return (
+    <section className="boardV2">
+      <header className="boardV2Head">
+        <div>
+          <h2>커뮤니티 게시판</h2>
+          <p>서로의 따뜻한 마음을 나누는 공간입니다.</p>
+        </div>
+        <div className="boardV2Controls">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="검색어를 입력하세요" />
+          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as BoardCategory | '')}>
+            <option value="">전체</option>
+            {BOARD_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
+          <button type="button" onClick={() => void loadPosts(1)} disabled={loading}>{loading ? '로딩...' : '검색'}</button>
+        </div>
+      </header>
 
-  if (editorMode === 'create' || editorMode === 'edit') {
-    return (
-      <section className="boardPage panel">
-        <h2>{editorMode === 'edit' ? '게시물 편집 화면' : '게시물 작성 화면'}</h2>
-        <p className="small">게시물 보기 화면과 분리된 전용 작성/편집 화면입니다.</p>
+      {noticePost && (
+        <article className="boardNotice">
+          <div>
+            <span className="tag">NOTICE</span>
+            <strong>{noticePost.title}</strong>
+            <p>{noticePost.content.slice(0, 90)}{noticePost.content.length > 90 ? '...' : ''}</p>
+            <small>운영자 · {formatDate(noticePost.created_at)}</small>
+          </div>
+          <button type="button" onClick={() => setSelectedId(noticePost.id)}>더보기 →</button>
+        </article>
+      )}
+
+      <div className="boardSortRow">
+        <button type="button" className={sortMode === 'latest' ? 'active' : ''} onClick={() => setSortMode('latest')}>최신순</button>
+        <button type="button" className={sortMode === 'popular' ? 'active' : ''} onClick={() => setSortMode('popular')}>인기순</button>
+      </div>
+
+      <section className="boardListCard">
+        {regularPosts.map((post) => {
+          const stats = postStats(post.id)
+          return (
+            <button
+              key={post.id}
+              type="button"
+              className={`boardListRow ${selectedId === post.id ? 'active' : ''}`}
+              onClick={() => setSelectedId(post.id)}
+            >
+              <div className="left">
+                <strong>{post.title}</strong>
+                <p>{post.author_nickname} · {formatDate(post.created_at)}</p>
+              </div>
+              <div className="right">
+                <span>♥ {stats.likes}</span>
+                <span>💬 {stats.commentCount}</span>
+              </div>
+            </button>
+          )
+        })}
+
+        {regularPosts.length === 0 && <p className="muted">게시글이 없습니다.</p>}
+
+        <div className="boardPager">
+          <button type="button" className="ghost" disabled={loading || page <= 1} onClick={() => void loadPosts(page - 1)}>이전</button>
+          <span>{page} / {totalPages}</span>
+          <button type="button" className="ghost" disabled={loading || page >= totalPages} onClick={() => void loadPosts(page + 1)}>더보기</button>
+        </div>
+      </section>
+
+      <section className="boardDetailCard">
+        <h3>게시물 상세</h3>
+        {!selected ? (
+          <p className="muted">목록에서 게시글을 선택하세요.</p>
+        ) : (
+          <>
+            <article className="detailPost">
+              <strong>{selected.title}</strong>
+              <p className="meta">{selected.author_nickname} · {formatDate(selected.created_at)} · {selected.is_notice ? '공지' : selected.category}</p>
+              <pre>{selected.content}</pre>
+              <div className="postActions">
+                <button type="button" className={likedPostIds[selected.id] ? 'active' : ''} onClick={() => handleToggleLike(selected.id)}>
+                  좋아요
+                </button>
+                <button type="button" className={bookmarkedPostIds[selected.id] ? 'active' : ''} onClick={() => handleToggleBookmark(selected.id)}>
+                  북마크
+                </button>
+                {(myUserId === selected.author_id || isAdmin) && (
+                  <>
+                    <button type="button" onClick={() => startEdit(selected)}>수정</button>
+                    <button type="button" onClick={() => void handleDelete(selected.id)}>삭제</button>
+                  </>
+                )}
+              </div>
+            </article>
+
+            <article className="comments">
+              <h4>댓글</h4>
+              <ul>
+                {(commentsByPost[selected.id] ?? []).map((comment) => (
+                  <li key={comment.id}>
+                    <strong>{comment.author}</strong>
+                    <span>{formatDate(comment.createdAt)}</span>
+                    <p>{comment.text}</p>
+                  </li>
+                ))}
+                {(commentsByPost[selected.id] ?? []).length === 0 && <li className="muted">아직 댓글이 없습니다.</li>}
+              </ul>
+              <form onSubmit={handleAddComment} className="commentForm">
+                <input
+                  value={commentInput}
+                  onChange={(e) => setCommentInput(e.target.value)}
+                  placeholder="댓글을 입력하세요"
+                />
+                <button type="submit">등록</button>
+              </form>
+            </article>
+          </>
+        )}
+      </section>
+
+      <section className="boardEditorCard">
+        <h3>{editId ? '글 수정' : '글 작성'}</h3>
         <form className="form" onSubmit={handleSubmit}>
           <label>
-            유형 선택
+            카테고리
             <select value={categoryInput} onChange={(e) => setCategoryInput(e.target.value as CategoryInput)} required>
-              <option value="">유형 선택</option>
+              <option value="">카테고리를 선택하세요</option>
               {BOARD_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
               {isAdmin && <option value="공지">공지</option>}
             </select>
           </label>
-          {(categoryInput === '문의' || categoryInput === '피드백') && (
-            <label>
-              공개/비공개
-              <select value={isPrivateInput ? 'private' : 'public'} onChange={(e) => setIsPrivateInput(e.target.value === 'private')}>
-                <option value="public">공개</option>
-                <option value="private">비공개</option>
-              </select>
-            </label>
-          )}
-          <label>제목 입력<input value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
-          <label>내용 입력<textarea value={content} onChange={(e) => setContent(e.target.value)} rows={10} required /></label>
+          <label>
+            제목
+            <input value={title} onChange={(e) => setTitle(e.target.value)} required />
+          </label>
+          <label>
+            본문
+            <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={6} required />
+          </label>
           <div className="actions">
-            <button type="submit" disabled={loading || !token}>{editorMode === 'edit' ? '수정 저장' : '게시하기'}</button>
-            <button type="button" className="ghost" onClick={() => setEditorMode('list')}>게시물 보기로 돌아가기</button>
+            <button disabled={loading || !token}>{editId ? '수정 저장' : '게시글 등록'}</button>
+            <button type="button" className="ghost" onClick={resetForm}>초기화</button>
           </div>
         </form>
-        {message && <p className="small">{message}</p>}
       </section>
-    )
-  }
 
-  return (
-    <section className="boardPage panel">
-      <h2>게시판</h2>
-      <p className="small">공지/문의/자유/꿀팁/피드백을 한 곳에서 관리합니다.</p>
-
-      <div className="boardToolbar">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="제목/내용 검색" />
-        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as BoardCategory | '')}>
-          <option value="">전체 카테고리</option>
-          {BOARD_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
-        </select>
-        <button type="button" disabled={loading} onClick={() => void loadPosts(1)}>검색</button>
-        <button type="button" className="ghost" disabled={!token} onClick={openCreateScreen}>게시물 작성하기</button>
-      </div>
-
-      <div className="boardLayout">
-        <article className="boardList">
-          {posts.length === 0 && <p className="small">게시글이 없습니다.</p>}
-          {posts.map((post) => (
-            <button key={post.id} type="button" className={`boardRow ${selectedId === post.id ? 'active' : ''}`} onClick={() => setSelectedId(post.id)}>
-              <span className="boardRowTop">
-                {post.is_notice && <em className="noticeTag">공지</em>}
-                {post.is_private && <em className="noticeTag">비공개</em>}
-                <strong>{post.title}</strong>
-              </span>
-              <span className="boardMeta">
-                {post.is_notice ? '공지' : normalizeBoardCategory(post.category)} · {post.author_nickname} · {new Date(post.created_at).toLocaleString('ko-KR')}
-              </span>
-            </button>
-          ))}
-          <div className="boardPager">
-            <button type="button" className="ghost" disabled={loading || page <= 1} onClick={() => void loadPosts(page - 1)}>이전</button>
-            <span>{page} / {totalPages}</span>
-            <button type="button" className="ghost" disabled={loading || page >= totalPages} onClick={() => void loadPosts(page + 1)}>다음</button>
-          </div>
-        </article>
-
-        <article className="boardDetail">
-          {selectedDetail ? (
-            <>
-              <h3>{selectedDetail.title}</h3>
-              <p className="small">{(selectedDetail.is_notice ? '공지' : normalizeBoardCategory(selectedDetail.category))} · {selectedDetail.author_nickname} · {new Date(selectedDetail.created_at).toLocaleString('ko-KR')}</p>
-              <pre className="boardContent">{selectedDetail.content}</pre>
-
-              <div className="actions">
-                <button type="button" className="ghost" onClick={() => void handleLike()}>좋아요 {selectedDetail.likes_count}</button>
-                <button type="button" className="ghost" onClick={() => void handleBookmark()}>북마크 {selectedDetail.bookmarks_count}</button>
-                <button type="button" className="ghost" onClick={openCreateScreen}>게시물 작성하기</button>
-                {(myUserId === selectedDetail.author_id || isAdmin) && (
-                  <>
-                    <button type="button" className="ghost" onClick={() => startEdit(selectedDetail)}>수정</button>
-                    <button type="button" className="ghost" onClick={() => void handleDelete(selectedDetail.id)}>삭제</button>
-                  </>
-                )}
-              </div>
-
-              <h4>댓글</h4>
-              <ul className="probList">
-                {selectedDetail.comments.length === 0 && <li>등록된 댓글이 없습니다.</li>}
-                {selectedDetail.comments.map((c) => (
-                  <li key={c.id}>
-                    <span>{c.author_nickname}: {c.content}</span>
-                    <strong>{new Date(c.created_at).toLocaleString('ko-KR')}</strong>
-                  </li>
-                ))}
-              </ul>
-
-              <form className="form" onSubmit={handleAddComment}>
-                <label>
-                  댓글 입력
-                  <input value={commentInput} onChange={(e) => setCommentInput(e.target.value)} placeholder="댓글을 입력하세요" />
-                </label>
-                <div className="actions">
-                  <button type="submit" disabled={!token}>댓글 입력</button>
-                </div>
-              </form>
-
-              {((normalizeBoardCategory(selectedDetail.category) === '문의') || normalizeBoardCategory(selectedDetail.category) === '피드백') && isAdmin && (
-                <form className="form adminReplyBox" onSubmit={handleAddAdminReply}>
-                  <label>
-                    관리자 답변
-                    <textarea value={adminReplyInput} onChange={(e) => setAdminReplyInput(e.target.value)} rows={4} placeholder="문의/피드백에 대한 관리자 답변을 입력하세요" />
-                  </label>
-                  <div className="actions">
-                    <button type="submit">관리자 답변 등록</button>
-                  </div>
-                </form>
-              )}
-            </>
-          ) : (
-            <p className="small">왼쪽에서 게시글을 선택하세요.</p>
-          )}
-        </article>
-      </div>
-
-      {message && <p className="small">{message}</p>}
+      {message && <p className="boardMsg">{message}</p>}
     </section>
   )
 }

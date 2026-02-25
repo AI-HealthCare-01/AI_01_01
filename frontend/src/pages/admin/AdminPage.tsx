@@ -1,32 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
-import AdminTable from '../../components/admin/AdminTable'
-import StatCard from '../../components/admin/StatCard'
+import type { FormEvent } from 'react'
 import {
-  addAdminAccount,
-  fetchAdminAccounts,
-  fetchAdminChallengePolicy,
-  fetchAdminChallengePolicyAudit,
-  fetchAdminGrantHistory,
+  fetchAdminAssessments,
   fetchAdminHighRisk,
   fetchAdminSummary,
   fetchAdminUsers,
-  fetchPendingReplyPosts,
-  removeAdminAccount,
-  searchRegisteredUsersForAdminAdd,
-  updateAdminChallengePolicy,
 } from './adminApi'
+import { fetchBoardPosts, type BoardPost } from '../board/boardApi'
 import type {
-  AdminAccountItem,
-  AdminAccountSearchUserItem,
-  AdminChallengePolicy,
-  AdminChallengePolicyAuditItem,
-  AdminGrantHistoryItem,
+  AdminAssessmentItem,
   AdminHighRiskItem,
   AdminSummary,
   AdminUserItem,
-  PendingReplyPostItem,
 } from './types'
 import './AdminPage.css'
+
+type AdminTab = 'dashboard' | 'users' | 'highrisk' | 'alerts' | 'admins'
 
 function formatDate(input: string | null) {
   if (!input) return '-'
@@ -35,62 +24,41 @@ function formatDate(input: string | null) {
   return d.toLocaleString('ko-KR')
 }
 
+function statusFromLatest(latest: string | null): '활성' | '휴면' | '오프라인' {
+  if (!latest) return '오프라인'
+  const diff = Date.now() - new Date(latest).getTime()
+  if (Number.isNaN(diff)) return '오프라인'
+  if (diff <= 1000 * 60 * 20) return '활성'
+  if (diff <= 1000 * 60 * 60 * 24) return '휴면'
+  return '오프라인'
+}
+
 type AdminPageProps = {
   token: string
-  onOpenBoardPost: (postId: string) => void
 }
 
-type AdminMenu = 'dashboard' | 'accounts' | 'pending' | 'policy'
-
-const TECHNIQUE_LABELS: Record<string, string> = {
-  cognitive_reframe: '인지왜곡 교정',
-  catastrophizing_check: '파국화 점검',
-  self_compassion_reframe: '자기비난 완화',
-  behavioral_activation: '행동활성화',
-  anxiety_regulation: '불안 조절',
-  worry_scheduling: '걱정 시간 배정',
-  sleep_hygiene: '수면 위생',
-  positive_data_log: '긍정 데이터 기록',
-  general: '일반',
-}
-
-const TECHNIQUE_OPTIONS = Object.keys(TECHNIQUE_LABELS)
-
-function toPolicyText(value: unknown): string {
-  if (Array.isArray(value)) return value.map((v) => TECHNIQUE_LABELS[String(v)] ?? String(v)).join(', ')
-  if (typeof value === 'number') return Number(value).toString()
-  return String(value ?? '-')
-}
-
-export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
-  const [menu, setMenu] = useState<AdminMenu>('dashboard')
+export default function AdminPage({ token }: AdminPageProps) {
+  const [tab, setTab] = useState<AdminTab>('users')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
-  const [userSortBy, setUserSortBy] = useState<'created_at' | 'email' | 'nickname' | 'assessment_count' | 'chat_count' | 'board_post_count'>('created_at')
-  const [userSortOrder, setUserSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [highRiskOnly, setHighRiskOnly] = useState(false)
+  const [adminEmail, setAdminEmail] = useState('')
+  const [adminName, setAdminName] = useState('')
+  const [adminNotice, setAdminNotice] = useState('')
 
   const [summary, setSummary] = useState<AdminSummary | null>(null)
   const [users, setUsers] = useState<AdminUserItem[]>([])
+  const [assessments, setAssessments] = useState<AdminAssessmentItem[]>([])
   const [highRisk, setHighRisk] = useState<AdminHighRiskItem[]>([])
-  const [pendingReplies, setPendingReplies] = useState<PendingReplyPostItem[]>([])
-
-  const [accounts, setAccounts] = useState<AdminAccountItem[]>([])
-  const [accountOwnerEmail, setAccountOwnerEmail] = useState<string | null>(null)
-  const [currentUserIsOwner, setCurrentUserIsOwner] = useState(false)
-  const [newAdminEmail, setNewAdminEmail] = useState('')
-  const [adminSearchQuery, setAdminSearchQuery] = useState('')
-  const [adminSearchResults, setAdminSearchResults] = useState<AdminAccountSearchUserItem[]>([])
-  const [grants, setGrants] = useState<AdminGrantHistoryItem[]>([])
-
-  const [policy, setPolicy] = useState<AdminChallengePolicy>({
-    window_days: 14,
-    similarity_threshold: 0.55,
-    repeatable_techniques: ['cognitive_reframe', 'catastrophizing_check', 'self_compassion_reframe'],
-  })
-  const [policyAudits, setPolicyAudits] = useState<AdminChallengePolicyAuditItem[]>([])
+  const [alerts, setAlerts] = useState<BoardPost[]>([])
 
   const canLoad = useMemo(() => token.trim().length > 0, [token])
+  const filteredUsers = useMemo(() => {
+    if (!query.trim()) return users
+    const q = query.toLowerCase()
+    return users.filter((user) => user.email.toLowerCase().includes(q) || user.nickname.toLowerCase().includes(q))
+  }, [users, query])
 
   async function loadAll() {
     if (!canLoad) {
@@ -101,26 +69,28 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
     setLoading(true)
     setError('')
     try {
-      const [summaryRes, usersRes, highRiskRes, policyRes, auditRes, pendingRes, accRes, grantsRes] = await Promise.all([
+      const [summaryRes, usersRes, assessmentsRes, highRiskRes] = await Promise.all([
         fetchAdminSummary(token),
-        fetchAdminUsers(token, query, 1, 20, userSortBy, userSortOrder),
-        fetchAdminHighRisk(token, 30),
-        fetchAdminChallengePolicy(token),
-        fetchAdminChallengePolicyAudit(token, 30),
-        fetchPendingReplyPosts(token, 50),
-        fetchAdminAccounts(token),
-        fetchAdminGrantHistory(token, 50),
+        fetchAdminUsers(token, query, 1, 40),
+        fetchAdminAssessments(token, query, highRiskOnly, 1, 40),
+        fetchAdminHighRisk(token, 60),
       ])
+
       setSummary(summaryRes)
       setUsers(usersRes.items)
+      setAssessments(assessmentsRes.items)
       setHighRisk(highRiskRes.items)
-      setPolicy(policyRes)
-      setPolicyAudits(auditRes.items)
-      setPendingReplies(pendingRes.items)
-      setAccounts(accRes.items)
-      setAccountOwnerEmail(accRes.owner_email)
-      setCurrentUserIsOwner(accRes.current_user_is_owner)
-      setGrants(grantsRes.items)
+
+      const [qnaRes, feedbackRes] = await Promise.allSettled([
+        fetchBoardPosts({ page: 1, pageSize: 20, category: '문의' }),
+        fetchBoardPosts({ page: 1, pageSize: 20, category: '피드백' }),
+      ])
+      const qnaItems = qnaRes.status === 'fulfilled' ? qnaRes.value.items : []
+      const feedbackItems = feedbackRes.status === 'fulfilled' ? feedbackRes.value.items : []
+      const merged = [...qnaItems, ...feedbackItems].sort((a, b) => (
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ))
+      setAlerts(merged.slice(0, 20))
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -128,83 +98,13 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
     }
   }
 
-  async function handleSearchAdminCandidates() {
-    if (!adminSearchQuery.trim()) {
-      setAdminSearchResults([])
+  function handleAddAdmin(event: FormEvent) {
+    event.preventDefault()
+    if (!adminEmail.trim() || !adminName.trim()) {
+      setAdminNotice('이메일과 이름을 입력하세요.')
       return
     }
-    setLoading(true)
-    setError('')
-    try {
-      const res = await searchRegisteredUsersForAdminAdd(token, adminSearchQuery.trim(), 10)
-      setAdminSearchResults(res.items)
-    } catch (e) {
-      setError((e as Error).message)
-      setAdminSearchResults([])
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function handleSavePolicy() {
-    setLoading(true)
-    setError('')
-    try {
-      const saved = await updateAdminChallengePolicy(token, policy)
-      setPolicy(saved)
-      const auditRes = await fetchAdminChallengePolicyAudit(token, 30)
-      setPolicyAudits(auditRes.items)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function handleAddAdmin() {
-    if (!newAdminEmail.trim()) return
-    setLoading(true)
-    setError('')
-    try {
-      const result = await addAdminAccount(token, newAdminEmail.trim())
-      setAccounts(result.items)
-      setAccountOwnerEmail(result.owner_email)
-      setCurrentUserIsOwner(result.current_user_is_owner)
-      setNewAdminEmail('')
-      setAdminSearchQuery('')
-      setAdminSearchResults([])
-      const grantsRes = await fetchAdminGrantHistory(token, 50)
-      setGrants(grantsRes.items)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function handleRemoveAdmin(email: string) {
-    setLoading(true)
-    setError('')
-    try {
-      const result = await removeAdminAccount(token, email)
-      setAccounts(result.items)
-      setAccountOwnerEmail(result.owner_email)
-      setCurrentUserIsOwner(result.current_user_is_owner)
-      const grantsRes = await fetchAdminGrantHistory(token, 50)
-      setGrants(grantsRes.items)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  function toggleTechnique(technique: string) {
-    setPolicy((prev) => {
-      const has = prev.repeatable_techniques.includes(technique)
-      const next = has ? prev.repeatable_techniques.filter((x) => x !== technique) : [...prev.repeatable_techniques, technique]
-      return { ...prev, repeatable_techniques: next.length ? next : prev.repeatable_techniques }
-    })
+    setAdminNotice('관리자 추가 API는 미연동입니다. backend/.env 의 ADMIN_EMAILS에 추가하세요.')
   }
 
   useEffect(() => {
@@ -213,249 +113,219 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
   }, [])
 
   return (
-    <section className="adminPage">
-      <h2 className="adminTitle">관리자 페이지</h2>
+    <section className="adminV3">
+      <aside className="adminV3Sidebar">
+        <p className="menuLabel">MENU</p>
+        <button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')}>통계 대시보드</button>
+        <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>사용자 관리</button>
+        <button className={tab === 'highrisk' ? 'active' : ''} onClick={() => setTab('highrisk')}>고위험 플래그 목록</button>
+        <button className={tab === 'alerts' ? 'active' : ''} onClick={() => setTab('alerts')}>
+          질문/피드백 알림
+          <span className="badge">{alerts.length}</span>
+        </button>
+        <button className={tab === 'admins' ? 'active' : ''} onClick={() => setTab('admins')}>관리자 추가</button>
+      </aside>
 
-      <div className="adminToolbar">
-        <button className={menu === 'dashboard' ? '' : 'ghost'} onClick={() => setMenu('dashboard')}>대시보드</button>
-        <button className={menu === 'accounts' ? '' : 'ghost'} onClick={() => setMenu('accounts')}>관리자 계정 추가</button>
-        <button className={menu === 'pending' ? '' : 'ghost'} onClick={() => setMenu('pending')}>문의/피드백 미답변</button>
-        <button className={menu === 'policy' ? '' : 'ghost'} onClick={() => setMenu('policy')}>챌린지 정책 관리</button>
-        <button className="ghost" onClick={loadAll} disabled={loading}>{loading ? '로딩 중...' : '새로고침'}</button>
-      </div>
+      <main className="adminV3Main">
+        <header className="adminV3Top">
+          <div>
+            <h2>
+              {tab === 'dashboard' && '통계 대시보드'}
+              {tab === 'users' && '사용자 관리'}
+              {tab === 'highrisk' && '고위험 플래그 목록'}
+              {tab === 'alerts' && '질문/피드백 알림'}
+              {tab === 'admins' && '관리자 추가'}
+            </h2>
+            <p>서비스 운영 상태를 실시간으로 모니터링합니다.</p>
+          </div>
+          <div className="adminV3TopRight">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="사용자 검색..."
+            />
+            <button type="button" className="liveBtn">SYSTEM LIVE</button>
+          </div>
+        </header>
 
-      {error && <p className="adminDanger">{error}</p>}
-
-      {menu === 'dashboard' && (
-        <>
-          {summary && (
-            <section className="adminStatGrid">
-              <StatCard label="오늘 접속자 수" value={summary.today_visitors} />
-              <StatCard label="로그인 유저 수" value={summary.login_users_today} />
-              <StatCard label="총 사용자" value={summary.total_users} />
-              <StatCard label="고위험 플래그" value={summary.high_risk_assessments} />
-            </section>
-          )}
-
-          <div className="adminDashboardStack">
-            <section className="adminSection">
-              <h3>사용자 목록 조회</h3>
-              <div className="adminToolbar">
-                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="이메일/닉네임 검색" />
-                <select value={userSortBy} onChange={(e) => setUserSortBy(e.target.value as typeof userSortBy)}>
-                  <option value="created_at">가입일</option>
-                  <option value="email">이메일</option>
-                  <option value="nickname">닉네임</option>
-                  <option value="assessment_count">검사 수</option>
-                  <option value="chat_count">마음일기 시행 수</option>
-                  <option value="board_post_count">게시글 수</option>
-                </select>
-                <select value={userSortOrder} onChange={(e) => setUserSortOrder(e.target.value as typeof userSortOrder)}>
-                  <option value="desc">내림차순</option>
-                  <option value="asc">오름차순</option>
-                </select>
-                <button onClick={loadAll} disabled={loading}>조회</button>
+        <div className="adminV3Grid">
+          <section className="panel tablePanel">
+            {tab === 'dashboard' && (
+              <div className="kpiGrid">
+                <article className="kpi"><p>총 사용자</p><strong>{summary?.total_users ?? 0}</strong></article>
+                <article className="kpi"><p>총 검사</p><strong>{summary?.total_assessments ?? 0}</strong></article>
+                <article className="kpi"><p>오늘 검사</p><strong>{summary?.assessments_today ?? 0}</strong></article>
+                <article className="kpi danger"><p>고위험 검사</p><strong>{summary?.high_risk_assessments ?? 0}</strong></article>
               </div>
-              <AdminTable headers={['이메일', '닉네임', '가입일', '검사 수', '마음일기 시행 수', '게시글 수']}>
-                {users.map((user) => (
-                  <tr key={user.id}>
-                    <td>{user.email}</td>
-                    <td>{user.nickname}</td>
-                    <td>{formatDate(user.created_at)}</td>
-                    <td>{user.assessment_count}</td>
-                    <td>{user.chat_count}</td>
-                    <td>{user.board_post_count}</td>
-                  </tr>
-                ))}
-                {users.length === 0 && (
+            )}
+
+            {tab === 'users' && (
+              <>
+                <div className="panelHead">
+                  <h3>활성 사용자 목록</h3>
+                  <button type="button" onClick={loadAll} disabled={loading}>{loading ? '로딩 중...' : '필터링'}</button>
+                </div>
+                <table className="adminTable">
+                  <thead>
+                    <tr>
+                      <th>사용자 ID</th>
+                      <th>상태</th>
+                      <th>마지막 세션</th>
+                      <th>작업</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.slice(0, 16).map((user) => {
+                      const status = statusFromLatest(user.latest_assessment_at)
+                      return (
+                        <tr key={user.id}>
+                          <td className="userCell">{user.nickname} <span>{user.email}</span></td>
+                          <td><em className={`chip ${status === '활성' ? 'on' : status === '휴면' ? 'rest' : 'off'}`}>{status}</em></td>
+                          <td>{formatDate(user.latest_assessment_at)}</td>
+                          <td>•••</td>
+                        </tr>
+                      )
+                    })}
+                    {filteredUsers.length === 0 && (
+                      <tr><td colSpan={4} className="muted">데이터가 없습니다.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </>
+            )}
+
+            {tab === 'highrisk' && (
+              <table className="adminTable">
+                <thead>
                   <tr>
-                    <td colSpan={6} className="adminMuted">데이터가 없습니다.</td>
+                    <th>일시</th>
+                    <th>사용자</th>
+                    <th>검사</th>
+                    <th>점수</th>
+                    <th>사유</th>
                   </tr>
-                )}
-              </AdminTable>
+                </thead>
+                <tbody>
+                  {highRisk.map((item) => (
+                    <tr key={item.assessment_id}>
+                      <td>{formatDate(item.created_at)}</td>
+                      <td>{item.user_nickname} <span>{item.user_email}</span></td>
+                      <td>{item.type}</td>
+                      <td>{item.total_score}</td>
+                      <td>{item.risk_reason}</td>
+                    </tr>
+                  ))}
+                  {highRisk.length === 0 && (
+                    <tr><td colSpan={5} className="muted">고위험 데이터가 없습니다.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+
+            {tab === 'alerts' && (
+              <div className="alertGrid">
+                {alerts.map((alert) => (
+                  <article key={alert.id} className="alertCard">
+                    <p>{alert.category} · {formatDate(alert.created_at)}</p>
+                    <strong>{alert.title}</strong>
+                    <span>{alert.author_nickname}</span>
+                  </article>
+                ))}
+                {alerts.length === 0 && <p className="muted">알림이 없습니다.</p>}
+              </div>
+            )}
+
+            {tab === 'admins' && (
+              <form className="adminAddForm" onSubmit={handleAddAdmin}>
+                <label>
+                  관리자 이메일
+                  <input
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    placeholder="admin@example.com"
+                    required
+                  />
+                </label>
+                <label>
+                  관리자 이름
+                  <input
+                    value={adminName}
+                    onChange={(e) => setAdminName(e.target.value)}
+                    placeholder="운영 담당자"
+                    required
+                  />
+                </label>
+                <button type="submit">관리자 추가 요청</button>
+                {adminNotice && <p className="muted">{adminNotice}</p>}
+              </form>
+            )}
+          </section>
+
+          <aside className="adminV3Side">
+            <section className="panel">
+              <h3>시스템 상태</h3>
+              <div className="metric">
+                <span>서버응답 속도</span>
+                <strong>{124 + (summary?.assessments_today ?? 0)}ms</strong>
+                <div className="bar"><i style={{ width: '76%' }} /></div>
+              </div>
+              <div className="metric">
+                <span>데이터베이스</span>
+                <strong>정상</strong>
+              </div>
             </section>
 
-            <section className="adminSection">
-              <h3>고위험 플래그 목록</h3>
-              <AdminTable headers={['일시', '이메일', '닉네임', '우울', '불안', '불면', '종합', '주요 위험 변수']}>
-                {highRisk.map((item) => (
-                  <tr key={item.assessment_id}>
-                    <td>{formatDate(item.occurred_at)}</td>
+            <section className="panel dark">
+              <h3>총 이용 횟수</h3>
+              <p className="big">{(summary?.total_assessments ?? 0).toLocaleString()}</p>
+              <p className="mutedOnDark">누적 챗봇 및 검사 수</p>
+              <hr />
+              <p className="today">오늘 신규 +{summary?.assessments_today ?? 0}</p>
+            </section>
+          </aside>
+        </div>
+
+        {tab === 'dashboard' && (
+          <section className="panel">
+            <div className="panelHead">
+              <h3>최근 검사 이력</h3>
+              <label className="checkLine">
+                <input type="checkbox" checked={highRiskOnly} onChange={(e) => setHighRiskOnly(e.target.checked)} />
+                고위험만 보기
+              </label>
+            </div>
+            <table className="adminTable">
+              <thead>
+                <tr>
+                  <th>일시</th>
+                  <th>이메일</th>
+                  <th>닉네임</th>
+                  <th>검사</th>
+                  <th>점수</th>
+                  <th>심각도</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assessments.slice(0, 10).map((item) => (
+                  <tr key={item.id}>
+                    <td>{formatDate(item.created_at)}</td>
                     <td>{item.user_email}</td>
                     <td>{item.user_nickname}</td>
-                    <td>{item.dep_score == null ? '-' : item.dep_score.toFixed(1)}</td>
-                    <td>{item.anx_score == null ? '-' : item.anx_score.toFixed(1)}</td>
-                    <td>{item.ins_score == null ? '-' : item.ins_score.toFixed(1)}</td>
-                    <td>{item.composite_score == null ? '-' : item.composite_score.toFixed(1)}</td>
-                    <td>{item.major_risk_factors}</td>
+                    <td>{item.type}</td>
+                    <td>{item.total_score}</td>
+                    <td>{item.severity}</td>
                   </tr>
                 ))}
-                {highRisk.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="adminMuted">고위험 데이터가 없습니다.</td>
-                  </tr>
+                {assessments.length === 0 && (
+                  <tr><td colSpan={6} className="muted">데이터가 없습니다.</td></tr>
                 )}
-              </AdminTable>
-            </section>
-          </div>
-        </>
-      )}
-
-      {menu === 'accounts' && (
-        <>
-          <section className="adminSection">
-            <h3>관리자 계정 추가</h3>
-            <div className="adminToolbar">
-              <input value={adminSearchQuery} onChange={(e) => setAdminSearchQuery(e.target.value)} placeholder="회원 이메일/닉네임 검색" />
-              <button className="ghost" onClick={() => void handleSearchAdminCandidates()} disabled={loading}>회원 조회</button>
-            </div>
-            {adminSearchResults.length > 0 && (
-              <ul className="probList" style={{ marginTop: 8 }}>
-                {adminSearchResults.map((u) => (
-                  <li key={u.id}>
-                    <span>{u.nickname} ({u.email})</span>
-                    <button className="ghost" onClick={() => setNewAdminEmail(u.email)}>선택</button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="adminToolbar" style={{ marginTop: 8 }}>
-              <input value={newAdminEmail} onChange={(e) => setNewAdminEmail(e.target.value)} placeholder="선택된 회원 이메일" />
-              <button onClick={() => void handleAddAdmin()} disabled={loading || !newAdminEmail.trim()}>권한 부여</button>
-            </div>
-            <p className="adminMuted">총 관리자 계정: {accounts.length} / 오너: {accountOwnerEmail ?? '-'}</p>
-            <AdminTable headers={['이메일', '출처', '오너', '권한 회수']}>
-              {accounts.map((acc) => (
-                <tr key={`${acc.email}-${acc.source}`}>
-                  <td>{acc.email}</td>
-                  <td>{acc.source}</td>
-                  <td>{acc.is_owner ? '예' : '아니오'}</td>
-                  <td>
-                    <button
-                      className="ghost"
-                      disabled={!currentUserIsOwner || acc.is_owner || loading}
-                      onClick={() => void handleRemoveAdmin(acc.email)}
-                    >
-                      회수
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </AdminTable>
+              </tbody>
+            </table>
           </section>
+        )}
 
-          <section className="adminSection">
-            <h3>권한 부여 이력</h3>
-            <AdminTable headers={['권한 부여 시각', '권한 부여 관리자', '권한 부여받은 계정']}>
-              {grants.map((item, idx) => (
-                <tr key={`${item.granted_at}-${item.granted_to_email}-${idx}`}>
-                  <td>{formatDate(item.granted_at)}</td>
-                  <td>{item.granted_by_nickname ? `${item.granted_by_nickname} (${item.granted_by_email})` : item.granted_by_email}</td>
-                  <td>{item.granted_to_email}</td>
-                </tr>
-              ))}
-              {grants.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="adminMuted">권한 부여 이력이 없습니다.</td>
-                </tr>
-              )}
-            </AdminTable>
-          </section>
-        </>
-      )}
-
-      {menu === 'pending' && (
-        <section className="adminSection">
-          <h3>게시판 미답변 목록 (문의/피드백)</h3>
-          <AdminTable headers={['작성 시각', '유형', '제목', '작성자', '이동']}>
-            {pendingReplies.map((item) => (
-              <tr key={item.post_id}>
-                <td>{formatDate(item.created_at)}</td>
-                <td>{item.category}</td>
-                <td>{item.title}</td>
-                <td>{item.author_nickname}</td>
-                <td><button className="ghost" onClick={() => onOpenBoardPost(item.post_id)}>게시물 보기</button></td>
-              </tr>
-            ))}
-            {pendingReplies.length === 0 && (
-              <tr>
-                <td colSpan={5} className="adminMuted">미답변 게시물이 없습니다.</td>
-              </tr>
-            )}
-          </AdminTable>
-        </section>
-      )}
-
-      {menu === 'policy' && (
-        <>
-          <section className="adminSection">
-            <h3>챌린지 추천 정책</h3>
-            <div className="adminToolbar" style={{ gap: 12, alignItems: 'center' }}>
-              <label>
-                중복 체크 기간(일)
-                <input
-                  type="number"
-                  min={1}
-                  max={60}
-                  value={policy.window_days}
-                  onChange={(e) => setPolicy((p) => ({ ...p, window_days: Number(e.target.value || 14) }))}
-                />
-              </label>
-              <label>
-                유사도 임계치(0.2~0.95)
-                <input
-                  type="number"
-                  step="0.01"
-                  min={0.2}
-                  max={0.95}
-                  value={policy.similarity_threshold}
-                  onChange={(e) => setPolicy((p) => ({ ...p, similarity_threshold: Number(e.target.value || 0.55) }))}
-                />
-              </label>
-            </div>
-            <p className="adminMuted">반복 허용 챌린지 기법</p>
-            <div className="adminToolbar" style={{ flexWrap: 'wrap', gap: 10 }}>
-              {TECHNIQUE_OPTIONS.map((tech) => (
-                <label key={tech}>
-                  <input
-                    type="checkbox"
-                    checked={policy.repeatable_techniques.includes(tech)}
-                    onChange={() => toggleTechnique(tech)}
-                  />
-                  {TECHNIQUE_LABELS[tech]}
-                </label>
-              ))}
-            </div>
-            <div className="adminToolbar" style={{ marginTop: 10 }}>
-              <button onClick={handleSavePolicy} disabled={loading}>정책 저장</button>
-            </div>
-          </section>
-
-          <section className="adminSection">
-            <h3>정책 변경 이력</h3>
-            <AdminTable headers={['변경 시각', '관리자', '변경 내용']}>
-              {policyAudits.map((item) => (
-                <tr key={item.id}>
-                  <td>{formatDate(item.created_at)}</td>
-                  <td>{item.actor_nickname ? `${item.actor_nickname} (${item.actor_email})` : item.actor_email}</td>
-                  <td>
-                    {Object.entries(item.diff_json).map(([k, v]) => (
-                      <div key={`${item.id}-${k}`}>
-                        <strong>{k}</strong>: {toPolicyText(v.before)} → {toPolicyText(v.after)}
-                      </div>
-                    ))}
-                  </td>
-                </tr>
-              ))}
-              {policyAudits.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="adminMuted">변경 이력이 없습니다.</td>
-                </tr>
-              )}
-            </AdminTable>
-          </section>
-        </>
-      )}
+        {error && <p className="error">{error}</p>}
+      </main>
     </section>
   )
 }

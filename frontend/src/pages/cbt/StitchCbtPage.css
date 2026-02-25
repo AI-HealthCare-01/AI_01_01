@@ -1,7 +1,7 @@
 .cbtV2 {
   width: min(1260px, 96vw);
   margin: 0 auto;
-  padding: 0.8rem 0.4rem 1.6rem;
+  padding: 0.8rem 0.4rem 2.1rem;
   color: #212121;
 }
 
@@ -435,8 +435,8 @@
 }
 
 .v2Dock {
-  margin: -0.9rem auto 0;
-  width: 360px;
+  margin: 0.55rem auto 0;
+  width: min(680px, 96vw);
   height: 72px;
   border: 1px solid #dddddd;
   border-radius: 40px;
@@ -444,19 +444,24 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 0.8rem;
+  gap: 0.35rem;
+  padding: 0 0.45rem;
 }
 
 .v2Dock button {
-  min-width: 62px;
+  flex: 1 1 0;
+  min-width: 0;
   height: 34px;
   border: none;
   border-radius: 999px;
   background: transparent;
   color: #a7a7a7;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  padding: 0 0.55rem;
+  padding: 0 0.35rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .v2Dock button.active {

@@ -48,8 +48,11 @@ type StitchCbtPageProps = {
   onSaveCheckin: () => Promise<void>
   onLoadDashboard: () => Promise<void>
   onGoAssessment: () => void
+  onGoBoard: () => void
   onGoMyPage: () => void
   onGoAccount: () => void
+  onGoAdmin: () => void
+  isAdmin: boolean
 }
 
 function buildTrendPath(rows: WeeklyDashboardRow[]): string {
@@ -96,8 +99,11 @@ export default function StitchCbtPage({
   onSaveCheckin,
   onLoadDashboard,
   onGoAssessment,
+  onGoBoard,
   onGoMyPage,
   onGoAccount,
+  onGoAdmin,
+  isAdmin,
 }: StitchCbtPageProps) {
   const rows = dashboard?.rows ?? []
   const trendPath = buildTrendPath(rows)
@@ -269,8 +275,10 @@ export default function StitchCbtPage({
       <footer className="v2Dock">
         <button type="button" onClick={onGoAssessment}>검사</button>
         <button type="button" className="active">채팅</button>
-        <button type="button" onClick={onGoMyPage}>마이페이지</button>
-        <button type="button" onClick={onGoAccount}>로그인</button>
+        <button type="button" onClick={onGoBoard}>게시판</button>
+        <button type="button" onClick={onGoMyPage}>My Page</button>
+        {isAdmin && <button type="button" onClick={onGoAdmin}>관리자</button>}
+        {!token && <button type="button" onClick={onGoAccount}>회원가입</button>}
       </footer>
 
       <p className="v2Message">{token ? message : `Guest mode • ${message}`}</p>

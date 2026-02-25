@@ -1,104 +1,293 @@
-.boardPage {
+.boardV2 {
+  width: min(980px, 96vw);
+  margin: 0 auto;
   display: grid;
   gap: 0.8rem;
 }
 
-.boardToolbar {
-  display: grid;
-  grid-template-columns: 1fr 180px auto auto;
-  gap: 0.55rem;
-}
-
-.boardLayout {
-  display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
-  gap: 0.75rem;
-}
-
-.boardList,
-.boardDetail {
-  border: 1px solid #dbe7eb;
-  border-radius: 12px;
-  background: #fbfdfe;
-  padding: 0.6rem;
-}
-
-.boardRow {
-  width: 100%;
-  background: #ffffff;
-  color: #0f172a;
-  border: 1px solid #dbe7eb;
-  text-align: left;
-  padding: 0.55rem;
-  margin-bottom: 0.45rem;
-}
-
-.boardRow.active {
-  border-color: #0f766e;
-  box-shadow: 0 0 0 1px #0f766e inset;
-}
-
-.boardRowTop {
+.boardV2Head {
   display: flex;
-  gap: 0.45rem;
+  justify-content: space-between;
+  gap: 0.8rem;
+  align-items: flex-start;
+}
+
+.boardV2Head h2 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.boardV2Head p {
+  margin: 0.35rem 0 0;
+  color: #8a949f;
+}
+
+.boardV2Controls {
+  display: flex;
+  gap: 0.4rem;
   align-items: center;
 }
 
-.noticeTag {
-  background: #fef3c7;
-  color: #92400e;
+.boardV2Controls input {
+  min-width: 220px;
   border-radius: 999px;
-  font-style: normal;
-  font-size: 0.75rem;
-  padding: 0.08rem 0.45rem;
+  background: #f2f4f6;
 }
 
-.boardMeta {
+.boardV2Controls select,
+.boardV2Controls button {
+  border-radius: 999px;
+}
+
+.boardNotice {
+  border: 1px solid #d9e7d5;
+  border-radius: 32px;
+  background: #edf6e9;
+  padding: 1rem 1.1rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.boardNotice .tag {
+  display: inline-flex;
+  border-radius: 999px;
+  background: #93ea75;
+  color: #205d12;
+  padding: 0.18rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  margin-bottom: 0.38rem;
+}
+
+.boardNotice strong {
   display: block;
-  margin-top: 0.18rem;
-  font-size: 0.77rem;
-  color: #64748b;
+  font-size: 1.2rem;
 }
 
-.boardContent {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: inherit;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 0.6rem;
-  margin: 0.55rem 0;
+.boardNotice p {
+  margin: 0.35rem 0 0;
+  color: #5f6f5b;
+}
+
+.boardNotice small {
+  color: #8a9586;
+}
+
+.boardNotice button {
+  border-radius: 999px;
+  background: transparent;
+  color: #2e4230;
+  border: 1px solid #b9ccb2;
+  min-height: 36px;
+  padding: 0 0.85rem;
+}
+
+.boardSortRow {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.boardSortRow button {
+  border-radius: 999px;
+  background: #f0f2f4;
+  color: #697684;
+  border: 1px solid #e2e8ee;
+  min-height: 32px;
+  padding: 0 0.8rem;
+}
+
+.boardSortRow button.active {
+  background: #fff;
+  color: #1f2d3d;
+}
+
+.boardListCard,
+.boardDetailCard,
+.boardEditorCard {
+  border: 1px solid #e2e7eb;
+  border-radius: 32px;
+  background: #f8fafc;
+  padding: 0.6rem 0.75rem;
+}
+
+.boardListRow {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #e4e9ee;
+  padding: 1rem 0.3rem;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.boardListRow.active {
+  background: #f1f6ff;
+}
+
+.boardListRow .left strong {
+  font-size: 1.01rem;
+}
+
+.boardListRow .left p {
+  margin: 0.3rem 0 0;
+  color: #8390a0;
+  font-size: 0.8rem;
+}
+
+.boardListRow .right {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: #8a98a8;
+  font-size: 0.85rem;
 }
 
 .boardPager {
+  padding: 0.75rem 0.1rem 0.5rem;
   display: flex;
-  align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  margin-top: 0.55rem;
+  gap: 0.55rem;
+  align-items: center;
 }
 
-.boardNoticeCheck {
+.boardDetailCard h3,
+.boardEditorCard h3 {
+  margin: 0.2rem 0 0.8rem;
+}
+
+.detailPost {
+  border: 1px solid #e3e8ee;
+  border-radius: 20px;
+  background: #fff;
+  padding: 0.8rem;
+}
+
+.detailPost .meta {
+  margin: 0.35rem 0 0.8rem;
+  color: #8d98a8;
+  font-size: 0.8rem;
+}
+
+.detailPost pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.postActions {
+  margin-top: 0.8rem;
   display: flex;
-  align-items: center;
   gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.postActions button {
+  min-height: 34px;
+  border-radius: 999px;
+  background: #f1f4f8;
+  border: 1px solid #e0e6ec;
+  color: #4e5c6f;
+}
+
+.postActions button.active {
+  background: #0f172a;
+  color: #fff;
+}
+
+.comments {
+  margin-top: 0.8rem;
+}
+
+.comments h4 {
+  margin: 0 0 0.5rem;
+}
+
+.comments ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.comments li {
+  border: 1px solid #e1e7ee;
+  border-radius: 14px;
+  background: #fff;
+  padding: 0.6rem;
+}
+
+.comments li span {
+  margin-left: 0.4rem;
+  color: #95a1b0;
+  font-size: 0.75rem;
+}
+
+.comments li p {
+  margin: 0.3rem 0 0;
+}
+
+.commentForm {
+  margin-top: 0.6rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4rem;
+}
+
+.commentForm input {
+  border-radius: 12px;
+  background: #fff;
+}
+
+.commentForm button {
+  border-radius: 12px;
+}
+
+.boardEditorCard .form {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.boardEditorCard textarea {
+  min-height: 140px;
+}
+
+.muted {
+  color: #8a98a7;
+}
+
+.boardMsg {
+  color: #4f5f72;
+  margin: 0;
 }
 
 @media (max-width: 900px) {
-  .boardToolbar {
-    grid-template-columns: 1fr;
+  .boardV2Head {
+    flex-direction: column;
   }
 
-  .boardLayout {
-    grid-template-columns: 1fr;
+  .boardV2Controls {
+    width: 100%;
+    flex-wrap: wrap;
   }
-}
 
+  .boardV2Controls input {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
 
-.adminReplyBox {
-  border: 1px solid #c7dbe3;
-  border-radius: 10px;
-  padding: 0.55rem;
-  background: #f5fafc;
+  .boardNotice {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .boardSortRow {
+    justify-content: flex-start;
+  }
 }

@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 import AdminPage from './pages/admin/AdminPage'
+import BoardPage from './pages/board/BoardPage'
 import StitchCbtPage from './pages/cbt/StitchCbtPage'
 import StitchAssessmentPage from './pages/assessment/StitchAssessmentPage'
 
-type PageKey = 'assessment' | 'cbt' | 'mypage' | 'admin' | 'account'
-type MyPageTab = 'dashboard' | 'profile'
+type PageKey = 'assessment' | 'cbt' | 'board' | 'mypage' | 'admin' | 'account'
+type AccountMode = 'login' | 'signup'
 type LikertValue = '' | '0' | '1' | '2' | '3'
 
 type UserOut = {
@@ -194,11 +195,13 @@ function buildPayload(assessment: AssessmentState): CheckPredictRequest {
 }
 
 function App() {
-  const [page, setPage] = useState<PageKey>('assessment')
-  const [myTab, setMyTab] = useState<MyPageTab>('dashboard')
+  const [page, setPage] = useState<PageKey>('account')
+  const [accountMode, setAccountMode] = useState<AccountMode>('login')
+  const [accountNotice, setAccountNotice] = useState('')
 
   const [token, setToken] = useState<string>(() => localStorage.getItem('access_token') ?? '')
   const [me, setMe] = useState<UserOut | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('Ready.')
@@ -227,6 +230,7 @@ function App() {
   const [profileNewEmail, setProfileNewEmail] = useState('')
   const [profileCurrentPw, setProfileCurrentPw] = useState('')
   const [profileNewPw, setProfileNewPw] = useState('')
+  const [showPasswordReset, setShowPasswordReset] = useState(false)
 
   const authHeaders = useMemo(
     () => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }),
@@ -241,11 +245,19 @@ function App() {
     if (!token) {
       setMe(null)
       setProfile(null)
+      setIsAdmin(false)
       return
     }
     void loadProfile()
     void loadMyProfile()
+    void loadAdminAccess()
   }, [token])
+
+  useEffect(() => {
+    if (page === 'mypage' && token && dashboard == null) {
+      void loadMyDashboard()
+    }
+  }, [page, token, dashboard])
 
   async function loadProfile() {
     try {
@@ -274,9 +286,19 @@ function App() {
     }
   }
 
+  async function loadAdminAccess() {
+    try {
+      const response = await fetch(`${API_BASE}/admin/summary`, { headers: authHeaders })
+      setIsAdmin(response.ok)
+    } catch {
+      setIsAdmin(false)
+    }
+  }
+
   async function handleSignup(event: FormEvent) {
     event.preventDefault()
     setLoading(true)
+    setAccountNotice('')
     setMessage('Creating account...')
     try {
       const response = await fetch(`${API_BASE}/auth/signup`, {
@@ -291,8 +313,11 @@ function App() {
       if (!response.ok) throw new Error(await extractApiError(response))
       const data = (await response.json()) as UserOut
       setMessage(`회원가입 완료: ${data.email}`)
+      setAccountNotice('회원가입이 완료되었습니다. 로그인해주세요.')
+      setAccountMode('login')
     } catch (error) {
       setMessage(`회원가입 오류: ${(error as Error).message}`)
+      setAccountNotice((error as Error).message)
     } finally {
       setLoading(false)
     }
@@ -301,6 +326,7 @@ function App() {
   async function handleLogin(event: FormEvent) {
     event.preventDefault()
     setLoading(true)
+    setAccountNotice('')
     setMessage('Signing in...')
     try {
       const response = await fetch(`${API_BASE}/auth/login`, {
@@ -308,22 +334,25 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: loginEmail, password: loginPassword }),
       })
-      if (!response.ok) throw new Error(await extractApiError(response))
+      if (!response.ok) {
+        const errorMessage = await extractApiError(response)
+        if (response.status === 401) {
+          throw new Error('회원정보가 일치하지 않습니다.')
+        }
+        throw new Error(errorMessage)
+      }
       const data = (await response.json()) as TokenResponse
       localStorage.setItem('access_token', data.access_token)
       setToken(data.access_token)
       setMessage(`로그인 완료. 토큰 만료 ${data.expires_in / 60}분`)
+      setAccountNotice('')
+      setPage('cbt')
     } catch (error) {
       setMessage(`로그인 오류: ${(error as Error).message}`)
+      setAccountNotice((error as Error).message)
     } finally {
       setLoading(false)
     }
-  }
-
-  function logout() {
-    localStorage.removeItem('access_token')
-    setToken('')
-    setMessage('로그아웃됨')
   }
 
   function setPhqAnswer(index: number, value: LikertValue) {
@@ -566,6 +595,11 @@ function App() {
     Number(assessment.context.social_support || 0) +
     Number(assessment.context.coping_skill || 0) +
     Number(assessment.context.motivation_for_change || 0)
+  const latestWeekly = dashboard?.rows?.length ? dashboard.rows[dashboard.rows.length - 1] : null
+  const diaryDays = dashboard?.rows?.length ?? 0
+  const stressPercent = latestWeekly ? Math.round(latestWeekly.symptom_composite_pred_0_100) : 12
+  const stressLabel = stressPercent <= 33 ? '낮음' : stressPercent <= 66 ? '중간' : '높음'
+  const calmMinutes = latestWeekly ? Math.max(30, Math.round((100 - latestWeekly.ins_week_pred_0_100) * 1.5)) : 120
 
   return (
     <main className={`page ${page === 'cbt' ? 'page-cbt' : 'page-app'}`}>
@@ -618,109 +652,207 @@ function App() {
           onSaveCheckin={handleSaveCbtCheckin}
           onLoadDashboard={loadMyDashboard}
           onGoAssessment={() => setPage('assessment')}
+          onGoBoard={() => setPage('board')}
           onGoMyPage={() => setPage('mypage')}
           onGoAccount={() => setPage('account')}
+          onGoAdmin={() => setPage('admin')}
+          isAdmin={isAdmin}
         />
       )}
 
       {page === 'mypage' && (
-        <section className="mypageLayout">
-          <aside className="panel mySidebar">
-            <h2>마이페이지 메뉴</h2>
-            <div className="sideMenu">
-              <button className={myTab === 'dashboard' ? '' : 'ghost'} onClick={() => setMyTab('dashboard')}>대시보드</button>
-              <button className={myTab === 'profile' ? '' : 'ghost'} onClick={() => setMyTab('profile')}>회원정보수정</button>
+        <section className="mpv2Wrap">
+          <header className="mpv2Head">
+            <div>
+              <h1>마이페이지</h1>
+              <p>개인 정보와 활동 리포트를 관리하세요.</p>
             </div>
-          </aside>
+            <div className="mpv2Mood">편안함 (Feeling Calm)</div>
+          </header>
 
-          {myTab === 'dashboard' && (
-            <article className="panel myMainPanel">
-              <h2>My Dashboard</h2>
-              <p className="small">로그인 사용자의 실제 입력(체크인/CBT/설문) 기반으로 계산합니다.</p>
-              <div className="actions"><button disabled={loading} onClick={() => void loadMyDashboard()}>내 대시보드 조회</button></div>
-              {dashboard && <p>최근 주차 수: {dashboard.rows.length}</p>}
-            </article>
-          )}
+          <div className="mpv2Grid">
+            <section className="mpv2Main">
+              <article className="mpv2Card">
+                <h2>대시보드</h2>
+                <div className="mpv2Stats">
+                  <div className="mpv2StatBox">
+                    <p className="k">최근 활동</p>
+                    <strong>{diaryDays}일 연속 일기 작성</strong>
+                    <span>활동 중</span>
+                  </div>
+                  <div className="mpv2StatBox">
+                    <p className="k">스트레스 지수</p>
+                    <strong>{stressLabel} ({stressPercent}%)</strong>
+                    <div className="mpv2MiniBar"><i style={{ width: `${Math.min(100, stressPercent)}%` }} /></div>
+                  </div>
+                  <div className="mpv2StatBox">
+                    <p className="k">마음 챙김 시간</p>
+                    <strong>총 {calmMinutes}분</strong>
+                    <span>이번 주 기준</span>
+                  </div>
+                </div>
+              </article>
 
-          {myTab === 'profile' && (
-            <article className="panel myMainPanel">
-              <h2>회원정보수정</h2>
-              <form onSubmit={handleProfileSave} className="form">
-                <label>
-                  닉네임
-                  <input value={profileNickname} onChange={(e) => setProfileNickname(e.target.value)} />
-                </label>
-                <label>
-                  전화번호
-                  <input value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)} placeholder="010-1234-5678" />
-                </label>
-                <label>
-                  새 이메일
-                  <input value={profileNewEmail} onChange={(e) => setProfileNewEmail(e.target.value)} />
-                </label>
-                <label>
-                  현재 비밀번호
-                  <input type="password" value={profileCurrentPw} onChange={(e) => setProfileCurrentPw(e.target.value)} />
-                </label>
-                <label>
-                  새 비밀번호
-                  <input type="password" value={profileNewPw} onChange={(e) => setProfileNewPw(e.target.value)} />
-                </label>
-                <button disabled={loading}>저장</button>
-              </form>
-              {profile && <p className="small">현재 이메일: {profile.email}</p>}
-            </article>
-          )}
+              <article className="mpv2Card mpv2Report">
+                <div className="mpv2ReportTop">
+                  <div>
+                    <h2>요약 리포트</h2>
+                    <p className="small">최근 심리 검사 결과 및 웰니스 데이터</p>
+                  </div>
+                  <button type="button" className="mpv2DarkBtn">PDF 다운로드</button>
+                </div>
+                <div className="mpv2ReportBody">
+                  <div className="mpv2Insight">
+                    <p className="label">정서적 안정감</p>
+                    <div className="mpv2Bars">
+                      <i />
+                      <i />
+                      <i />
+                      <i />
+                      <i className="on" />
+                    </div>
+                    <p className="quote">
+                      "최근 일주일 동안 정서적 상태를 잘 유지하고 계시네요.
+                      긍정적인 감정의 빈도가 지난달 대비 증가했습니다."
+                    </p>
+                  </div>
+                  <div className="mpv2GraphPlaceholder">
+                    <span>WELLNESS GRAPH</span>
+                  </div>
+                </div>
+              </article>
+            </section>
+
+            <aside className="mpv2Side">
+              <article className="mpv2Card mpv2Profile">
+                <h2>회원정보 수정</h2>
+                <form onSubmit={handleProfileSave} className="form mpv2ProfileForm">
+                  <label>
+                    닉네임
+                    <input value={profileNickname} onChange={(e) => setProfileNickname(e.target.value)} />
+                  </label>
+                  <label>
+                    이메일 주소(변경 시 입력)
+                    <input
+                      value={profileNewEmail}
+                      onChange={(e) => setProfileNewEmail(e.target.value)}
+                      placeholder={profile?.email ?? 'you@example.com'}
+                    />
+                  </label>
+                  <label>
+                    전화번호
+                    <input value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)} placeholder="010-1234-5678" />
+                  </label>
+
+                  {showPasswordReset && (
+                    <>
+                      <label>
+                        현재 비밀번호
+                        <input type="password" value={profileCurrentPw} onChange={(e) => setProfileCurrentPw(e.target.value)} />
+                      </label>
+                      <label>
+                        새 비밀번호
+                        <input type="password" value={profileNewPw} onChange={(e) => setProfileNewPw(e.target.value)} />
+                      </label>
+                    </>
+                  )}
+
+                  <button className="mpv2DarkBtn" disabled={loading}>변경사항 저장하기</button>
+                  <button
+                    type="button"
+                    className="mpv2LightBtn"
+                    onClick={() => setShowPasswordReset((prev) => !prev)}
+                  >
+                    {showPasswordReset ? '비밀번호 재설정 닫기' : '비밀번호 재설정'}
+                  </button>
+                </form>
+              </article>
+            </aside>
+          </div>
         </section>
       )}
 
       {page === 'account' && (
-        <section className="grid">
-          <article className="panel">
-            <h2>회원가입</h2>
-            <form onSubmit={handleSignup} className="form">
-              <label>
-                Email
-                <input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} required />
-              </label>
-              <label>
-                Password
-                <input type="password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} minLength={8} required />
-              </label>
-              <label>
-                Nickname
-                <input value={signupNickname} onChange={(e) => setSignupNickname(e.target.value)} required />
-              </label>
-              <button disabled={loading}>Create Account</button>
-            </form>
-          </article>
+        <section className="accountShell">
+          <article className="accountCard">
+            <div className="accountLogo">✦</div>
+            <h2>{accountMode === 'login' ? 'MonggleAI' : 'Create Account'}</h2>
+            <p className="accountSub">{accountMode === 'login' ? 'YOUR MINDFUL SANCTUARY' : 'JOIN THE CAFE COMMUNITY'}</p>
 
-          <article className="panel">
-            <h2>로그인</h2>
-            <form onSubmit={handleLogin} className="form">
-              <label>
-                Email
-                <input value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required />
-              </label>
-              <label>
-                Password
-                <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} minLength={8} required />
-              </label>
-              <div className="actions">
-                <button disabled={loading}>Login</button>
-                <button type="button" className="ghost" onClick={logout}>Logout</button>
-              </div>
-            </form>
+            {accountMode === 'login' ? (
+              <form onSubmit={handleLogin} className="form accountForm">
+                <label>
+                  EMAIL ADDRESS
+                  <input value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required placeholder="hello@monggle.ai" />
+                </label>
+                <label>
+                  PASSWORD
+                  <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} minLength={8} required />
+                </label>
+                <button className="accountPrimary" disabled={loading}>Login</button>
+                {accountNotice && accountMode === 'login' && <p className="small">{accountNotice}</p>}
+              </form>
+            ) : (
+              <form onSubmit={handleSignup} className="form accountForm">
+                <label>
+                  EMAIL ADDRESS
+                  <input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} required placeholder="you@example.com" />
+                </label>
+                <label>
+                  PASSWORD
+                  <input type="password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} minLength={8} required />
+                </label>
+                <label>
+                  NICKNAME
+                  <input value={signupNickname} onChange={(e) => setSignupNickname(e.target.value)} required placeholder="Monggle User" />
+                </label>
+                <button className="accountPrimary" disabled={loading}>Create Account</button>
+                {accountNotice && accountMode === 'signup' && <p className="small">{accountNotice}</p>}
+              </form>
+            )}
+
+            <div className="accountDivider"><span>OR CONTINUE WITH</span></div>
+            <button
+              type="button"
+              className="accountGhost"
+              onClick={() => setAccountMode(accountMode === 'login' ? 'signup' : 'login')}
+            >
+              {accountMode === 'login' ? '회원가입하기' : '로그인하기'}
+            </button>
+
+            <p className="accountSwitch">
+              {accountMode === 'login' ? (
+                <>
+                  New to the cafe?{' '}
+                  <button type="button" className="accountLink" onClick={() => setAccountMode('signup')}>
+                    회원가입하기
+                  </button>
+                </>
+              ) : (
+                <>
+                  Already have an account?{' '}
+                  <button type="button" className="accountLink" onClick={() => setAccountMode('login')}>
+                    Login
+                  </button>
+                </>
+              )}
+            </p>
             <p className="mono">API: {API_BASE}</p>
             {me && <p className="badge">Signed in as {me.nickname} ({me.email})</p>}
           </article>
         </section>
       )}
 
+      {page === 'board' && (
+        <BoardPage token={token} myUserId={me?.id ?? null} isAdmin={isAdmin} />
+      )}
+
       {page === 'admin' && (
         <section className="panel">
           {!token ? (
             <p>로그인을 먼저 해주세요.</p>
+          ) : !isAdmin ? (
+            <p>관리자 계정이 아닙니다.</p>
           ) : (
             <AdminPage token={token} />
           )}
@@ -729,11 +861,12 @@ function App() {
 
       {page !== 'cbt' && (
         <footer className="globalDock">
+          {!token && <button type="button" className={page === 'account' ? 'active' : ''} onClick={() => setPage('account')}>회원가입</button>}
           <button type="button" className={page === 'assessment' ? 'active' : ''} onClick={() => setPage('assessment')}>검사</button>
           <button type="button" onClick={() => setPage('cbt')}>채팅</button>
-          <button type="button" className={page === 'mypage' ? 'active' : ''} onClick={() => setPage('mypage')}>마이페이지</button>
-          <button type="button" className={page === 'admin' ? 'active' : ''} onClick={() => setPage('admin')}>관리자</button>
-          <button type="button" className={page === 'account' ? 'active' : ''} onClick={() => setPage('account')}>로그인</button>
+          <button type="button" className={page === 'board' ? 'active' : ''} onClick={() => setPage('board')}>게시판</button>
+          <button type="button" className={page === 'mypage' ? 'active' : ''} onClick={() => setPage('mypage')}>My Page</button>
+          {isAdmin && <button type="button" className={page === 'admin' ? 'active' : ''} onClick={() => setPage('admin')}>관리자</button>}
         </footer>
       )}
 

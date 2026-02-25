@@ -205,7 +205,7 @@ button:disabled {
 
 .globalDock {
   margin: 0.7rem auto 0;
-  width: min(420px, 92vw);
+  width: min(680px, 96vw);
   min-height: 64px;
   border: 1px solid #dddddd;
   border-radius: 40px;
@@ -213,25 +213,139 @@ button:disabled {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.3rem 0.5rem;
+  gap: 0.35rem;
+  padding: 0.3rem 0.45rem;
 }
 
 .globalDock button {
-  min-width: 68px;
+  flex: 1 1 0;
+  min-width: 0;
   height: 34px;
   border: none;
   border-radius: 999px;
   background: transparent;
   color: #9a9a9a;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  padding: 0 0.55rem;
+  padding: 0 0.35rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .globalDock button.active {
   background: #050505;
   color: #8ef07d;
+}
+
+.accountShell {
+  margin-top: 1rem;
+  display: grid;
+  place-items: center;
+}
+
+.accountCard {
+  width: min(420px, 92vw);
+  border: 1.4px solid #686868;
+  border-radius: 28px;
+  background: #f5f5f5;
+  padding: 1.1rem 1.1rem 1rem;
+  text-align: center;
+}
+
+.accountLogo {
+  width: 42px;
+  height: 42px;
+  margin: 0 auto 0.5rem;
+  border-radius: 12px;
+  background: #090909;
+  color: #9ef283;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+}
+
+.accountCard h2 {
+  margin: 0;
+  font-size: 1.8rem;
+  font-size: 1.5rem;
+  font-size: 1.28rem;
+}
+
+.accountSub {
+  margin: 0.25rem 0 1rem;
+  color: #ababab;
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.accountForm {
+  text-align: left;
+}
+
+.accountForm label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #9a9a9a;
+}
+
+.accountForm input {
+  border: 1px solid #e0e0e0;
+  border-radius: 18px;
+  background: #f3f3f3;
+  min-height: 42px;
+}
+
+.accountPrimary {
+  margin-top: 0.2rem;
+  border: none;
+  border-radius: 18px;
+  background: #a5ed93;
+  color: #111;
+  min-height: 42px;
+}
+
+.accountDivider {
+  margin: 0.9rem 0 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #bcbcbc;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.accountDivider::before,
+.accountDivider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e7e7e7;
+}
+
+.accountGhost {
+  width: 100%;
+  border: 1px solid #dfdfdf;
+  border-radius: 18px;
+  background: #f6f6f6;
+  color: #444;
+  min-height: 42px;
+}
+
+.accountSwitch {
+  margin: 0.85rem 0 0;
+  color: #a2a2a2;
+  font-size: 0.86rem;
+}
+
+.accountLink {
+  border: none;
+  background: transparent;
+  color: #1d1d1d;
+  font-weight: 700;
+  padding: 0;
 }
 
 @media (max-width: 920px) {
@@ -277,4 +391,206 @@ button:disabled {
   padding-right: 0.3rem;
   display: grid;
   gap: 0.65rem;
+}
+
+.mpv2Wrap {
+  margin-top: 1.1rem;
+}
+
+.mpv2Head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.mpv2Head h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.mpv2Head p {
+  margin: 0.35rem 0 0;
+  color: #8a8a8a;
+}
+
+.mpv2Mood {
+  background: #f2f3f4;
+  border: 1px solid #e4e4e4;
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.86rem;
+  color: #313131;
+}
+
+.mpv2Grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(290px, 1fr);
+  gap: 1rem;
+}
+
+.mpv2Card {
+  background: #f6f6f6;
+  border: 1px solid #dddddd;
+  border-radius: 26px;
+  padding: 1.25rem;
+}
+
+.mpv2Main {
+  display: grid;
+  gap: 1rem;
+}
+
+.mpv2Card h2 {
+  margin: 0 0 0.85rem;
+}
+
+.mpv2Stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.mpv2StatBox {
+  background: #efeff0;
+  border: 1px solid #e6e6e6;
+  border-radius: 22px;
+  padding: 0.85rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.mpv2StatBox .k {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #9d9d9d;
+}
+
+.mpv2StatBox strong {
+  font-size: 1.05rem;
+}
+
+.mpv2StatBox span {
+  font-size: 0.8rem;
+  color: #9a9a9a;
+}
+
+.mpv2MiniBar {
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  background: #e2e2e2;
+  overflow: hidden;
+}
+
+.mpv2MiniBar i {
+  display: block;
+  height: 100%;
+  background: #a4ec90;
+}
+
+.mpv2ReportTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.mpv2DarkBtn,
+.mpv2LightBtn {
+  border-radius: 14px;
+  min-height: 44px;
+  font-weight: 700;
+}
+
+.mpv2DarkBtn {
+  background: #0a0a0a;
+  color: #fff;
+}
+
+.mpv2LightBtn {
+  background: #efefef;
+  color: #242424;
+  border: 1px solid #dadada;
+}
+
+.mpv2ReportBody {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 0.95fr);
+  gap: 0.85rem;
+}
+
+.mpv2Insight .label {
+  margin: 0;
+  font-weight: 700;
+}
+
+.mpv2Bars {
+  margin: 0.7rem 0;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.mpv2Bars i {
+  width: 30px;
+  height: 20px;
+  border-radius: 8px;
+  background: #ececef;
+}
+
+.mpv2Bars i.on {
+  background: #050505;
+}
+
+.mpv2Insight .quote {
+  margin: 0;
+  background: #efeff1;
+  border-radius: 18px;
+  padding: 0.85rem;
+  color: #424242;
+  line-height: 1.45;
+}
+
+.mpv2GraphPlaceholder {
+  border: 1px dashed #dbdbdb;
+  border-radius: 26px;
+  background: #ededed;
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  color: #9b9b9b;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.mpv2ProfileForm {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.mpv2ProfileForm label {
+  gap: 0.3rem;
+}
+
+.mpv2ProfileForm input {
+  min-height: 42px;
+  border-radius: 14px;
+  background: #efefef;
+  border: 1px solid #e3e3e3;
+}
+
+@media (max-width: 980px) {
+  .mpv2Grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mpv2Stats {
+    grid-template-columns: 1fr;
+  }
+
+  .mpv2ReportBody {
+    grid-template-columns: 1fr;
+  }
 }

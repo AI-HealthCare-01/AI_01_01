@@ -4,9 +4,10 @@ import './App.css'
 import AdminPage from './pages/admin/AdminPage'
 import BoardPage from './pages/board/BoardPage'
 
-type PageKey = 'assessment' | 'cbt' | 'board' | 'mypage' | 'admin' | 'account'
-type MyPageTab = 'dashboard' | 'profile'
-type CareTab = 'checkin' | 'diary'
+type PageKey = 'landing' | 'account' | 'checkin' | 'diary' | 'assessment' | 'board' | 'mypage' | 'admin'
+type AccountMode = 'login' | 'signup' | 'find' | 'reset'
+type MyPageTab = 'dashboard' | 'profile' | 'report'
+type DashboardTab = 'today' | 'risk' | 'weekly' | 'monthly'
 type LikertValue = '' | '0' | '1' | '2' | '3'
 
 type UserOut = {
@@ -44,18 +45,15 @@ type CheckPredictResponse = {
 type ProfileOut = {
   email: string
   nickname: string
+  phone_number?: string | null
 }
 
-type PasswordVerifyResponse = {
-  matched: boolean
-}
+type PasswordVerifyResponse = { matched: boolean }
+type RecoveryQuestionResponse = { question: string }
+type RecoveryVerifyResponse = { matched: boolean }
 
 type ChatRole = 'user' | 'assistant'
-
-type ChatTurn = {
-  role: ChatRole
-  content: string
-}
+type ChatTurn = { role: ChatRole; content: string }
 
 type ChatResponse = {
   reply: string
@@ -105,6 +103,29 @@ type PHQ9AssessmentSummary = {
   created_at: string
 }
 
+type ClinicalReport = {
+  period_start: string
+  period_end: string
+  generated_at: string
+  summary_text: string
+  risk_flags: Array<{ code: string; title: string; detail: string }>
+  score_summary: {
+    composite_latest: number | null
+    dep_latest: number | null
+    anx_latest: number | null
+    ins_latest: number | null
+    composite_delta: number | null
+  }
+  behavior_summary: {
+    avg_sleep_hours: number | null
+    avg_mood_score: number | null
+    checkin_days: number
+    cbt_sessions: number
+    distortion_total_mean: number | null
+  }
+  clinician_note: string
+}
+
 type AssessmentState = {
   phq9: LikertValue[]
   gad7: LikertValue[]
@@ -118,14 +139,36 @@ type AssessmentState = {
   }
 }
 
+type LifestyleCheckinState = {
+  mood_score: string
+  sleep_hours: string
+  steps_today: string
+  exercise_minutes_today: string
+  daylight_minutes_today: string
+  screen_time_min_today: string
+  meal_regularity_0_10_today: string
+  caffeine_after_2pm_flag_today: 'yes' | 'no'
+  alcohol_flag_today: 'yes' | 'no'
+  sleep_onset_latency_min_today: string
+  awakenings_count_today: string
+  sleep_quality_0_10_today: string
+}
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8001'
 
-const LIKERT_OPTIONS: Array<{ value: LikertValue; label: string }> = [
-  { value: '', label: '선택해주세요' },
-  { value: '0', label: '전혀 그렇지 않았어요' },
-  { value: '1', label: '가끔 그랬어요' },
-  { value: '2', label: '자주 그랬어요' },
-  { value: '3', label: '거의 대부분 그랬어요' },
+const LIKERT_OPTIONS: Array<{ value: LikertValue; label: string; desc: string }> = [
+  { value: '', label: '선택해주세요', desc: '' },
+  { value: '0', label: '전혀 그렇지 않았어요', desc: '전혀 없음' },
+  { value: '1', label: '가끔 그랬어요', desc: '며칠 정도' },
+  { value: '2', label: '자주 그랬어요', desc: '절반 이상' },
+  { value: '3', label: '거의 대부분 그랬어요', desc: '거의 매일' },
+]
+
+const SECURITY_QUESTIONS = [
+  '가장 기억에 남는 어린 시절 별명은?',
+  '가장 좋아했던 초등학교 선생님 성함은?',
+  '처음 키운 반려동물 이름은?',
+  '내가 가장 좋아하는 음식은?',
 ]
 
 const PHQ9_QUESTIONS = [
@@ -173,6 +216,21 @@ const defaultAssessment: AssessmentState = {
   },
 }
 
+const defaultCheckin: LifestyleCheckinState = {
+  mood_score: '',
+  sleep_hours: '',
+  steps_today: '',
+  exercise_minutes_today: '',
+  daylight_minutes_today: '',
+  screen_time_min_today: '',
+  meal_regularity_0_10_today: '',
+  caffeine_after_2pm_flag_today: 'no',
+  alcohol_flag_today: 'no',
+  sleep_onset_latency_min_today: '',
+  awakenings_count_today: '',
+  sleep_quality_0_10_today: '',
+}
+
 function sumLikert(values: LikertValue[]): number {
   return values.reduce((acc, v) => acc + Number(v || 0), 0)
 }
@@ -185,15 +243,10 @@ function severityToKorean(level: number): string {
   return '매우 높은 수준'
 }
 
-function riskBand(score: number): string {
-  if (score >= 75) return '고위험'
-  if (score >= 50) return '중위험'
-  return '안정'
-}
-
-function deltaText(current: number, prev?: number): string {
+function formatDelta(current: number, prev?: number): string {
   if (prev == null) return '-'
-  return `${(current - prev).toFixed(1)}`
+  const d = current - prev
+  return `${d >= 0 ? '+' : ''}${d.toFixed(1)}`
 }
 
 async function extractApiError(response: Response): Promise<string> {
@@ -204,6 +257,44 @@ async function extractApiError(response: Response): Promise<string> {
     // ignore
   }
   return `HTTP ${response.status}`
+}
+
+
+function MiniTrendChart({ values, color }: { values: number[]; color: string }) {
+  if (!values.length) return <p className="small">데이터가 없습니다.</p>
+  const max = Math.max(...values, 1)
+  const min = Math.min(...values, 0)
+  const range = Math.max(1, max - min)
+  const points = values
+    .map((v, i) => {
+      const x = (i / Math.max(1, values.length - 1)) * 100
+      const y = 100 - (((v - min) / range) * 100)
+      return `${x},${y}`
+    })
+    .join(' ')
+  return (
+    <svg viewBox="0 0 100 100" width="100%" height={120} role="img" aria-label="trend chart">
+      <polyline fill="none" stroke={color} strokeWidth="3" points={points} />
+    </svg>
+  )
+}
+
+function MiniBarChart({ labels, values, color }: { labels: string[]; values: number[]; color: string }) {
+  if (!values.length) return <p className="small">데이터가 없습니다.</p>
+  const max = Math.max(...values, 1)
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      {values.map((v, i) => (
+        <div key={`${labels[i]}-${i}`} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 60px', gap: 8, alignItems: 'center' }}>
+          <span className="small">{labels[i]}</span>
+          <div style={{ background: '#e5eef1', borderRadius: 8, height: 10 }}>
+            <div style={{ width: `${Math.max(4, (v / max) * 100)}%`, background: color, height: '100%', borderRadius: 8 }} />
+          </div>
+          <strong>{v.toFixed(1)}</strong>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function buildPayload(assessment: AssessmentState): CheckPredictRequest {
@@ -234,9 +325,10 @@ function buildPayload(assessment: AssessmentState): CheckPredictRequest {
 }
 
 function App() {
-  const [page, setPage] = useState<PageKey>('account')
+  const [page, setPage] = useState<PageKey>('landing')
+  const [accountMode, setAccountMode] = useState<AccountMode>('login')
   const [myTab, setMyTab] = useState<MyPageTab>('dashboard')
-  const [careTab, setCareTab] = useState<CareTab>('checkin')
+  const [dashboardTab, setDashboardTab] = useState<DashboardTab>('today')
 
   const [token, setToken] = useState<string>(() => localStorage.getItem('access_token') ?? '')
   const [me, setMe] = useState<UserOut | null>(null)
@@ -245,16 +337,27 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('Ready.')
 
-  const [signupEmail, setSignupEmail] = useState('')
-  const [signupPassword, setSignupPassword] = useState('')
-  const [signupNickname, setSignupNickname] = useState('')
-  const [showSignupForm, setShowSignupForm] = useState(false)
-
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
 
+  const [signupEmail, setSignupEmail] = useState('')
+  const [signupPassword, setSignupPassword] = useState('')
+  const [signupPasswordConfirm, setSignupPasswordConfirm] = useState('')
+  const [signupNickname, setSignupNickname] = useState('')
+  const [signupSecurityQuestion, setSignupSecurityQuestion] = useState(SECURITY_QUESTIONS[0])
+  const [signupSecurityAnswer, setSignupSecurityAnswer] = useState('')
+
+  const [recoveryEmail, setRecoveryEmail] = useState('')
+  const [recoveryQuestion, setRecoveryQuestion] = useState('')
+  const [recoveryAnswer, setRecoveryAnswer] = useState('')
+  const [recoveryVerified, setRecoveryVerified] = useState(false)
+  const [resetNewPassword, setResetNewPassword] = useState('')
+  const [resetNewPasswordConfirm, setResetNewPasswordConfirm] = useState('')
+
   const [assessment, setAssessment] = useState<AssessmentState>(defaultAssessment)
   const [checkPrediction, setCheckPrediction] = useState<CheckPredictResponse | null>(null)
+
+  const [checkin, setCheckin] = useState<LifestyleCheckinState>(defaultCheckin)
 
   const [chatMessage, setChatMessage] = useState('')
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([])
@@ -262,40 +365,55 @@ function App() {
   const [activeChallenge, setActiveChallenge] = useState('')
   const [challengePhase, setChallengePhase] = useState<'start' | 'continue' | 'reflect'>('continue')
   const [challengeStatus, setChallengeStatus] = useState<Record<string, boolean>>({})
-  const [cbtCheckinMood, setCbtCheckinMood] = useState('')
-  const [cbtCheckinSleep, setCbtCheckinSleep] = useState('')
-  const [checkinExerciseMinutes, setCheckinExerciseMinutes] = useState('')
-  const [checkinStressLevel, setCheckinStressLevel] = useState<'none' | 'mild' | 'high'>('none')
-  const [checkinNote, setCheckinNote] = useState('')
+  const [recommendedChallenges, setRecommendedChallenges] = useState<string[]>([])
+  const [boardFocusPostId, setBoardFocusPostId] = useState<string | null>(null)
 
   const [dashboard, setDashboard] = useState<WeeklyDashboardResponse | null>(null)
-  const [phqHistory, setPhqHistory] = useState<PHQ9AssessmentSummary[]>([])
+  const [, setPhqHistory] = useState<PHQ9AssessmentSummary[]>([])
+  const [reportStartDate, setReportStartDate] = useState(() => new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))
+  const [reportEndDate, setReportEndDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [clinicalReport, setClinicalReport] = useState<ClinicalReport | null>(null)
 
   const [profile, setProfile] = useState<ProfileOut | null>(null)
   const [profileNickname, setProfileNickname] = useState('')
   const [profileCurrentPw, setProfileCurrentPw] = useState('')
   const [profileNewPw, setProfileNewPw] = useState('')
-  const [profilePanel, setProfilePanel] = useState<'none' | 'nickname' | 'password'>('none')
+  const [profileNewPwConfirm, setProfileNewPwConfirm] = useState('')
   const [passwordVerified, setPasswordVerified] = useState(false)
 
-  const authHeaders = useMemo(
-    () => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }),
-    [token],
-  )
+  const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }), [token])
 
   useEffect(() => {
     if (!token) {
       setMe(null)
       setProfile(null)
-      setPhqHistory([])
       setIsAdmin(false)
+      setPage('landing')
       return
     }
     void loadProfile()
     void loadMyProfile()
+    void loadMyDashboard()
     void loadPhqHistory()
     void loadAdminAccess()
+    setPage('checkin')
   }, [token])
+
+  useEffect(() => {
+    if (!chatResult) return
+    setChallengeStatus((prev) => {
+      const next = { ...prev }
+      for (const c of chatResult.suggested_challenges) {
+        if (next[c] == null) next[c] = false
+      }
+      return next
+    })
+  }, [chatResult])
+
+  useEffect(() => {
+    if (!token || page !== 'diary') return
+    void loadChallengeRecommendations()
+  }, [token, page])
 
   async function loadAdminAccess() {
     try {
@@ -306,25 +424,13 @@ function App() {
     }
   }
 
-  useEffect(() => {
-    if (!chatResult) return
-    setChallengeStatus((prev) => {
-      const next = { ...prev }
-      for (const challenge of chatResult.suggested_challenges) {
-        if (next[challenge] == null) next[challenge] = false
-      }
-      return next
-    })
-  }, [chatResult])
-
   async function loadProfile() {
     try {
       const response = await fetch(`${API_BASE}/auth/me`, { headers: authHeaders })
       if (!response.ok) throw new Error(await extractApiError(response))
-      const data = (await response.json()) as UserOut
-      setMe(data)
+      setMe((await response.json()) as UserOut)
     } catch (error) {
-      setMessage(`Profile error: ${(error as Error).message}`)
+      setMessage(`프로필 조회 오류: ${(error as Error).message}`)
     }
   }
 
@@ -337,45 +443,84 @@ function App() {
       setProfileNickname(data.nickname)
       setProfileCurrentPw('')
       setProfileNewPw('')
-      setProfilePanel('none')
+      setProfileNewPwConfirm('')
       setPasswordVerified(false)
     } catch (error) {
-      setMessage(`MyPage profile load error: ${(error as Error).message}`)
+      setMessage(`회원정보 조회 오류: ${(error as Error).message}`)
     }
   }
 
-  async function handleSignup(event: FormEvent) {
-    event.preventDefault()
-    setLoading(true)
-    setMessage('Creating account...')
+  async function loadPhqHistory() {
+    if (!token) return
     try {
-      const response = await fetch(`${API_BASE}/auth/signup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: signupEmail,
-          password: signupPassword,
-          nickname: signupNickname,
-        }),
-      })
+      const response = await fetch(`${API_BASE}/assessments/phq9`, { headers: authHeaders })
       if (!response.ok) throw new Error(await extractApiError(response))
-      await response.json()
-      setMessage('계정이 생성되었습니다.')
-      setShowSignupForm(false)
-      setSignupEmail('')
-      setSignupPassword('')
-      setSignupNickname('')
+      const data = (await response.json()) as PHQ9AssessmentSummary[]
+      setPhqHistory(data)
+      if (data.length === 0) {
+        setPage('assessment')
+        setMessage('첫 로그인 후에는 종합심리검사를 먼저 1회 진행해주세요.')
+      }
     } catch (error) {
-      setMessage(`회원가입 오류: ${(error as Error).message}`)
+      setMessage(`검사 이력 조회 오류: ${(error as Error).message}`)
+    }
+  }
+
+  async function loadChallengeRecommendations() {
+    if (!token) return
+    try {
+      const response = await fetch(`${API_BASE}/chat/challenges/recommend`, { headers: authHeaders })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      const data = (await response.json()) as { suggested_challenges: string[] }
+      setRecommendedChallenges(data.suggested_challenges ?? [])
+      setChallengeStatus((prev) => {
+        const next = { ...prev }
+        for (const c of data.suggested_challenges ?? []) {
+          if (next[c] == null) next[c] = false
+        }
+        return next
+      })
+    } catch {
+      setRecommendedChallenges([])
+    }
+  }
+  async function loadMyDashboard() {
+    if (!token) return
+    try {
+      const response = await fetch(`${API_BASE}/ai/nowcast/dashboard/me`, { headers: authHeaders })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      setDashboard((await response.json()) as WeeklyDashboardResponse)
+    } catch (error) {
+      setMessage(`대시보드 조회 오류: ${(error as Error).message}`)
+    }
+  }
+
+  async function handleGenerateClinicalReport() {
+    if (!token) {
+      setMessage('로그인 후 리포트를 생성할 수 있습니다.')
+      return
+    }
+    if (!reportStartDate || !reportEndDate) {
+      setMessage('리포트 기간을 선택해주세요.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const qs = new URLSearchParams({ start_date: reportStartDate, end_date: reportEndDate })
+      const response = await fetch(`${API_BASE}/reports/clinical/me?${qs.toString()}`, { headers: authHeaders })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      setClinicalReport((await response.json()) as ClinicalReport)
+      setMessage('의료진 참고용 요약 리포트를 생성했습니다.')
+    } catch (error) {
+      setMessage(`리포트 생성 오류: ${(error as Error).message}`)
     } finally {
       setLoading(false)
     }
   }
-
   async function handleLogin(event: FormEvent) {
     event.preventDefault()
     setLoading(true)
-    setMessage('Signing in...')
     try {
       const response = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
@@ -386,9 +531,122 @@ function App() {
       const data = (await response.json()) as TokenResponse
       localStorage.setItem('access_token', data.access_token)
       setToken(data.access_token)
-      setMessage(`로그인 완료. 토큰 만료 ${data.expires_in / 60}분`)
+      setMessage('로그인 성공')
     } catch (error) {
       setMessage(`로그인 오류: ${(error as Error).message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleSignup(event: FormEvent) {
+    event.preventDefault()
+    if (signupPassword !== signupPasswordConfirm) {
+      setMessage('비밀번호 확인 값이 일치하지 않습니다.')
+      return
+    }
+    if (!signupSecurityAnswer.trim()) {
+      setMessage('보안 질문 답을 입력해주세요.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_BASE}/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: signupEmail,
+          password: signupPassword,
+          nickname: signupNickname,
+          security_question: signupSecurityQuestion,
+          security_answer: signupSecurityAnswer,
+        }),
+      })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      setMessage('회원가입 완료. 로그인 후 종합심리검사를 1회 진행해주세요.')
+      setAccountMode('login')
+    } catch (error) {
+      setMessage(`회원가입 오류: ${(error as Error).message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleRequestRecoveryQuestion(event: FormEvent) {
+    event.preventDefault()
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_BASE}/auth/password-recovery/question`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: recoveryEmail }),
+      })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      const data = (await response.json()) as RecoveryQuestionResponse
+      setRecoveryQuestion(data.question)
+      setMessage('보안 질문을 확인해주세요.')
+    } catch (error) {
+      setMessage(`비밀번호 찾기 오류: ${(error as Error).message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleVerifyRecoveryAnswer(event: FormEvent) {
+    event.preventDefault()
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_BASE}/auth/password-recovery/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: recoveryEmail, security_answer: recoveryAnswer }),
+      })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      const data = (await response.json()) as RecoveryVerifyResponse
+      setRecoveryVerified(data.matched)
+      setAccountMode('reset')
+      setMessage('답변 확인 완료. 새 비밀번호를 입력해주세요.')
+    } catch (error) {
+      setMessage(`답변 확인 오류: ${(error as Error).message}`)
+      setRecoveryVerified(false)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleResetPassword(event: FormEvent) {
+    event.preventDefault()
+    if (!recoveryVerified) {
+      setMessage('보안 질문 답변 확인을 먼저 진행해주세요.')
+      return
+    }
+    if (resetNewPassword !== resetNewPasswordConfirm) {
+      setMessage('새 비밀번호 확인 값이 일치하지 않습니다.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_BASE}/auth/password-recovery/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: recoveryEmail,
+          security_answer: recoveryAnswer,
+          new_password: resetNewPassword,
+        }),
+      })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      setMessage('비밀번호가 변경되었습니다. 로그인해주세요.')
+      setAccountMode('login')
+      setRecoveryQuestion('')
+      setRecoveryAnswer('')
+      setRecoveryVerified(false)
+      setResetNewPassword('')
+      setResetNewPasswordConfirm('')
+    } catch (error) {
+      setMessage(`비밀번호 변경 오류: ${(error as Error).message}`)
     } finally {
       setLoading(false)
     }
@@ -397,7 +655,7 @@ function App() {
   function logout() {
     localStorage.removeItem('access_token')
     setToken('')
-    setMessage('로그아웃됨')
+    setMessage('로그아웃되었습니다.')
   }
 
   function setPhqAnswer(index: number, value: LikertValue) {
@@ -438,14 +696,13 @@ function App() {
 
   async function handleSurveySubmit(event: FormEvent) {
     event.preventDefault()
-    const validationError = validateAssessment()
-    if (validationError) {
-      setMessage(validationError)
+    const err = validateAssessment()
+    if (err) {
+      setMessage(err)
       return
     }
 
     setLoading(true)
-    setMessage('설문 분석 중...')
     try {
       const response = await fetch(`${API_BASE}/ai/check/predict`, {
         method: 'POST',
@@ -457,31 +714,83 @@ function App() {
       setCheckPrediction(data)
 
       if (token) {
-        const answers = {
-          q1: Number(assessment.phq9[0]),
-          q2: Number(assessment.phq9[1]),
-          q3: Number(assessment.phq9[2]),
-          q4: Number(assessment.phq9[3]),
-          q5: Number(assessment.phq9[4]),
-          q6: Number(assessment.phq9[5]),
-          q7: Number(assessment.phq9[6]),
-          q8: Number(assessment.phq9[7]),
-          q9: Number(assessment.phq9[8]),
-        }
+        const answers = Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`q${i + 1}`, Number(assessment.phq9[i])]))
         const saveRes = await fetch(`${API_BASE}/assessments/phq9`, {
           method: 'POST',
           headers: authHeaders,
           body: JSON.stringify({ answers }),
         })
         if (!saveRes.ok) throw new Error(await extractApiError(saveRes))
-        await saveRes.json()
-        await loadMyDashboard()
         await loadPhqHistory()
+        await loadMyDashboard()
       }
-
-      setMessage('검사 결과가 생성되었습니다. 대시보드에 즉시 반영됩니다.')
+      setMessage('검사 결과를 저장했습니다.')
     } catch (error) {
       setMessage(`검사 오류: ${(error as Error).message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleCheckinInput(key: keyof LifestyleCheckinState, value: string) {
+    setCheckin((prev) => ({ ...prev, [key]: value }))
+  }
+
+  async function handleCheckinSubmit() {
+    if (!token) {
+      setMessage('로그인 후 체크인할 수 있습니다.')
+      return
+    }
+    if (!checkin.mood_score) {
+      setMessage('오늘의 기분 점수를 입력해주세요.')
+      return
+    }
+
+    const mood = Number(checkin.mood_score)
+    if (Number.isNaN(mood) || mood < 1 || mood > 10) {
+      setMessage('기분 점수는 1~10 범위여야 합니다.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_BASE}/checkins`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          mood_score: mood,
+          sleep_hours: checkin.sleep_hours === '' ? null : Number(checkin.sleep_hours),
+          exercised: Number(checkin.exercise_minutes_today || 0) > 0,
+          note: 'daily_lifestyle_checkin',
+          challenge_completed_count: 0,
+          challenge_total_count: 0,
+          steps_today: checkin.steps_today === '' ? null : Number(checkin.steps_today),
+          exercise_minutes_today: checkin.exercise_minutes_today === '' ? null : Number(checkin.exercise_minutes_today),
+          daylight_minutes_today: checkin.daylight_minutes_today === '' ? null : Number(checkin.daylight_minutes_today),
+          screen_time_min_today: checkin.screen_time_min_today === '' ? null : Number(checkin.screen_time_min_today),
+          meal_regularity_0_10_today: checkin.meal_regularity_0_10_today === '' ? null : Number(checkin.meal_regularity_0_10_today),
+          caffeine_after_2pm_flag_today: checkin.caffeine_after_2pm_flag_today === 'yes',
+          alcohol_flag_today: checkin.alcohol_flag_today === 'yes',
+          sleep_onset_latency_min_today: checkin.sleep_onset_latency_min_today === '' ? null : Number(checkin.sleep_onset_latency_min_today),
+          awakenings_count_today: checkin.awakenings_count_today === '' ? null : Number(checkin.awakenings_count_today),
+          sleep_quality_0_10_today: checkin.sleep_quality_0_10_today === '' ? null : Number(checkin.sleep_quality_0_10_today),
+        }),
+      })
+      if (!response.ok) throw new Error(await extractApiError(response))
+
+      const summary = [
+        `기분 ${checkin.mood_score}/10`,
+        checkin.sleep_hours ? `수면 ${checkin.sleep_hours}시간` : null,
+        checkin.exercise_minutes_today ? `운동 ${checkin.exercise_minutes_today}분` : null,
+        checkin.daylight_minutes_today ? `햇빛 ${checkin.daylight_minutes_today}분` : null,
+      ].filter(Boolean).join(', ')
+
+      setPage('diary')
+      setChatMessage(`오늘 체크인 요약: ${summary}. 이 데이터를 참고해서 오늘 상태를 같이 정리해줘.`)
+      await loadMyDashboard()
+      setMessage('체크인이 저장되었습니다. 감정일기 대화를 시작해보세요.')
+    } catch (error) {
+      setMessage(`체크인 오류: ${(error as Error).message}`)
     } finally {
       setLoading(false)
     }
@@ -490,26 +799,24 @@ function App() {
   async function handleChatSubmit(event: FormEvent) {
     event.preventDefault()
     if (!token) {
-      setMessage('감정일기 대화는 로그인 후 사용 가능합니다.')
+      setMessage('로그인 후 감정일기 대화를 사용할 수 있습니다.')
       return
     }
 
     const text = chatMessage.trim()
     if (!text) {
-      setMessage('대화 내용을 입력하세요.')
+      setMessage('대화 내용을 입력해주세요.')
       return
     }
 
     setLoading(true)
-    setMessage('감정일기 분석 중...')
-
-    const historyForRequest = chatHistory.slice(-12)
+    const history = chatHistory.slice(-12)
     setChatHistory((prev) => [...prev, { role: 'user', content: text }])
 
     try {
       const payload: Record<string, unknown> = {
         message: text,
-        conversation_history: historyForRequest,
+        conversation_history: history,
       }
       if (activeChallenge) {
         payload.active_challenge = activeChallenge
@@ -524,6 +831,8 @@ function App() {
       if (!response.ok) throw new Error(await extractApiError(response))
       const data = (await response.json()) as ChatResponse
 
+      setChatResult(data)
+      setChatMessage('')
       setChatHistory((prev) => {
         const next: ChatTurn[] = [...prev, { role: 'assistant', content: data.reply }]
         if (data.challenge_completed && data.completion_message) {
@@ -531,19 +840,16 @@ function App() {
         }
         return next
       })
-      setChatResult(data)
-      setChatMessage('')
 
       if (data.active_challenge) {
         setActiveChallenge(data.active_challenge)
         setChallengePhase(data.challenge_completed ? 'reflect' : 'continue')
       }
-
       if (data.challenge_completed && data.completed_challenge) {
         setChallengeStatus((prev) => ({ ...prev, [data.completed_challenge as string]: true }))
+        void loadChallengeRecommendations()
       }
-
-      setMessage('감정일기 응답 및 지표 추출 완료')
+      setMessage('대화 분석 완료')
     } catch (error) {
       setMessage(`감정일기 오류: ${(error as Error).message}`)
     } finally {
@@ -551,40 +857,19 @@ function App() {
     }
   }
 
-  async function handleSaveCbtCheckin() {
-    if (!token) {
-      setMessage('체크인 저장은 로그인 후 가능합니다.')
-      return
-    }
-    if (cbtCheckinMood === '') {
-      setMessage('오늘의 기분 점수(1~10)를 입력하세요.')
-      return
-    }
+  function startChallenge(challenge: string) {
+    setActiveChallenge(challenge)
+    setChallengePhase('start')
+    setChatHistory((prev) => [...prev, { role: 'assistant', content: `좋아요. '${challenge}' 챌린지를 지금부터 같이 진행해볼게요.` }])
+  }
 
-    const mood = Number(cbtCheckinMood)
-    const sleep = cbtCheckinSleep === '' ? null : Number(cbtCheckinSleep)
-    const exerciseMinutes = checkinExerciseMinutes === '' ? null : Number(checkinExerciseMinutes)
-    if (Number.isNaN(mood) || mood < 1 || mood > 10) {
-      setMessage('기분 점수는 1~10 범위여야 합니다.')
-      return
-    }
-    if (sleep != null && (Number.isNaN(sleep) || sleep < 0 || sleep > 24)) {
-      setMessage('수면 시간은 0~24 범위여야 합니다.')
-      return
-    }
-    if (exerciseMinutes != null && (Number.isNaN(exerciseMinutes) || exerciseMinutes < 0 || exerciseMinutes > 300)) {
-      setMessage('운동 시간은 0~300분 범위여야 합니다.')
-      return
-    }
-
-    const challenges = chatResult?.suggested_challenges ?? []
+  async function handleFinishDialogue() {
+    if (!token) return
+    const challenges = (chatResult?.suggested_challenges?.length ? chatResult.suggested_challenges : recommendedChallenges)
     const completedCount = challenges.filter((c) => challengeStatus[c]).length
-    const noteParts = [
-      `stress:${checkinStressLevel}`,
-      exerciseMinutes == null ? null : `exercise_min:${exerciseMinutes}`,
-      checkinNote.trim() === '' ? null : `memo:${checkinNote.trim()}`,
-      activeChallenge ? `active_challenge:${activeChallenge}` : null,
-    ].filter(Boolean)
+
+    const mood = Number(checkin.mood_score || 5)
+    const sleep = checkin.sleep_hours === '' ? null : Number(checkin.sleep_hours)
 
     setLoading(true)
     try {
@@ -594,99 +879,37 @@ function App() {
         body: JSON.stringify({
           mood_score: mood,
           sleep_hours: sleep,
-          exercised: (exerciseMinutes ?? 0) > 0 || completedCount > 0,
-          note: noteParts.length ? noteParts.join(' | ') : 'mindcare_checkin',
+          exercised: Number(checkin.exercise_minutes_today || 0) > 0 || completedCount > 0,
+          note: activeChallenge ? `dialogue_end|active_challenge:${activeChallenge}` : 'dialogue_end',
           challenge_completed_count: completedCount,
           challenge_total_count: challenges.length,
+          steps_today: checkin.steps_today === '' ? null : Number(checkin.steps_today),
+          exercise_minutes_today: checkin.exercise_minutes_today === '' ? null : Number(checkin.exercise_minutes_today),
+          daylight_minutes_today: checkin.daylight_minutes_today === '' ? null : Number(checkin.daylight_minutes_today),
+          screen_time_min_today: checkin.screen_time_min_today === '' ? null : Number(checkin.screen_time_min_today),
+          meal_regularity_0_10_today: checkin.meal_regularity_0_10_today === '' ? null : Number(checkin.meal_regularity_0_10_today),
+          caffeine_after_2pm_flag_today: checkin.caffeine_after_2pm_flag_today === 'yes',
+          alcohol_flag_today: checkin.alcohol_flag_today === 'yes',
+          sleep_onset_latency_min_today: checkin.sleep_onset_latency_min_today === '' ? null : Number(checkin.sleep_onset_latency_min_today),
+          awakenings_count_today: checkin.awakenings_count_today === '' ? null : Number(checkin.awakenings_count_today),
+          sleep_quality_0_10_today: checkin.sleep_quality_0_10_today === '' ? null : Number(checkin.sleep_quality_0_10_today),
         }),
       })
       if (!response.ok) throw new Error(await extractApiError(response))
-      await response.json()
       await loadMyDashboard()
-      setMessage(`체크인 저장 완료 (챌린지 ${completedCount}/${challenges.length})`)
-      setCbtCheckinMood('')
-      setCbtCheckinSleep('')
-      setCheckinExerciseMinutes('')
-      setCheckinStressLevel('none')
-      setCheckinNote('')
+      setMessage('대화를 마치고 지표 저장을 완료했습니다.')
     } catch (error) {
-      setMessage(`체크인 저장 오류: ${(error as Error).message}`)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function loadMyDashboard() {
-    if (!token) {
-      setMessage('로그인 후 마이 대시보드를 조회할 수 있습니다.')
-      return
-    }
-    setLoading(true)
-    setMessage('내 대시보드 로딩 중...')
-    try {
-      const response = await fetch(`${API_BASE}/ai/nowcast/dashboard/me`, { headers: authHeaders })
-      if (!response.ok) throw new Error(await extractApiError(response))
-      const data = (await response.json()) as WeeklyDashboardResponse
-      setDashboard(data)
-      setMessage('내 대시보드 조회 완료')
-    } catch (error) {
-      setMessage(`내 대시보드 오류: ${(error as Error).message}`)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function loadPhqHistory() {
-    if (!token) return
-    try {
-      const response = await fetch(`${API_BASE}/assessments/phq9`, { headers: authHeaders })
-      if (!response.ok) throw new Error(await extractApiError(response))
-      const data = (await response.json()) as PHQ9AssessmentSummary[]
-      setPhqHistory(data)
-    } catch (error) {
-      setMessage(`검사 이력 조회 오류: ${(error as Error).message}`)
-    }
-  }
-
-  async function handleNicknameSave() {
-    if (!token) {
-      setMessage('로그인 후 이용 가능합니다.')
-      return
-    }
-    if (!profile || profileNickname.trim() === '' || profileNickname === profile.nickname) {
-      setMessage('변경된 닉네임이 없습니다.')
-      return
-    }
-
-    setLoading(true)
-    try {
-      const response = await fetch(`${API_BASE}/auth/me/profile`, {
-        method: 'PATCH',
-        headers: authHeaders,
-        body: JSON.stringify({ nickname: profileNickname }),
-      })
-      if (!response.ok) throw new Error(await extractApiError(response))
-      await loadMyProfile()
-      await loadProfile()
-      setMessage('닉네임이 수정되었습니다.')
-      window.alert('완료되었습니다!')
-    } catch (error) {
-      setMessage(`닉네임 수정 오류: ${(error as Error).message}`)
+      setMessage(`대화 마치기 오류: ${(error as Error).message}`)
     } finally {
       setLoading(false)
     }
   }
 
   async function handleVerifyCurrentPassword() {
-    if (!token) {
-      setMessage('로그인 후 이용 가능합니다.')
+    if (!token || !profileCurrentPw.trim()) {
+      setMessage('현재 비밀번호를 입력해주세요.')
       return
     }
-    if (profileCurrentPw.trim() === '') {
-      setMessage('현재 비밀번호를 입력하세요.')
-      return
-    }
-
     setLoading(true)
     try {
       const response = await fetch(`${API_BASE}/auth/me/password/verify`, {
@@ -697,7 +920,7 @@ function App() {
       if (!response.ok) throw new Error(await extractApiError(response))
       const data = (await response.json()) as PasswordVerifyResponse
       setPasswordVerified(data.matched)
-      if (data.matched) setMessage('현재 비밀번호 확인 완료')
+      setMessage('현재 비밀번호 확인 완료')
     } catch (error) {
       setPasswordVerified(false)
       setMessage(`비밀번호 확인 오류: ${(error as Error).message}`)
@@ -706,17 +929,27 @@ function App() {
     }
   }
 
-  async function handlePasswordSave() {
-    if (!token) {
-      setMessage('로그인 후 이용 가능합니다.')
+  async function handleProfileSave(event: FormEvent) {
+    event.preventDefault()
+    if (!token) return
+    if (profileNewPw && profileNewPw !== profileNewPwConfirm) {
+      setMessage('새 비밀번호 확인 값이 일치하지 않습니다.')
       return
     }
-    if (!passwordVerified) {
-      setMessage('현재 비밀번호 확인을 먼저 진행하세요.')
+    if (profileNewPw && !passwordVerified) {
+      setMessage('현재 비밀번호 확인을 먼저 진행해주세요.')
       return
     }
-    if (profileNewPw.trim() === '') {
-      setMessage('변경할 비밀번호를 입력하세요.')
+
+    const payload: Record<string, string> = {}
+    if (profileNickname.trim() && profileNickname !== profile?.nickname) payload.nickname = profileNickname
+    if (profileNewPw.trim()) {
+      payload.current_password = profileCurrentPw
+      payload.new_password = profileNewPw
+    }
+
+    if (Object.keys(payload).length === 0) {
+      setMessage('변경된 항목이 없습니다.')
       return
     }
 
@@ -725,533 +958,486 @@ function App() {
       const response = await fetch(`${API_BASE}/auth/me/profile`, {
         method: 'PATCH',
         headers: authHeaders,
-        body: JSON.stringify({
-          current_password: profileCurrentPw,
-          new_password: profileNewPw,
-        }),
+        body: JSON.stringify(payload),
       })
       if (!response.ok) throw new Error(await extractApiError(response))
-      setProfileCurrentPw('')
-      setProfileNewPw('')
-      setPasswordVerified(false)
-      setMessage('비밀번호가 수정되었습니다.')
-      window.alert('완료되었습니다!')
+      await loadProfile()
+      await loadMyProfile()
+      setMessage('회원정보 수정 완료')
     } catch (error) {
-      setMessage(`비밀번호 수정 오류: ${(error as Error).message}`)
+      setMessage(`회원정보 수정 오류: ${(error as Error).message}`)
     } finally {
       setLoading(false)
     }
   }
 
-  const nickname = me?.nickname ?? '게스트'
-  const highRiskProbability = checkPrediction == null ? 0 : (checkPrediction.probabilities['3'] ?? 0) + (checkPrediction.probabilities['4'] ?? 0)
-
   const phqTotal = sumLikert(assessment.phq9)
   const gadTotal = sumLikert(assessment.gad7)
   const sleepTotal = sumLikert(assessment.sleep)
-  const contextTotal =
-    Number(assessment.context.daily_functioning || 0) +
-    Number(assessment.context.stressful_event || 0) +
-    Number(assessment.context.social_support || 0) +
-    Number(assessment.context.coping_skill || 0) +
-    Number(assessment.context.motivation_for_change || 0)
+  const contextTotal = Number(assessment.context.daily_functioning || 0) + Number(assessment.context.stressful_event || 0) + Number(assessment.context.social_support || 0) + Number(assessment.context.coping_skill || 0) + Number(assessment.context.motivation_for_change || 0)
+
   const latestWeekly = dashboard?.rows?.length ? dashboard.rows[dashboard.rows.length - 1] : null
-  const prevWeekly = dashboard && dashboard.rows.length > 1 ? dashboard.rows[dashboard.rows.length - 2] : null
-  const chartRows = useMemo(() => {
+
+  const weeklyRows = useMemo(() => (dashboard?.rows ?? []).slice(-8), [dashboard])
+  const monthlyRows = useMemo(() => {
     if (!dashboard?.rows?.length) return []
-    return dashboard.rows.map((row) => ({
-      dateLabel: new Date(row.week_start_date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }),
-      composite: row.symptom_composite_pred_0_100,
-      dep: row.dep_week_pred_0_100,
-      anx: row.anx_week_pred_0_100,
-      ins: row.ins_week_pred_0_100,
-    }))
+    const byMonth: Record<string, WeeklyDashboardRow[]> = {}
+    for (const row of dashboard.rows) {
+      const k = row.week_start_date.slice(0, 7)
+      byMonth[k] = byMonth[k] ? [...byMonth[k], row] : [row]
+    }
+    return Object.entries(byMonth).map(([month, rows]) => {
+      const dep = rows.reduce((a, b) => a + b.dep_week_pred_0_100, 0) / rows.length
+      const anx = rows.reduce((a, b) => a + b.anx_week_pred_0_100, 0) / rows.length
+      const ins = rows.reduce((a, b) => a + b.ins_week_pred_0_100, 0) / rows.length
+      return {
+        week_start_date: month,
+        dep_week_pred_0_100: dep,
+        anx_week_pred_0_100: anx,
+        ins_week_pred_0_100: ins,
+        symptom_composite_pred_0_100: (dep + anx + ins) / 3,
+      }
+    })
   }, [dashboard])
-  const chartWidth = 760
-  const chartHeight = 280
-  const chartPadding = { top: 20, right: 24, bottom: 44, left: 46 }
-  const plotWidth = chartWidth - chartPadding.left - chartPadding.right
-  const plotHeight = chartHeight - chartPadding.top - chartPadding.bottom
-  const xStep = chartRows.length > 1 ? plotWidth / (chartRows.length - 1) : 0
-  const yTicks = [0, 25, 50, 75, 100]
-  const points = chartRows.map((row, idx) => {
-    const x = chartPadding.left + (chartRows.length > 1 ? idx * xStep : plotWidth / 2)
-    const y = chartPadding.top + ((100 - Math.max(0, Math.min(100, row.composite))) / 100) * plotHeight
-    return { ...row, x, y, idx }
-  })
-  const depPolylinePoints = points
-    .map((p) => `${p.x},${chartPadding.top + ((100 - Math.max(0, Math.min(100, p.dep))) / 100) * plotHeight}`)
-    .join(' ')
-  const anxPolylinePoints = points
-    .map((p) => `${p.x},${chartPadding.top + ((100 - Math.max(0, Math.min(100, p.anx))) / 100) * plotHeight}`)
-    .join(' ')
-  const insPolylinePoints = points
-    .map((p) => `${p.x},${chartPadding.top + ((100 - Math.max(0, Math.min(100, p.ins))) / 100) * plotHeight}`)
-    .join(' ')
-  const compositePolylinePoints = points.map((p) => `${p.x},${p.y}`).join(' ')
-  const xLabelStep = Math.max(1, Math.ceil(chartRows.length / 6))
+
+  const topRisk = useMemo(() => {
+    if (!chatResult) return []
+    const d = chatResult.extracted.distortion
+    return Object.entries(d)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([k, v]) => ({ key: k, value: v }))
+  }, [chatResult])
+
+  const challenges = (chatResult?.suggested_challenges?.length ? chatResult.suggested_challenges : recommendedChallenges)
+  const completedChallenges = challenges.filter((c) => challengeStatus[c]).length
+  const highRiskProbability = checkPrediction == null ? 0 : (checkPrediction.probabilities['3'] ?? 0) + (checkPrediction.probabilities['4'] ?? 0)
+
   return (
     <main className="page">
-      <header className="hero">
-        <p className="kicker">Mind Check Console</p>
-        <h1>서비스 콘솔</h1>
-        <p className="subtitle">설문 문항 선택, 오늘의 마음돌봄, 실시간 추세 반영 대시보드</p>
-      </header>
+      {!token && (
+        <header className="hero landingHero">
+          <p className="kicker">CBT Mind Partner</p>
+          <h1>매일 체크인 + 감정일기 + 심리지표 대시보드</h1>
+          <p className="subtitle">하루 상태를 기록하면, 대화형 코치가 인지왜곡과 챌린지 수행을 함께 도와주고 변화 추이를 보여줍니다.</p>
+          <div className="actions">
+            <button onClick={() => { setPage('account'); setAccountMode('login') }}>Log in</button>
+            <button className="ghost" onClick={() => { setPage('account'); setAccountMode('signup') }}>Sign Up</button>
+          </div>
+        </header>
+      )}
 
-      <section className="panel">
-        <div className="actions">
-          <button className={page === 'assessment' ? '' : 'ghost'} onClick={() => setPage('assessment')}>검사</button>
-          <button className={page === 'cbt' ? '' : 'ghost'} onClick={() => setPage('cbt')}>오늘의 마음돌봄</button>
-          <button className={page === 'board' ? '' : 'ghost'} onClick={() => setPage('board')}>게시판</button>
-          <button className={page === 'mypage' ? '' : 'ghost'} onClick={() => setPage('mypage')}>마이페이지</button>
-          {isAdmin && <button className={page === 'admin' ? '' : 'ghost'} onClick={() => setPage('admin')}>관리자</button>}
-          <button className={page === 'account' ? '' : 'ghost'} onClick={() => setPage('account')}>회원/로그인</button>
-        </div>
-      </section>
-
-      {page === 'assessment' && (
-        <section className="panel">
-          <h2>심리검사</h2>
-
-          <form onSubmit={handleSurveySubmit} className="form">
-            <article className="panel questionBlock">
-              <h3>우울 관련 문항 (PHQ-9)</h3>
-              <p className="small">자동 총점: {phqTotal} / 27</p>
-              <div className="questionList">
-                {PHQ9_QUESTIONS.map((q, idx) => (
-                  <label key={`phq-${idx}`}>
-                    {idx + 1}. {q}
-                    <select value={assessment.phq9[idx]} onChange={(e) => setPhqAnswer(idx, e.target.value as LikertValue)}>
-                      {LIKERT_OPTIONS.map((opt) => (
-                        <option key={`phq-${idx}-${opt.value}`} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </label>
-                ))}
-              </div>
-            </article>
-
-            <article className="panel questionBlock">
-              <h3>불안 관련 문항 (GAD-7)</h3>
-              <p className="small">자동 총점: {gadTotal} / 21</p>
-              <div className="questionList">
-                {GAD7_QUESTIONS.map((q, idx) => (
-                  <label key={`gad-${idx}`}>
-                    {idx + 1}. {q}
-                    <select value={assessment.gad7[idx]} onChange={(e) => setGadAnswer(idx, e.target.value as LikertValue)}>
-                      {LIKERT_OPTIONS.map((opt) => (
-                        <option key={`gad-${idx}-${opt.value}`} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </label>
-                ))}
-              </div>
-            </article>
-
-            <article className="panel questionBlock">
-              <h3>수면 관련 문항</h3>
-              <p className="small">자동 총점: {sleepTotal} / 9</p>
-              <div className="questionList">
-                {SLEEP_QUESTIONS.map((q, idx) => (
-                  <label key={`sleep-${idx}`}>
-                    {idx + 1}. {q}
-                    <select value={assessment.sleep[idx]} onChange={(e) => setSleepAnswer(idx, e.target.value as LikertValue)}>
-                      {LIKERT_OPTIONS.map((opt) => (
-                        <option key={`sleep-${idx}-${opt.value}`} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </label>
-                ))}
-              </div>
-            </article>
-
-            <article className="panel questionBlock">
-              <h3>생활 맥락 체크</h3>
-              <p className="small">자동 총점: {contextTotal} / 15</p>
-              <div className="questionList">
-                <label>
-                  최근 일상생활(학업/업무/집안일)을 해내는 데 어려움이 느껴졌나요?
-                  <select value={assessment.context.daily_functioning} onChange={(e) => setContextAnswer('daily_functioning', e.target.value as LikertValue)}>
-                    {LIKERT_OPTIONS.map((opt) => <option key={`ctx-daily-${opt.value}`} value={opt.value}>{opt.label}</option>)}
-                  </select>
-                </label>
-                <label>
-                  최근 스트레스 사건이 마음 상태에 크게 영향을 준다고 느꼈나요?
-                  <select value={assessment.context.stressful_event} onChange={(e) => setContextAnswer('stressful_event', e.target.value as LikertValue)}>
-                    {LIKERT_OPTIONS.map((opt) => <option key={`ctx-stress-${opt.value}`} value={opt.value}>{opt.label}</option>)}
-                  </select>
-                </label>
-                <label>
-                  힘든 상황에서 도움을 요청하거나 기대기 어렵다고 느꼈나요?
-                  <select value={assessment.context.social_support} onChange={(e) => setContextAnswer('social_support', e.target.value as LikertValue)}>
-                    {LIKERT_OPTIONS.map((opt) => <option key={`ctx-social-${opt.value}`} value={opt.value}>{opt.label}</option>)}
-                  </select>
-                </label>
-                <label>
-                  불편한 감정을 다루는 나만의 방법이 부족하다고 느꼈나요?
-                  <select value={assessment.context.coping_skill} onChange={(e) => setContextAnswer('coping_skill', e.target.value as LikertValue)}>
-                    {LIKERT_OPTIONS.map((opt) => <option key={`ctx-coping-${opt.value}`} value={opt.value}>{opt.label}</option>)}
-                  </select>
-                </label>
-                <label>
-                  지금 상태를 바꿔보고 싶은 마음이 잘 생기지 않았나요?
-                  <select value={assessment.context.motivation_for_change} onChange={(e) => setContextAnswer('motivation_for_change', e.target.value as LikertValue)}>
-                    {LIKERT_OPTIONS.map((opt) => <option key={`ctx-motivation-${opt.value}`} value={opt.value}>{opt.label}</option>)}
-                  </select>
-                </label>
-              </div>
-            </article>
-
-            <button disabled={loading}>결과 보기</button>
-          </form>
-
-          {checkPrediction && (
-            <div className="result">
-              <p>{nickname}님의 결과는 <strong>{severityToKorean(checkPrediction.prediction)}</strong>입니다.</p>
-              <p>고위험 확률(3~4단계): <strong>{(highRiskProbability * 100).toFixed(1)}%</strong></p>
+      {token && (
+        <section className="panel topNavPanel">
+          <div className="topBar">
+            <div className="brandBox">
+              <strong>MindCare</strong>
+              <span>{me?.nickname ?? '사용자'}님</span>
             </div>
+            <div className="actions">
+              <button className={page === 'mypage' ? '' : 'ghost'} onClick={() => setPage('mypage')}>마이페이지</button>
+              <button className={page === 'checkin' ? '' : 'ghost'} onClick={() => setPage('checkin')}>체크인</button>
+              <button className={page === 'diary' ? '' : 'ghost'} onClick={() => setPage('diary')}>마음일기</button>
+              <button className={page === 'assessment' ? '' : 'ghost'} onClick={() => setPage('assessment')}>종합심리검사</button>
+              <button className={page === 'board' ? '' : 'ghost'} onClick={() => setPage('board')}>게시판</button>
+              {isAdmin && <button className={page === 'admin' ? '' : 'ghost'} onClick={() => setPage('admin')}>관리자</button>}
+              <button className="ghost" onClick={logout}>로그아웃</button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {page === 'account' && (
+        <section className="panel accountPanel">
+          <div className="actions accountModeTabs">
+            <button className={accountMode === 'login' ? '' : 'ghost'} onClick={() => setAccountMode('login')}>로그인</button>
+            <button className={accountMode === 'signup' ? '' : 'ghost'} onClick={() => setAccountMode('signup')}>회원가입</button>
+            <button className={accountMode === 'find' ? '' : 'ghost'} onClick={() => setAccountMode('find')}>비밀번호 찾기</button>
+          </div>
+
+          {accountMode === 'login' && (
+            <form onSubmit={handleLogin} className="form">
+              <h2>로그인</h2>
+              <label>이메일<input value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required /></label>
+              <label>비밀번호<input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required /></label>
+              <div className="actions">
+                <button disabled={loading}>로그인</button>
+                <button type="button" className="ghost" onClick={() => setAccountMode('find')}>비밀번호 찾기</button>
+              </div>
+            </form>
+          )}
+
+          {accountMode === 'signup' && (
+            <form onSubmit={handleSignup} className="form">
+              <h2>회원가입</h2>
+              <label>이메일<input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} required /></label>
+              <label>비밀번호<input type="password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} required minLength={8} /></label>
+              <label>비밀번호 확인<input type="password" value={signupPasswordConfirm} onChange={(e) => setSignupPasswordConfirm(e.target.value)} required minLength={8} /></label>
+              <label>닉네임<input value={signupNickname} onChange={(e) => setSignupNickname(e.target.value)} required /></label>
+              <label>보안 질문 선택
+                <select value={signupSecurityQuestion} onChange={(e) => setSignupSecurityQuestion(e.target.value)}>
+                  {SECURITY_QUESTIONS.map((q) => <option key={q} value={q}>{q}</option>)}
+                </select>
+              </label>
+              <label>보안 질문 답<input value={signupSecurityAnswer} onChange={(e) => setSignupSecurityAnswer(e.target.value)} required /></label>
+              <p className="small">회원가입 후 첫 로그인 시 종합심리검사를 반드시 1회 진행해야 합니다.</p>
+              <button disabled={loading}>계정 생성</button>
+            </form>
+          )}
+
+          {accountMode === 'find' && (
+            <form onSubmit={recoveryQuestion ? handleVerifyRecoveryAnswer : handleRequestRecoveryQuestion} className="form">
+              <h2>비밀번호 찾기</h2>
+              <label>이메일<input value={recoveryEmail} onChange={(e) => setRecoveryEmail(e.target.value)} required /></label>
+              {!recoveryQuestion ? (
+                <button disabled={loading}>보안질문 보기</button>
+              ) : (
+                <>
+                  <label>보안질문<input value={recoveryQuestion} readOnly /></label>
+                  <label>답변 입력<input value={recoveryAnswer} onChange={(e) => setRecoveryAnswer(e.target.value)} required /></label>
+                  <button disabled={loading}>답변 확인</button>
+                </>
+              )}
+            </form>
+          )}
+
+          {accountMode === 'reset' && (
+            <form onSubmit={handleResetPassword} className="form">
+              <h2>비밀번호 변경</h2>
+              <label>새 비밀번호<input type="password" value={resetNewPassword} onChange={(e) => setResetNewPassword(e.target.value)} required minLength={8} /></label>
+              <label>새 비밀번호 확인<input type="password" value={resetNewPasswordConfirm} onChange={(e) => setResetNewPasswordConfirm(e.target.value)} required minLength={8} /></label>
+              <button disabled={loading}>비밀번호 변경</button>
+            </form>
           )}
         </section>
       )}
 
-      {page === 'cbt' && (
-        <section className="panel cbtPanel">
-          <h2>오늘의 마음돌봄</h2>
-          <p className="small">체크인으로 하루 상태를 기록하고, 감정일기 대화와 오늘의 작은 행동 챌린지로 회복 루틴을 만들어요.</p>
-
-          <div className="actions careTabs">
-            <button className={careTab === 'checkin' ? '' : 'ghost'} type="button" onClick={() => setCareTab('checkin')}>체크인</button>
-            <button className={careTab === 'diary' ? '' : 'ghost'} type="button" onClick={() => setCareTab('diary')}>감정일기</button>
-          </div>
-
-          {careTab === 'checkin' && (
-            <article className="checkinPanel">
-              <div className="miniGrid cbtTopInputs">
-                <label>
-                  오늘의 기분 점수 (1~10)
-                  <input value={cbtCheckinMood} onChange={(e) => setCbtCheckinMood(e.target.value)} inputMode="numeric" placeholder="예: 6" />
-                </label>
-                <label>
-                  지난밤 수면시간 (시간)
-                  <input value={cbtCheckinSleep} onChange={(e) => setCbtCheckinSleep(e.target.value)} inputMode="decimal" placeholder="예: 6.5" />
-                </label>
-                <label>
-                  오늘 운동 시간 (분)
-                  <input value={checkinExerciseMinutes} onChange={(e) => setCheckinExerciseMinutes(e.target.value)} inputMode="numeric" placeholder="예: 20" />
-                </label>
-                <label>
-                  오늘 스트레스 강도
-                  <select value={checkinStressLevel} onChange={(e) => setCheckinStressLevel(e.target.value as 'none' | 'mild' | 'high')}>
-                    <option value="none">없음</option>
-                    <option value="mild">조금 있음</option>
-                    <option value="high">심함</option>
-                  </select>
-                </label>
-              </div>
-              <label>
-                한 줄 메모 (선택)
-                <input value={checkinNote} onChange={(e) => setCheckinNote(e.target.value)} placeholder="예: 오후에 회의가 길어서 피곤했음" />
+      {page === 'checkin' && token && (
+        <section className="panel cbtLayout">
+          <article className="cbtMain">
+            <h2>접속 메인 화면: 체크인</h2>
+            <div className="miniGrid">
+              <label>걸음 수<input inputMode="numeric" value={checkin.steps_today} onChange={(e) => handleCheckinInput('steps_today', e.target.value)} /></label>
+              <label>운동 시간(분)<input inputMode="numeric" value={checkin.exercise_minutes_today} onChange={(e) => handleCheckinInput('exercise_minutes_today', e.target.value)} /></label>
+              <label>햇빛 노출 시간(분)<input inputMode="numeric" value={checkin.daylight_minutes_today} onChange={(e) => handleCheckinInput('daylight_minutes_today', e.target.value)} /></label>
+              <label>스크린 타임(분)<input inputMode="numeric" value={checkin.screen_time_min_today} onChange={(e) => handleCheckinInput('screen_time_min_today', e.target.value)} /></label>
+              <label>식사 규칙성(0~10)<input inputMode="numeric" value={checkin.meal_regularity_0_10_today} onChange={(e) => handleCheckinInput('meal_regularity_0_10_today', e.target.value)} /></label>
+              <label>오후 2시 이후 카페인
+                <select value={checkin.caffeine_after_2pm_flag_today} onChange={(e) => setCheckin((prev) => ({ ...prev, caffeine_after_2pm_flag_today: e.target.value as 'yes' | 'no' }))}>
+                  <option value="no">없음</option>
+                  <option value="yes">있음</option>
+                </select>
               </label>
-              <div className="actions">
-                <button type="button" disabled={loading} onClick={() => void handleSaveCbtCheckin()}>체크인 저장</button>
-              </div>
-            </article>
-          )}
+              <label>음주 여부
+                <select value={checkin.alcohol_flag_today} onChange={(e) => setCheckin((prev) => ({ ...prev, alcohol_flag_today: e.target.value as 'yes' | 'no' }))}>
+                  <option value="no">없음</option>
+                  <option value="yes">있음</option>
+                </select>
+              </label>
+              <label>수면 시간(시간)<input inputMode="decimal" value={checkin.sleep_hours} onChange={(e) => handleCheckinInput('sleep_hours', e.target.value)} /></label>
+              <label>잠들기까지 걸린 시간(분)<input inputMode="numeric" value={checkin.sleep_onset_latency_min_today} onChange={(e) => handleCheckinInput('sleep_onset_latency_min_today', e.target.value)} /></label>
+              <label>중간 각성 횟수<input inputMode="numeric" value={checkin.awakenings_count_today} onChange={(e) => handleCheckinInput('awakenings_count_today', e.target.value)} /></label>
+              <label>수면 질(0~10)<input inputMode="numeric" value={checkin.sleep_quality_0_10_today} onChange={(e) => handleCheckinInput('sleep_quality_0_10_today', e.target.value)} /></label>
+              <label>오늘의 기분 점수(1~10)<input inputMode="numeric" value={checkin.mood_score} onChange={(e) => handleCheckinInput('mood_score', e.target.value)} /></label>
+            </div>
+            <div className="actions">
+              <button onClick={() => void handleCheckinSubmit()} disabled={loading}>체크인</button>
+              <button className="ghost" onClick={() => setPage('diary')}>마음일기 이동</button>
+            </div>
+          </article>
+        </section>
+      )}
 
-          {careTab === 'diary' && (
+      {page === 'diary' && token && (
+        <section className="panel cbtLayout">
+          <article className="cbtMain">
+            <h2>마음일기</h2>
             <div className="chatShell">
               <div className="chatMessages">
-                {chatHistory.length === 0 && (
-                  <div className="chatEmpty">오늘 있었던 일, 감정, 자동으로 떠오른 생각을 편하게 적어주세요. 대화 후 현재 상태와 핵심 패턴을 요약해드릴게요.</div>
-                )}
+                {chatHistory.length === 0 && <div className="chatEmpty">오늘 있었던 일과 감정을 이야기해보세요.</div>}
                 {chatHistory.map((turn, idx) => (
                   <div key={`turn-${idx}`} className={`chatBubble ${turn.role === 'user' ? 'chatUser' : 'chatAssistant'}`}>
                     <strong>{turn.role === 'user' ? '나' : '마음코치'}</strong>
                     <p>{turn.content}</p>
                   </div>
                 ))}
-                {chatResult?.challenge_step_prompt && (
-                  <div className="chatBubble chatAssistant">
-                    <strong>마음코치 제안</strong>
-                    <p>{chatResult.challenge_step_prompt}</p>
-                  </div>
-                )}
               </div>
               <form onSubmit={handleChatSubmit} className="chatComposer">
-                <textarea
-                  value={chatMessage}
-                  onChange={(e) => setChatMessage(e.target.value)}
-                  rows={3}
-                  placeholder="예: 오전에는 괜찮았는데, 오후에 작은 실수 후 불안이 크게 올라왔어요."
-                />
-                <div className="actions">
-                  <button disabled={loading}>대화 보내기</button>
-                  {activeChallenge && (
-                    <button type="button" className="ghost" onClick={() => setChallengePhase('reflect')}>회고 모드</button>
-                  )}
+                <div className="chatInputRow">
+                  <textarea rows={3} value={chatMessage} onChange={(e) => setChatMessage(e.target.value)} placeholder="오늘 있었던 일과 감정을 적어주세요" />
+                  <button className="chatSendBtn" disabled={loading}>채팅 입력</button>
                 </div>
+                <button type="button" className="chatFinishBtn" onClick={() => void handleFinishDialogue()} disabled={loading}>대화 마치기</button>
               </form>
-              {chatResult && (
-                <section className="summaryCard">
-                  <h3>오늘의 요약 카드</h3>
-                  <p><strong>무슨 일이 있었나요:</strong> {chatResult.summary_card?.situation ?? '대화 내용을 바탕으로 정리 중입니다.'}</p>
-                  <p><strong>자책/압박 신호:</strong> {chatResult.summary_card?.self_blame_signal ?? '자책 신호를 분석 중입니다.'}</p>
-                  <p><strong>상담 후 재해석:</strong> {chatResult.summary_card?.reframe ?? '지금 감정을 안전하게 해석하는 문장을 생성 중입니다.'}</p>
-                  <p><strong>오늘의 다음 행동:</strong> {chatResult.summary_card?.next_action ?? '오늘 바로 할 수 있는 행동을 제안 중입니다.'}</p>
-                  <p><strong>마음코치 응원:</strong> {chatResult.summary_card?.encouragement ?? chatResult.reply}</p>
-                </section>
-              )}
+            </div>
+          </article>
+
+          <aside className="cbtSide">
+            <div className="panel sideCard">
+              <h3>챌린지 힌트</h3>
+              <ul className="probList">
+                {challenges.map((c) => (
+                  <li key={c}>
+                    <span>{c}</span>
+                    <button className="ghost" type="button" onClick={() => startChallenge(c)}>선택</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="panel sideCard">
+              <h3>챌린지 진행도</h3>
+              <p>{completedChallenges}/{challenges.length}</p>
+              <ul className="probList">
+                {challenges.map((c) => (
+                  <li key={`done-${c}`}>
+                    <span>{c}</span>
+                    <strong>{challengeStatus[c] ? '완료' : '진행중'}</strong>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="panel sideCard">
+              <h3>감정 요약 카드</h3>
+              <p><strong>상황:</strong> {chatResult?.summary_card?.situation ?? '-'}</p>
+              <p><strong>왜곡 신호:</strong> {chatResult?.summary_card?.self_blame_signal ?? '-'}</p>
+              <p><strong>재해석:</strong> {chatResult?.summary_card?.reframe ?? '-'}</p>
+              <p><strong>다음 행동:</strong> {chatResult?.summary_card?.next_action ?? '-'}</p>
+            </div>
+          </aside>
+        </section>
+      )}
+
+      {page === 'assessment' && (
+        <section className="panel">
+          <h2>종합 심리 검사</h2>
+          <form onSubmit={handleSurveySubmit} className="form">
+            <article className="panel questionBlock">
+              <h3>우울 섹션</h3>
+              <p className="small">총점: {phqTotal}/27</p>
+              <div className="questionList">
+                {PHQ9_QUESTIONS.map((q, idx) => (
+                  <label key={`phq-${idx}`}>
+                    {idx + 1}. {q}
+                    <select value={assessment.phq9[idx]} onChange={(e) => setPhqAnswer(idx, e.target.value as LikertValue)}>
+                      {LIKERT_OPTIONS.map((opt) => <option key={`phq-${idx}-${opt.value}`} value={opt.value}>{opt.label}</option>)}
+                    </select>
+                    <span className="hint">보기: {LIKERT_OPTIONS.filter((o) => o.value !== '').map((o) => o.desc).join(' / ')}</span>
+                  </label>
+                ))}
+              </div>
+            </article>
+
+            <article className="panel questionBlock">
+              <h3>불안 섹션</h3>
+              <p className="small">총점: {gadTotal}/21</p>
+              <div className="questionList">
+                {GAD7_QUESTIONS.map((q, idx) => (
+                  <label key={`gad-${idx}`}>
+                    {idx + 1}. {q}
+                    <select value={assessment.gad7[idx]} onChange={(e) => setGadAnswer(idx, e.target.value as LikertValue)}>
+                      {LIKERT_OPTIONS.map((opt) => <option key={`gad-${idx}-${opt.value}`} value={opt.value}>{opt.label}</option>)}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            </article>
+
+            <article className="panel questionBlock">
+              <h3>수면 섹션</h3>
+              <p className="small">총점: {sleepTotal}/9</p>
+              <div className="questionList">
+                {SLEEP_QUESTIONS.map((q, idx) => (
+                  <label key={`sleep-${idx}`}>
+                    {idx + 1}. {q}
+                    <select value={assessment.sleep[idx]} onChange={(e) => setSleepAnswer(idx, e.target.value as LikertValue)}>
+                      {LIKERT_OPTIONS.map((opt) => <option key={`sleep-${idx}-${opt.value}`} value={opt.value}>{opt.label}</option>)}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            </article>
+
+            <article className="panel questionBlock">
+              <h3>생활 맥락 섹션</h3>
+              <p className="small">총점: {contextTotal}/15</p>
+              <div className="questionList">
+                <label>최근 일상 기능이 눈에 띄게 떨어졌나요?
+                  <select value={assessment.context.daily_functioning} onChange={(e) => setContextAnswer('daily_functioning', e.target.value as LikertValue)}>{LIKERT_OPTIONS.map((opt) => <option key={`ctx1-${opt.value}`} value={opt.value}>{opt.label}</option>)}</select>
+                </label>
+                <label>최근 스트레스 사건 영향이 크게 느껴졌나요?
+                  <select value={assessment.context.stressful_event} onChange={(e) => setContextAnswer('stressful_event', e.target.value as LikertValue)}>{LIKERT_OPTIONS.map((opt) => <option key={`ctx2-${opt.value}`} value={opt.value}>{opt.label}</option>)}</select>
+                </label>
+                <label>지지받기 어렵다고 느껴졌나요?
+                  <select value={assessment.context.social_support} onChange={(e) => setContextAnswer('social_support', e.target.value as LikertValue)}>{LIKERT_OPTIONS.map((opt) => <option key={`ctx3-${opt.value}`} value={opt.value}>{opt.label}</option>)}</select>
+                </label>
+                <label>감정 대처가 어렵게 느껴졌나요?
+                  <select value={assessment.context.coping_skill} onChange={(e) => setContextAnswer('coping_skill', e.target.value as LikertValue)}>{LIKERT_OPTIONS.map((opt) => <option key={`ctx4-${opt.value}`} value={opt.value}>{opt.label}</option>)}</select>
+                </label>
+                <label>변화하고 싶은 동기가 떨어졌나요?
+                  <select value={assessment.context.motivation_for_change} onChange={(e) => setContextAnswer('motivation_for_change', e.target.value as LikertValue)}>{LIKERT_OPTIONS.map((opt) => <option key={`ctx5-${opt.value}`} value={opt.value}>{opt.label}</option>)}</select>
+                </label>
+              </div>
+            </article>
+
+            <button disabled={loading}>결과 확인하기</button>
+          </form>
+
+          {checkPrediction && (
+            <div className="result">
+              <p>예측 결과: <strong>{severityToKorean(checkPrediction.prediction)}</strong></p>
+              <p>고위험 확률(3~4단계): <strong>{(highRiskProbability * 100).toFixed(1)}%</strong></p>
             </div>
           )}
         </section>
       )}
 
-      {page === 'mypage' && (
+      {page === 'mypage' && token && (
         <section className="mypageLayout">
           <aside className="panel mySidebar">
-            <h2>마이페이지 메뉴</h2>
+            <h2>마이페이지</h2>
             <div className="sideMenu">
               <button className={myTab === 'dashboard' ? '' : 'ghost'} onClick={() => setMyTab('dashboard')}>대시보드</button>
-              <button className={myTab === 'profile' ? '' : 'ghost'} onClick={() => setMyTab('profile')}>회원정보수정</button>
+              <button className={myTab === 'profile' ? '' : 'ghost'} onClick={() => setMyTab('profile')}>회원정보 수정</button>
+              <button className={myTab === 'report' ? '' : 'ghost'} onClick={() => setMyTab('report')}>요약리포트</button>
             </div>
           </aside>
 
           {myTab === 'dashboard' && (
             <article className="panel myMainPanel">
-              <h2>My Dashboard</h2>
-              <p className="small">데이터가 생길 때마다 일 단위로 즉시 반영됩니다.</p>
-              <div className="actions"><button disabled={loading} onClick={() => void loadMyDashboard()}>내 대시보드 조회</button></div>
-              {dashboard && (
-                <>
-                  <p>최근 주차 수: {dashboard.rows.length}</p>
-                  {latestWeekly && (
-                    <>
-                      <p className="small">
-                        현재 상태: <strong>{riskBand(latestWeekly.symptom_composite_pred_0_100)}</strong> (composite {latestWeekly.symptom_composite_pred_0_100.toFixed(1)})
-                      </p>
-                      <p className="small">
-                        최근 변화: {deltaText(latestWeekly.symptom_composite_pred_0_100, prevWeekly?.symptom_composite_pred_0_100)}
-                      </p>
-                    </>
-                  )}
-                  <section className="lineChartSection">
-                    <h3>종합 점수 추이</h3>
-                    <div className="lineChartLegend">
-                      <span><i className="legendSwatch legendComposite" />종합(강조)</span>
-                      <span><i className="legendSwatch legendDep" />DEP</span>
-                      <span><i className="legendSwatch legendAnx" />ANX</span>
-                      <span><i className="legendSwatch legendIns" />INS</span>
-                    </div>
-                    {points.length === 0 ? (
-                      <p className="small">그래프에 표시할 점수가 없습니다.</p>
-                    ) : (
-                      <>
-                        <div className="lineChartWrap">
-                          <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-label="날짜별 종합점수 추이">
-                            {yTicks.map((tick) => {
-                              const y = chartPadding.top + ((100 - tick) / 100) * plotHeight
-                              return (
-                                <g key={`y-${tick}`}>
-                                  <line x1={chartPadding.left} x2={chartWidth - chartPadding.right} y1={y} y2={y} className="chartGridLine" />
-                                  <text x={chartPadding.left - 8} y={y + 4} textAnchor="end" className="chartAxisText">{tick}</text>
-                                </g>
-                              )
-                            })}
-                            <line x1={chartPadding.left} x2={chartPadding.left} y1={chartPadding.top} y2={chartHeight - chartPadding.bottom} className="chartAxisLine" />
-                            <line
-                              x1={chartPadding.left}
-                              x2={chartWidth - chartPadding.right}
-                              y1={chartHeight - chartPadding.bottom}
-                              y2={chartHeight - chartPadding.bottom}
-                              className="chartAxisLine"
-                            />
-                            {points.length > 1 && (
-                              <>
-                                <polyline points={depPolylinePoints} fill="none" className="chartSeriesSub chartSeriesDep" />
-                                <polyline points={anxPolylinePoints} fill="none" className="chartSeriesSub chartSeriesAnx" />
-                                <polyline points={insPolylinePoints} fill="none" className="chartSeriesSub chartSeriesIns" />
-                                <polyline points={compositePolylinePoints} fill="none" className="chartSeriesLine" />
-                              </>
-                            )}
-                            {points.map((point) => (
-                              <g key={`point-${point.idx}`}>
-                                <circle cx={point.x} cy={point.y} r={4} className="chartPoint" />
-                                {(point.idx % xLabelStep === 0 || point.idx === points.length - 1) && (
-                                  <text x={point.x} y={chartHeight - chartPadding.bottom + 18} textAnchor="middle" className="chartAxisText">
-                                    {point.dateLabel}
-                                  </text>
-                                )}
-                              </g>
-                            ))}
-                          </svg>
-                        </div>
-                        <p className="small">X축: 날짜 / Y축: 종합점수(0~100)</p>
-                      </>
-                    )}
-                  </section>
-                </>
+              <h2>대시보드</h2>
+              <div className="actions">
+                <button className={dashboardTab === 'today' ? '' : 'ghost'} onClick={() => setDashboardTab('today')}>today</button>
+                <button className={dashboardTab === 'risk' ? '' : 'ghost'} onClick={() => setDashboardTab('risk')}>주요 위험 변수</button>
+                <button className={dashboardTab === 'weekly' ? '' : 'ghost'} onClick={() => setDashboardTab('weekly')}>weekly</button>
+                <button className={dashboardTab === 'monthly' ? '' : 'ghost'} onClick={() => setDashboardTab('monthly')}>monthly</button>
+                <button className="ghost" onClick={() => void loadMyDashboard()}>새로고침</button>
+              </div>
+
+              {dashboardTab === 'today' && (
+                <div className="result">
+                  <p>오늘/최근 일자: <strong>{latestWeekly?.week_start_date ?? '-'}</strong></p>
+                  <p>composite: <strong>{latestWeekly ? latestWeekly.symptom_composite_pred_0_100.toFixed(1) : '-'}</strong></p>
+                  <p>alert: <strong>{latestWeekly?.alert_level ?? 'low'}</strong></p>
+                  <MiniBarChart
+                    labels={['DEP', 'ANX', 'INS']}
+                    values={[latestWeekly?.dep_week_pred_0_100 ?? 0, latestWeekly?.anx_week_pred_0_100 ?? 0, latestWeekly?.ins_week_pred_0_100 ?? 0]}
+                    color="#0f766e"
+                  />
+                </div>
               )}
 
-              <section className="historySection">
-                <h3>심리검사 점수 추이 (PHQ-9)</h3>
-                {phqHistory.length === 0 ? (
-                  <p className="small">아직 저장된 PHQ-9 검사 이력이 없습니다.</p>
-                ) : (
-                  <>
-                    <div className="historyChart">
-                      {phqHistory
-                        .slice()
-                        .reverse()
-                        .map((item) => (
-                          <div className="historyBarRow" key={item.id}>
-                            <span className="historyDate">{new Date(item.created_at).toLocaleString('ko-KR')}</span>
-                            <div className="historyBarTrack">
-                              <div className="historyBarFill" style={{ width: `${(item.total_score / 27) * 100}%` }} />
-                            </div>
-                            <strong className="historyScore">{item.total_score}</strong>
-                          </div>
-                        ))}
-                    </div>
-                    <p className="small">X축: 날짜시간 / Y축: PHQ-9 점수(0~27)</p>
-                  </>
-                )}
-              </section>
+              {dashboardTab === 'risk' && (
+                <div className="result">
+                  {topRisk.length === 0 ? (
+                    <p className="small">대화 기반 위험 변수 데이터가 아직 없습니다.</p>
+                  ) : (
+                    <MiniBarChart
+                      labels={topRisk.map((x) => x.key)}
+                      values={topRisk.map((x) => x.value)}
+                      color="#f59e0b"
+                    />
+                  )}
+                </div>
+              )}
+
+              {dashboardTab === 'weekly' && (
+                <div className="result">
+                  <MiniTrendChart values={weeklyRows.map((r) => r.symptom_composite_pred_0_100)} color="#0f766e" />
+                  <ul className="probList">
+                    {weeklyRows.map((row, idx) => {
+                      const prev = idx > 0 ? weeklyRows[idx - 1] : undefined
+                      return (
+                        <li key={row.week_start_date}>
+                          <span>{row.week_start_date} | composite {row.symptom_composite_pred_0_100.toFixed(1)} ({formatDelta(row.symptom_composite_pred_0_100, prev?.symptom_composite_pred_0_100)})</span>
+                          <strong>dep {row.dep_week_pred_0_100.toFixed(1)} / anx {row.anx_week_pred_0_100.toFixed(1)} / ins {row.ins_week_pred_0_100.toFixed(1)}</strong>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              {dashboardTab === 'monthly' && (
+                <div className="result">
+                  <MiniTrendChart values={monthlyRows.map((r) => r.symptom_composite_pred_0_100)} color="#2563eb" />
+                  <ul className="probList">
+                    {monthlyRows.map((row, idx) => {
+                      const prev = idx > 0 ? monthlyRows[idx - 1] : undefined
+                      return (
+                        <li key={row.week_start_date}>
+                          <span>{row.week_start_date} | composite {row.symptom_composite_pred_0_100.toFixed(1)} ({formatDelta(row.symptom_composite_pred_0_100, prev?.symptom_composite_pred_0_100)})</span>
+                          <strong>dep {row.dep_week_pred_0_100.toFixed(1)} / anx {row.anx_week_pred_0_100.toFixed(1)} / ins {row.ins_week_pred_0_100.toFixed(1)}</strong>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
             </article>
           )}
 
           {myTab === 'profile' && (
             <article className="panel myMainPanel">
-              <h2>회원정보수정</h2>
-              <div className="profileBlocks">
-                <section className="profileBlock">
-                  <button
-                    type="button"
-                    className="profileBlockHeader"
-                    onClick={() => setProfilePanel(profilePanel === 'nickname' ? 'none' : 'nickname')}
-                  >
-                    닉네임 수정하기
-                  </button>
-                  {profilePanel === 'nickname' && (
-                    <div className="form">
-                      <p className="small">현재 닉네임: {profile?.nickname ?? '-'}</p>
-                      <label>
-                        변경할 닉네임
-                        <input value={profileNickname} onChange={(e) => setProfileNickname(e.target.value)} />
-                      </label>
-                      <div className="actions">
-                        <button type="button" disabled={loading} onClick={() => void handleNicknameSave()}>닉네임 저장</button>
-                      </div>
-                    </div>
-                  )}
-                </section>
+              <h2>회원정보 수정</h2>
+              <form className="form" onSubmit={handleProfileSave}>
+                <label>닉네임<input value={profileNickname} onChange={(e) => setProfileNickname(e.target.value)} /></label>
+                <label>이메일(현재)<input value={profile?.email ?? ''} readOnly /></label>
+                <label>현재 비밀번호(필수)<input type="password" value={profileCurrentPw} onChange={(e) => setProfileCurrentPw(e.target.value)} /></label>
+                <div className="actions">
+                  <button type="button" className="ghost" onClick={() => void handleVerifyCurrentPassword()}>현재 비밀번호 확인</button>
+                </div>
+                <label>새 비밀번호<input type="password" value={profileNewPw} onChange={(e) => setProfileNewPw(e.target.value)} /></label>
+                <label>새 비밀번호 확인<input type="password" value={profileNewPwConfirm} onChange={(e) => setProfileNewPwConfirm(e.target.value)} /></label>
+                <button disabled={loading}>저장</button>
+              </form>
+            </article>
+          )}
 
-                <section className="profileBlock">
-                  <button
-                    type="button"
-                    className="profileBlockHeader"
-                    onClick={() => setProfilePanel(profilePanel === 'password' ? 'none' : 'password')}
-                  >
-                    비밀번호 수정하기
-                  </button>
-                  {profilePanel === 'password' && (
-                    <div className="form">
-                      <label>
-                        현재 비밀번호
-                        <input type="password" value={profileCurrentPw} onChange={(e) => setProfileCurrentPw(e.target.value)} />
-                      </label>
-                      <div className="actions">
-                        <button type="button" disabled={loading} onClick={() => void handleVerifyCurrentPassword()}>현재 비밀번호 확인</button>
-                      </div>
-                      {passwordVerified && (
-                        <>
-                          <label>
-                            변경할 비밀번호
-                            <input type="password" value={profileNewPw} onChange={(e) => setProfileNewPw(e.target.value)} />
-                          </label>
-                          <div className="actions">
-                            <button type="button" disabled={loading} onClick={() => void handlePasswordSave()}>비밀번호 저장</button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </section>
+          {myTab === 'report' && (
+            <article className="panel myMainPanel">
+              <h2>요약 리포트 (진료 참고용)</h2>
+              <p className="small">의사가 바로 참고할 수 있도록 위험 신호, 점수 변화, 수면/기분 패턴 중심으로 구성됩니다.</p>
+              <div className="miniGrid">
+                <label>시작일<input type="date" value={reportStartDate} onChange={(e) => setReportStartDate(e.target.value)} /></label>
+                <label>종료일<input type="date" value={reportEndDate} onChange={(e) => setReportEndDate(e.target.value)} /></label>
               </div>
+              <div className="actions"><button type="button" onClick={() => void handleGenerateClinicalReport()} disabled={loading}>리포트 추출</button></div>
+
+              {clinicalReport && (
+                <div className="result">
+                  <p><strong>기간:</strong> {clinicalReport.period_start} ~ {clinicalReport.period_end}</p>
+                  <p><strong>요약:</strong> {clinicalReport.summary_text}</p>
+                  <p><strong>Composite(최근):</strong> {clinicalReport.score_summary.composite_latest?.toFixed(1) ?? '-'} / 변화 {clinicalReport.score_summary.composite_delta?.toFixed(1) ?? '-'}</p>
+                  <p><strong>DEP/ANX/INS:</strong> {clinicalReport.score_summary.dep_latest?.toFixed(1) ?? '-'} / {clinicalReport.score_summary.anx_latest?.toFixed(1) ?? '-'} / {clinicalReport.score_summary.ins_latest?.toFixed(1) ?? '-'}</p>
+                  <p><strong>평균 수면/기분:</strong> {clinicalReport.behavior_summary.avg_sleep_hours?.toFixed(1) ?? '-'}h / {clinicalReport.behavior_summary.avg_mood_score?.toFixed(1) ?? '-'}점</p>
+                  <p><strong>체크인/CBT:</strong> {clinicalReport.behavior_summary.checkin_days}일 / {clinicalReport.behavior_summary.cbt_sessions}회</p>
+                  <p><strong>인지왜곡 평균:</strong> {clinicalReport.behavior_summary.distortion_total_mean?.toFixed(1) ?? '-'}</p>
+
+                  <h3>의학적 참고 위험 신호</h3>
+                  <ul className="probList">
+                    {clinicalReport.risk_flags.length === 0 && <li>현재 기간에서 뚜렷한 고위험 플래그가 없습니다.</li>}
+                    {clinicalReport.risk_flags.map((flag) => (
+                      <li key={flag.code}>
+                        <span>{flag.title}</span>
+                        <strong>{flag.detail}</strong>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <h3>진료 메모</h3>
+                  <p>{clinicalReport.clinician_note}</p>
+                </div>
+              )}
             </article>
           )}
         </section>
       )}
 
-      {page === 'board' && (
-        <BoardPage token={token} myUserId={me?.id ?? null} isAdmin={isAdmin} />
-      )}
+      {page === 'board' && <BoardPage token={token} myUserId={me?.id ?? null} isAdmin={isAdmin} focusPostId={boardFocusPostId} />}
 
       {page === 'admin' && (
         <section className="panel">
-          {!token ? (
-            <p>로그인을 먼저 해주세요.</p>
-          ) : !isAdmin ? (
-            <p>관리자 계정이 아닙니다.</p>
-          ) : (
-            <AdminPage token={token} />
-          )}
-        </section>
-      )}
-
-      {page === 'account' && (
-        <section className="panel">
-          <article>
-            <h2>로그인</h2>
-            <form onSubmit={handleLogin} className="form">
-              <label>
-                Email
-                <input value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required />
-              </label>
-              <label>
-                Password
-                <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} minLength={8} required />
-              </label>
-              {me && (
-                <p className="badge">Signed in as {me.nickname} ({me.email})</p>
-              )}
-              {!me && <p className="small">계정이 없는경우 회원가입을 하셔야합니다</p>}
-              <div className="actions">
-                <button disabled={loading}>Login</button>
-                <button type="button" className="ghost" onClick={logout}>Logout</button>
-              </div>
-            </form>
-            <p className="mono">API: {API_BASE}</p>
-          </article>
-
-          <hr style={{ border: 0, borderTop: '1px solid #dbe7eb', margin: '1.1rem 0' }} />
-
-          <article>
-            <h3>회원가입</h3>
-            {!showSignupForm ? (
-              <div className="actions">
-                <button type="button" className="ghost" onClick={() => setShowSignupForm(true)}>회원가입</button>
-              </div>
-            ) : (
-              <form onSubmit={handleSignup} className="form">
-                <label>
-                  Email
-                  <input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} required />
-                </label>
-                <label>
-                  Password
-                  <input type="password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} minLength={8} required />
-                </label>
-                <label>
-                  Nickname
-                  <input value={signupNickname} onChange={(e) => setSignupNickname(e.target.value)} required />
-                </label>
-                <div className="actions">
-                  <button disabled={loading}>회원가입 신청</button>
-                  <button type="button" className="ghost" onClick={() => setShowSignupForm(false)}>취소</button>
-                </div>
-              </form>
-            )}
-          </article>
+          {!token ? <p>로그인을 먼저 해주세요.</p> : !isAdmin ? <p>관리자 계정이 아닙니다.</p> : <AdminPage token={token} onOpenBoardPost={(postId) => { setBoardFocusPostId(postId); setPage('board') }} />}
         </section>
       )}
 

@@ -1,4 +1,3 @@
-
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -12,6 +11,7 @@ from app.api.routes_auth import router as auth_router
 from app.api.routes_board import router as board_router
 from app.api.routes_chat import router as chat_router
 from app.api.routes_checkin import router as checkin_router
+from app.api.routes_report import router as report_router
 from app.core.config import settings
 from app.db.session import init_db
 
@@ -38,6 +38,7 @@ app.include_router(chat_router)
 app.include_router(ai_router)
 app.include_router(admin_router)
 app.include_router(board_router)
+app.include_router(report_router)
 
 
 class RootResponse(BaseModel):

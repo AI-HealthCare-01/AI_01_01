@@ -5,7 +5,7 @@
 
 .boardToolbar {
   display: grid;
-  grid-template-columns: 1fr 180px auto;
+  grid-template-columns: 1fr 180px auto auto;
   gap: 0.55rem;
 }
 

@@ -3,6 +3,15 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8001'
 export const BOARD_CATEGORIES = ['문의', '자유', '꿀팁', '피드백'] as const
 export type BoardCategory = (typeof BOARD_CATEGORIES)[number]
 
+export type BoardComment = {
+  id: string
+  post_id: string
+  author_id: string
+  author_nickname: string
+  content: string
+  created_at: string
+}
+
 export type BoardPost = {
   id: string
   author_id: string
@@ -11,8 +20,18 @@ export type BoardPost = {
   title: string
   content: string
   is_notice: boolean
+  is_private: boolean
+  likes_count: number
+  bookmarks_count: number
+  comments_count: number
+  liked_by_me: boolean
+  bookmarked_by_me: boolean
   created_at: string
   updated_at: string
+}
+
+export type BoardPostDetail = BoardPost & {
+  comments: BoardComment[]
 }
 
 export type BoardPostListResponse = {
@@ -27,6 +46,7 @@ type CreatePayload = {
   title: string
   content: string
   is_notice: boolean
+  is_private: boolean
 }
 
 type UpdatePayload = Partial<CreatePayload>
@@ -57,6 +77,12 @@ export async function fetchBoardPosts(params: {
   return (await response.json()) as BoardPostListResponse
 }
 
+export async function fetchBoardPostDetail(postId: string): Promise<BoardPostDetail> {
+  const response = await fetch(`${API_BASE}/board/posts/${postId}`)
+  if (!response.ok) throw new Error(await readError(response))
+  return (await response.json()) as BoardPostDetail
+}
+
 export async function createBoardPost(token: string, payload: CreatePayload): Promise<BoardPost> {
   const response = await fetch(`${API_BASE}/board/posts`, {
     method: 'POST',
@@ -83,4 +109,32 @@ export async function deleteBoardPost(token: string, postId: string): Promise<vo
     headers: { Authorization: `Bearer ${token}` },
   })
   if (!response.ok) throw new Error(await readError(response))
+}
+
+export async function createBoardComment(token: string, postId: string, content: string): Promise<BoardComment> {
+  const response = await fetch(`${API_BASE}/board/posts/${postId}/comments`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+  if (!response.ok) throw new Error(await readError(response))
+  return (await response.json()) as BoardComment
+}
+
+export async function toggleBoardLike(token: string, postId: string): Promise<{ active: boolean; count: number }> {
+  const response = await fetch(`${API_BASE}/board/posts/${postId}/like`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) throw new Error(await readError(response))
+  return (await response.json()) as { active: boolean; count: number }
+}
+
+export async function toggleBoardBookmark(token: string, postId: string): Promise<{ active: boolean; count: number }> {
+  const response = await fetch(`${API_BASE}/board/posts/${postId}/bookmark`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) throw new Error(await readError(response))
+  return (await response.json()) as { active: boolean; count: number }
 }

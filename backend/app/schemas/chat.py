@@ -68,3 +68,10 @@ class ChatResponse(BaseModel):
     completed_challenge: str | None = None
     completion_message: str | None = None
     summary_card: SummaryCard
+
+
+class ChallengeRecommendResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    suggested_challenges: list[str]
+    window_days: int

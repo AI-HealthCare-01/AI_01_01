@@ -17,7 +17,7 @@ from app.schemas.ai import (
 )
 from app.schemas.auth import UserOut
 from app.services.ai_inference import predict_check, predict_monitor
-from app.services.nowcast import get_default_weekly_dashboard_rows, get_weekly_dashboard_rows, predict_nowcast_for_user_day
+from app.services.nowcast import get_weekly_dashboard_rows, predict_nowcast_for_user_day
 from app.services.user_dashboard import build_user_weekly_dashboard
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -80,11 +80,7 @@ async def get_my_nowcast_dashboard(
 ) -> WeeklyDashboardResponse:
     try:
         rows = await build_user_weekly_dashboard(db, current_user.id)
-        if rows:
-            return WeeklyDashboardResponse(user_id=str(current_user.id), rows=rows)
-
-        fallback_user_id, fallback_rows = get_default_weekly_dashboard_rows()
-        return WeeklyDashboardResponse(user_id=fallback_user_id, rows=fallback_rows)
+        return WeeklyDashboardResponse(user_id=str(current_user.id), rows=rows)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

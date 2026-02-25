@@ -1,11 +1,21 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Select, desc, select
+from sqlalchemy import Select, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password, verify_password
-from app.db.models import Assessment, AssessmentType, ChatEvent, CheckIn, EmailVerification, User, UserProfile
+from app.db.models import (
+    Assessment,
+    AssessmentType,
+    BoardCategory,
+    BoardPost,
+    ChatEvent,
+    CheckIn,
+    EmailVerification,
+    User,
+    UserProfile,
+)
 
 
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
@@ -217,3 +227,88 @@ async def get_latest_checkin(db: AsyncSession, user_id: uuid.UUID) -> CheckIn | 
         .limit(1)
     )
     return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def create_board_post(
+    db: AsyncSession,
+    *,
+    author_id: uuid.UUID,
+    category: BoardCategory,
+    title: str,
+    content: str,
+    is_notice: bool,
+) -> BoardPost:
+    row = BoardPost(
+        author_id=author_id,
+        category=category,
+        title=title,
+        content=content,
+        is_notice=is_notice,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def get_board_post_by_id(db: AsyncSession, post_id: uuid.UUID) -> BoardPost | None:
+    stmt: Select[tuple[BoardPost]] = select(BoardPost).where(BoardPost.id == post_id)
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def list_board_posts(
+    db: AsyncSession,
+    *,
+    q: str | None = None,
+    category: BoardCategory | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[BoardPost], int]:
+    stmt = select(BoardPost)
+    count_stmt = select(func.count(BoardPost.id))
+
+    if category is not None:
+        stmt = stmt.where(BoardPost.category == category)
+        count_stmt = count_stmt.where(BoardPost.category == category)
+
+    if q:
+        keyword = f"%{q}%"
+        cond = or_(BoardPost.title.ilike(keyword), BoardPost.content.ilike(keyword))
+        stmt = stmt.where(cond)
+        count_stmt = count_stmt.where(cond)
+
+    stmt = (
+        stmt.order_by(desc(BoardPost.is_notice), desc(BoardPost.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    rows = list((await db.execute(stmt)).scalars().all())
+    total = int((await db.execute(count_stmt)).scalar_one())
+    return rows, total
+
+
+async def update_board_post(
+    db: AsyncSession,
+    row: BoardPost,
+    *,
+    title: str | None = None,
+    content: str | None = None,
+    category: BoardCategory | None = None,
+    is_notice: bool | None = None,
+) -> BoardPost:
+    if title is not None:
+        row.title = title
+    if content is not None:
+        row.content = content
+    if category is not None:
+        row.category = category
+    if is_notice is not None:
+        row.is_notice = is_notice
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def delete_board_post(db: AsyncSession, row: BoardPost) -> None:
+    await db.delete(row)
+    await db.commit()

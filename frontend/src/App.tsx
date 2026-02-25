@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 import AdminPage from './pages/admin/AdminPage'
+import BoardPage from './pages/board/BoardPage'
 
-type PageKey = 'assessment' | 'cbt' | 'mypage' | 'admin' | 'account'
+type PageKey = 'assessment' | 'cbt' | 'board' | 'mypage' | 'admin' | 'account'
 type MyPageTab = 'dashboard' | 'profile'
 type CareTab = 'checkin' | 'diary'
 type LikertValue = '' | '0' | '1' | '2' | '3'
@@ -801,6 +802,7 @@ function App() {
         <div className="actions">
           <button className={page === 'assessment' ? '' : 'ghost'} onClick={() => setPage('assessment')}>검사</button>
           <button className={page === 'cbt' ? '' : 'ghost'} onClick={() => setPage('cbt')}>오늘의 마음돌봄</button>
+          <button className={page === 'board' ? '' : 'ghost'} onClick={() => setPage('board')}>게시판</button>
           <button className={page === 'mypage' ? '' : 'ghost'} onClick={() => setPage('mypage')}>마이페이지</button>
           {isAdmin && <button className={page === 'admin' ? '' : 'ghost'} onClick={() => setPage('admin')}>관리자</button>}
           <button className={page === 'account' ? '' : 'ghost'} onClick={() => setPage('account')}>회원/로그인</button>
@@ -1178,6 +1180,10 @@ function App() {
             </article>
           )}
         </section>
+      )}
+
+      {page === 'board' && (
+        <BoardPage token={token} myUserId={me?.id ?? null} isAdmin={isAdmin} />
       )}
 
       {page === 'admin' && (

@@ -28,6 +28,13 @@ class AssessmentType(str, enum.Enum):
     ISI = "ISI"
 
 
+class BoardCategory(str, enum.Enum):
+    INQUIRY = "문의"
+    FREE = "자유"
+    TIP = "꿀팁"
+    FEEDBACK = "피드백"
+
+
 class User(Base):
     __tablename__ = "user"
 
@@ -41,6 +48,7 @@ class User(Base):
     checkins: Mapped[list["CheckIn"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     chat_events: Mapped[list["ChatEvent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     profile: Mapped["UserProfile | None"] = relationship(back_populates="user", uselist=False, cascade="all, delete-orphan")
+    board_posts: Mapped[list["BoardPost"]] = relationship(back_populates="author", cascade="all, delete-orphan")
 
 
 class UserProfile(Base):
@@ -128,3 +136,28 @@ class ChatEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="chat_events")
+
+
+class BoardPost(Base):
+    __tablename__ = "board_post"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    author_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    category: Mapped[BoardCategory] = mapped_column(SQLEnum(BoardCategory, name="board_category"), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    is_notice: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    author: Mapped["User"] = relationship(back_populates="board_posts")

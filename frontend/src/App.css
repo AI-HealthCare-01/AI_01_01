@@ -366,6 +366,51 @@ button:disabled {
   padding: 0.44rem 0.56rem;
 }
 
+.chartCard {
+  border: 1px solid #dbe7eb;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fbfefe 0%, #f5fafb 100%);
+  padding: 0.55rem 0.7rem 0.45rem;
+}
+
+.chartViewport {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.chartLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.8rem;
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  color: #475569;
+}
+
+.chartLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.chartLegend i {
+  width: 12px;
+  height: 3px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.chartEmpty {
+  margin: 0.25rem 0;
+  border: 1px dashed #94a3b8;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #475569;
+  padding: 0.68rem 0.75rem;
+  font-size: 0.86rem;
+}
+
 .mypageLayout {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);

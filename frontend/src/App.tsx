@@ -302,59 +302,125 @@ function startOfWeekMonday(input: Date): Date {
 function MultiMetricTrendChart({
   labels,
   series,
+  emptyMessage,
 }: {
   labels: string[]
-  series: Array<{ name: string; color: string; values: Array<number | null> }>
+  series: Array<{ name: string; color: string; values: Array<number | null>; emphasis?: boolean }>
+  emptyMessage?: string
 }) {
-  if (!labels.length || !series.length) return <p className="small">데이터가 없습니다.</p>
+  const resolvedEmptyMessage = emptyMessage ?? '데이터가 없으니 그래프를 만들 수 없습니다. 먼저 검사/체크인을 진행해주세요.'
+  if (!labels.length || !series.length) return <p className="chartEmpty">{resolvedEmptyMessage}</p>
   const all = series.flatMap((sr) => sr.values.filter((v): v is number => v != null))
-  if (!all.length) return <p className="small">데이터가 없습니다.</p>
+  if (!all.length) return <p className="chartEmpty">{resolvedEmptyMessage}</p>
 
   const max = Math.max(...all, 100)
   const min = Math.min(...all, 0)
   const range = Math.max(1, max - min)
+  const xLabelStep = Math.max(1, Math.ceil(labels.length / 5))
+  const chartWidth = Math.max(720, labels.length * 88)
+  const chartHeight = 320
+  const leftPad = 56
+  const rightPad = 24
+  const topPad = 16
+  const bottomPad = 58
+  const plotWidth = chartWidth - leftPad - rightPad
+  const plotHeight = chartHeight - topPad - bottomPad
 
   return (
-    <svg viewBox="0 0 120 100" width="100%" height={190} role="img" aria-label="multi trend chart">
-      {[0, 25, 50, 75, 100].map((g) => (
-        <line key={g} x1="0" y1={String(100 - g)} x2="100" y2={String(100 - g)} stroke="#edf2f7" strokeWidth="0.6" />
-      ))}
-      {series.map((line) => {
-        const points = line.values.map((v, idx) => {
-          if (v == null) return null
-          const x = (idx / Math.max(1, labels.length - 1)) * 100
-          const y = 100 - (((v - min) / range) * 100)
-          return { x, y }
-        })
+    <div className="chartCard">
+      <div className="chartViewport">
+      <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} width={chartWidth} height={chartHeight} role="img" aria-label="multi trend chart">
+        {[0, 25, 50, 75, 100].map((g) => (
+          <line
+            key={g}
+            x1={leftPad}
+            y1={topPad + ((100 - g) / 100) * plotHeight}
+            x2={chartWidth - rightPad}
+            y2={topPad + ((100 - g) / 100) * plotHeight}
+            stroke="#edf2f7"
+            strokeWidth="1"
+          />
+        ))}
+        <line x1={leftPad} y1={topPad} x2={leftPad} y2={chartHeight - bottomPad} stroke="#94a3b8" strokeWidth="1.1" />
+        <line x1={leftPad} y1={chartHeight - bottomPad} x2={chartWidth - rightPad} y2={chartHeight - bottomPad} stroke="#94a3b8" strokeWidth="1.1" />
+        {series.map((line) => {
+          const points = line.values.map((v, idx) => {
+            if (v == null) return null
+            const x = leftPad + (idx / Math.max(1, labels.length - 1)) * plotWidth
+            const y = topPad + (1 - ((v - min) / range)) * plotHeight
+            return { x, y }
+          })
 
-        const segments: string[] = []
-        let current: string[] = []
-        points.forEach((p) => {
-          if (!p) {
-            if (current.length > 1) segments.push(current.join(' '))
-            current = []
-            return
-          }
-          current.push(`${p.x},${p.y}`)
-        })
-        if (current.length > 1) segments.push(current.join(' '))
+          const segments: string[] = []
+          let current: string[] = []
+          points.forEach((p) => {
+            if (!p) {
+              if (current.length > 1) segments.push(current.join(' '))
+              current = []
+              return
+            }
+            current.push(`${p.x},${p.y}`)
+          })
+          if (current.length > 1) segments.push(current.join(' '))
 
-        const lastPoint = [...points].reverse().find((p) => p != null) ?? null
+          const lastPoint = [...points].reverse().find((p) => p != null) ?? null
 
-        return (
-          <g key={line.name}>
-            {segments.map((seg, i) => (
-              <polyline key={`${line.name}-${i}`} fill="none" stroke={line.color} strokeWidth="2.5" points={seg} />
-            ))}
-            {lastPoint && (
-              <text x={Math.min(118, lastPoint.x + 1.6)} y={lastPoint.y} fill={line.color} fontSize="4" dominantBaseline="middle">
-                {line.name}
-              </text>
-            )}
-          </g>
-        )
-      })}
-    </svg>
+          return (
+            <g key={line.name}>
+              {segments.map((seg, i) => (
+                <polyline
+                  key={`${line.name}-${i}`}
+                  fill="none"
+                  stroke={line.color}
+                  strokeWidth={line.emphasis ? '3.8' : '1.8'}
+                  opacity={line.emphasis ? '1' : '0.56'}
+                  points={seg}
+                />
+              ))}
+              {lastPoint && (
+                <circle
+                  cx={lastPoint.x}
+                  cy={lastPoint.y}
+                  r={line.emphasis ? '1.6' : '1.1'}
+                  fill={line.color}
+                  opacity={line.emphasis ? '1' : '0.75'}
+                />
+              )}
+            </g>
+          )
+        })}
+        {labels.map((label, idx) => {
+          if (!(idx % xLabelStep === 0 || idx === labels.length - 1)) return null
+          const x = leftPad + (idx / Math.max(1, labels.length - 1)) * plotWidth
+          return (
+            <text key={`${label}-${idx}`} x={x} y={chartHeight - 24} textAnchor="middle" fontSize="11" fill="#64748b">
+              {label}
+            </text>
+          )
+        })}
+        {[0, 25, 50, 75, 100].map((tick) => (
+          <text
+            key={`tick-${tick}`}
+            x={leftPad - 10}
+            y={topPad + ((100 - tick) / 100) * plotHeight + 4}
+            textAnchor="end"
+            fontSize="11"
+            fill="#64748b"
+          >
+            {tick}
+          </text>
+        ))}
+      </svg>
+      </div>
+      <div className="chartLegend">
+        {series.map((line) => (
+          <span key={`legend-${line.name}`}>
+            <i style={{ background: line.color, opacity: line.emphasis ? 1 : 0.56 }} />
+            {line.name}
+          </span>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -1256,6 +1322,10 @@ function App() {
       return { week: k, dep, anx, ins, comp }
     })
   }, [dashboard])
+  const hasWeeklyScoreData = weeklyRows.some((row) => row != null)
+  const hasMonthlyScoreData = monthlyRows.some((row) => row.comp != null)
+  const hasDailyLifestyleData = dailyLifestyleRows.some((row) => row != null)
+  const hasWeeklyLifestyleData = weeklyLifestyleRows.some((row) => [row.sleep, row.exercise, row.daylight, row.screen].some((v) => v != null))
 
   const topRisk = useMemo(() => {
     if (!chatResult) return [] as Array<{ key: string; label: string; value: number; guide: string }>
@@ -1656,11 +1726,15 @@ function App() {
                   <p>오늘/최근 일자: <strong>{latestWeekly?.week_start_date ?? '-'}</strong></p>
                   <p>composite: <strong>{latestWeekly ? latestWeekly.symptom_composite_pred_0_100.toFixed(1) : '-'}</strong></p>
                   <p>alert: <strong>{latestWeekly?.alert_level ?? 'low'}</strong></p>
-                  <MiniBarChart
-                    labels={['DEP', 'ANX', 'INS']}
-                    values={[latestWeekly?.dep_week_pred_0_100 ?? 0, latestWeekly?.anx_week_pred_0_100 ?? 0, latestWeekly?.ins_week_pred_0_100 ?? 0]}
-                    color="#0f766e"
-                  />
+                  {!latestWeekly ? (
+                    <p className="chartEmpty">데이터가 없으니 그래프를 만들 수 없습니다. 먼저 종합심리검사를 1회 이상 진행해주세요.</p>
+                  ) : (
+                    <MiniBarChart
+                      labels={['DEP', 'ANX', 'INS']}
+                      values={[latestWeekly.dep_week_pred_0_100, latestWeekly.anx_week_pred_0_100, latestWeekly.ins_week_pred_0_100]}
+                      color="#0f766e"
+                    />
+                  )}
                 </div>
               )}
 
@@ -1683,44 +1757,50 @@ function App() {
 
               {dashboardTab === 'weekly' && (
                 <div className="result">
-                  <MultiMetricTrendChart
-                    labels={weeklyRows.map((r, idx) => {
-                      if (!r) {
-                        const d = new Date()
-                        d.setDate(d.getDate() - (6 - idx))
-                        return formatDateYYYYMMDD(d).slice(5)
-                      }
-                      return r.week_start_date.slice(5)
-                    })}
-                    series={[
-                      { name: '종합', color: '#0f766e', values: weeklyRows.map((r) => (r ? r.symptom_composite_pred_0_100 : null)) },
-                      { name: '우울', color: '#2563eb', values: weeklyRows.map((r) => (r ? r.dep_week_pred_0_100 : null)) },
-                      { name: '불안', color: '#f59e0b', values: weeklyRows.map((r) => (r ? r.anx_week_pred_0_100 : null)) },
-                      { name: '불면', color: '#ef4444', values: weeklyRows.map((r) => (r ? r.ins_week_pred_0_100 : null)) },
-                    ]}
-                  />
-                  <ul className="probList">
-                    {weeklyRows.map((row, idx) => {
-                      const d = new Date()
-                      d.setDate(d.getDate() - (6 - idx))
-                      const label = formatDateYYYYMMDD(d)
-                      if (!row) {
-                        return (
-                          <li key={`empty-${label}`}>
-                            <span>{label}</span>
-                            <strong>기록 없음</strong>
-                          </li>
-                        )
-                      }
-                      const prev = idx > 0 ? weeklyRows[idx - 1] : null
-                      return (
-                        <li key={label}>
-                          <span>{label} | composite {row.symptom_composite_pred_0_100.toFixed(1)} ({formatDelta(row.symptom_composite_pred_0_100, prev?.symptom_composite_pred_0_100)})</span>
-                          <strong>우울 {row.dep_week_pred_0_100.toFixed(1)} / 불안 {row.anx_week_pred_0_100.toFixed(1)} / 불면 {row.ins_week_pred_0_100.toFixed(1)}</strong>
-                        </li>
-                      )
-                    })}
-                  </ul>
+                  {!hasWeeklyScoreData ? (
+                    <p className="chartEmpty">데이터가 없으니 그래프를 만들 수 없습니다. 먼저 종합심리검사를 진행해주세요.</p>
+                  ) : (
+                    <>
+                      <MultiMetricTrendChart
+                        labels={weeklyRows.map((r, idx) => {
+                          if (!r) {
+                            const d = new Date()
+                            d.setDate(d.getDate() - (6 - idx))
+                            return formatDateYYYYMMDD(d).slice(5)
+                          }
+                          return r.week_start_date.slice(5)
+                        })}
+                        series={[
+                          { name: '종합', color: '#0f766e', values: weeklyRows.map((r) => (r ? r.symptom_composite_pred_0_100 : null)), emphasis: true },
+                          { name: '우울', color: '#2563eb', values: weeklyRows.map((r) => (r ? r.dep_week_pred_0_100 : null)) },
+                          { name: '불안', color: '#f59e0b', values: weeklyRows.map((r) => (r ? r.anx_week_pred_0_100 : null)) },
+                          { name: '불면', color: '#ef4444', values: weeklyRows.map((r) => (r ? r.ins_week_pred_0_100 : null)) },
+                        ]}
+                      />
+                      <ul className="probList">
+                        {weeklyRows.map((row, idx) => {
+                          const d = new Date()
+                          d.setDate(d.getDate() - (6 - idx))
+                          const label = formatDateYYYYMMDD(d)
+                          if (!row) {
+                            return (
+                              <li key={`empty-${label}`}>
+                                <span>{label}</span>
+                                <strong>기록 없음</strong>
+                              </li>
+                            )
+                          }
+                          const prev = idx > 0 ? weeklyRows[idx - 1] : null
+                          return (
+                            <li key={label}>
+                              <span>{label} | composite {row.symptom_composite_pred_0_100.toFixed(1)} ({formatDelta(row.symptom_composite_pred_0_100, prev?.symptom_composite_pred_0_100)})</span>
+                              <strong>우울 {row.dep_week_pred_0_100.toFixed(1)} / 불안 {row.anx_week_pred_0_100.toFixed(1)} / 불면 {row.ins_week_pred_0_100.toFixed(1)}</strong>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </>
+                  )}
 
                   <h3>생활습관 추이 (최근 7일)</h3>
                   <MultiMetricTrendChart
@@ -1738,32 +1818,39 @@ function App() {
                       { name: '햇빛(분)', color: '#f59e0b', values: dailyLifestyleRows.map((r) => (r ? r.daylight_minutes_today : null)) },
                       { name: '스크린(분)', color: '#ef4444', values: dailyLifestyleRows.map((r) => (r ? r.screen_time_min_today : null)) },
                     ]}
+                    emptyMessage={hasDailyLifestyleData ? undefined : '생활 체크인 데이터가 없으니 그래프를 만들 수 없습니다. 체크인을 먼저 저장해주세요.'}
                   />
                 </div>
               )}
 
               {dashboardTab === 'monthly' && (
                 <div className="result">
-                  <MultiMetricTrendChart
-                    labels={monthlyRows.map((r) => r.week.slice(5))}
-                    series={[
-                      { name: '종합', color: '#0f766e', values: monthlyRows.map((r) => r.comp) },
-                      { name: '우울', color: '#2563eb', values: monthlyRows.map((r) => r.dep) },
-                      { name: '불안', color: '#f59e0b', values: monthlyRows.map((r) => r.anx) },
-                      { name: '불면', color: '#ef4444', values: monthlyRows.map((r) => r.ins) },
-                    ]}
-                  />
-                  <ul className="probList">
-                    {monthlyRows.map((row, idx) => {
-                      const prev = idx > 0 ? monthlyRows[idx - 1] : undefined
-                      return (
-                        <li key={row.week}>
-                          <span>{row.week} (1주 평균) | composite {row.comp?.toFixed(1)} ({formatDelta(row.comp ?? 0, prev?.comp ?? undefined)})</span>
-                          <strong>우울 {row.dep?.toFixed(1)} / 불안 {row.anx?.toFixed(1)} / 불면 {row.ins?.toFixed(1)}</strong>
-                        </li>
-                      )
-                    })}
-                  </ul>
+                  {!hasMonthlyScoreData ? (
+                    <p className="chartEmpty">데이터가 없으니 그래프를 만들 수 없습니다. 주간 데이터가 누적되면 월간 추이가 생성됩니다.</p>
+                  ) : (
+                    <>
+                      <MultiMetricTrendChart
+                        labels={monthlyRows.map((r) => r.week.slice(5))}
+                        series={[
+                          { name: '종합', color: '#0f766e', values: monthlyRows.map((r) => r.comp), emphasis: true },
+                          { name: '우울', color: '#2563eb', values: monthlyRows.map((r) => r.dep) },
+                          { name: '불안', color: '#f59e0b', values: monthlyRows.map((r) => r.anx) },
+                          { name: '불면', color: '#ef4444', values: monthlyRows.map((r) => r.ins) },
+                        ]}
+                      />
+                      <ul className="probList">
+                        {monthlyRows.map((row, idx) => {
+                          const prev = idx > 0 ? monthlyRows[idx - 1] : undefined
+                          return (
+                            <li key={row.week}>
+                              <span>{row.week} (1주 평균) | composite {row.comp?.toFixed(1)} ({formatDelta(row.comp ?? 0, prev?.comp ?? undefined)})</span>
+                              <strong>우울 {row.dep?.toFixed(1)} / 불안 {row.anx?.toFixed(1)} / 불면 {row.ins?.toFixed(1)}</strong>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </>
+                  )}
 
                   <h3>생활습관 추이 (주 평균)</h3>
                   <MultiMetricTrendChart
@@ -1774,6 +1861,7 @@ function App() {
                       { name: '햇빛(분)', color: '#f59e0b', values: weeklyLifestyleRows.map((r) => r.daylight) },
                       { name: '스크린(분)', color: '#ef4444', values: weeklyLifestyleRows.map((r) => r.screen) },
                     ]}
+                    emptyMessage={hasWeeklyLifestyleData ? undefined : '생활 체크인 데이터가 없으니 그래프를 만들 수 없습니다. 체크인을 먼저 저장해주세요.'}
                   />
                 </div>
               )}

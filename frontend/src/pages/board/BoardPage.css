@@ -5,7 +5,7 @@
 
 .boardToolbar {
   display: grid;
-  grid-template-columns: 1fr 180px auto;
+  grid-template-columns: 1fr 180px auto auto;
   gap: 0.55rem;
 }
 
@@ -93,4 +93,12 @@
   .boardLayout {
     grid-template-columns: 1fr;
   }
+}
+
+
+.adminReplyBox {
+  border: 1px solid #c7dbe3;
+  border-radius: 10px;
+  padding: 0.55rem;
+  background: #f5fafc;
 }

@@ -41,6 +41,12 @@
   font-size: 1.4rem;
 }
 
+.adminDashboardStack {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.9rem;
+}
+
 .adminSection {
   border: 1px solid #d6e2e8;
   border-radius: 14px;
@@ -83,3 +89,4 @@
 .adminMuted {
   color: #607483;
 }
+

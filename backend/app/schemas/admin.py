@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, conlist
 
 
 class AdminSummaryResponse(BaseModel):
@@ -8,6 +8,9 @@ class AdminSummaryResponse(BaseModel):
     total_assessments: int
     high_risk_assessments: int
     assessments_today: int
+    board_question_feedback_alerts: int = 0
+    today_visitors: int = 0
+    login_users_today: int = 0
 
 
 class AdminUserItem(BaseModel):
@@ -18,6 +21,8 @@ class AdminUserItem(BaseModel):
     nickname: str
     created_at: str
     assessment_count: int
+    chat_count: int = 0
+    board_post_count: int = 0
     latest_assessment_at: str | None = None
 
 
@@ -59,11 +64,15 @@ class AdminHighRiskItem(BaseModel):
     user_id: str
     user_email: str
     user_nickname: str
-    type: str
-    total_score: int
-    severity: str
-    risk_reason: str
-    created_at: str
+    occurred_at: str
+    dep_score: float | None = None
+    anx_score: float | None = None
+    ins_score: float | None = None
+    composite_score: float | None = None
+    major_risk_factors: str
+    type: str | None = None
+    total_score: int | None = None
+    severity: str | None = None
 
 
 class AdminHighRiskListResponse(BaseModel):
@@ -71,6 +80,131 @@ class AdminHighRiskListResponse(BaseModel):
 
     total: int
     items: list[AdminHighRiskItem]
+
+
+class AdminNotificationItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    id: str
+    type: str
+    title: str
+    message: str
+    ref_post_id: str | None
+    is_read: bool
+    created_at: str
+
+
+class AdminNotificationListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    total: int
+    items: list[AdminNotificationItem]
+
+
+class AdminChallengePolicyResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    window_days: int = Field(ge=1, le=60)
+    similarity_threshold: float = Field(ge=0.2, le=0.95)
+    repeatable_techniques: conlist(str, min_length=1, max_length=20)
+
+
+class AdminChallengePolicyUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    window_days: int = Field(ge=1, le=60)
+    similarity_threshold: float = Field(ge=0.2, le=0.95)
+    repeatable_techniques: conlist(str, min_length=1, max_length=20)
+
+
+class AdminChallengePolicyAuditItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    id: str
+    actor_email: str
+    actor_nickname: str | None
+    created_at: str
+    before_json: dict
+    after_json: dict
+    diff_json: dict
+
+
+class AdminChallengePolicyAuditListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    total: int
+    items: list[AdminChallengePolicyAuditItem]
+
+
+class AdminAccountItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    email: str
+    source: str
+    is_owner: bool = False
+
+
+class AdminAccountListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    total: int
+    owner_email: str | None = None
+    current_user_is_owner: bool = False
+    items: list[AdminAccountItem]
+
+
+class AdminAccountAddRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    email: str = Field(min_length=5, max_length=320)
+
+
+class AdminAccountSearchUserItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    id: str
+    email: str
+    nickname: str
+
+
+class AdminAccountSearchUserListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    total: int
+    items: list[AdminAccountSearchUserItem]
+
+
+class AdminGrantHistoryItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    granted_at: str
+    granted_by_email: str
+    granted_by_nickname: str | None
+    granted_to_email: str
+
+
+class AdminGrantHistoryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    total: int
+    items: list[AdminGrantHistoryItem]
+
+
+class PendingReplyPostItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    post_id: str
+    category: str
+    title: str
+    author_nickname: str
+    created_at: str
+
+
+class PendingReplyPostListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    total: int
+    items: list[PendingReplyPostItem]
 
 
 class AdminPagingQuery(BaseModel):

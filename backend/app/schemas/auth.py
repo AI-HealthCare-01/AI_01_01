@@ -6,8 +6,9 @@ from pydantic import BaseModel, ConfigDict, Field, constr
 EmailStrLite = constr(min_length=5, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PasswordStr = constr(min_length=8, max_length=128)
 NicknameStr = constr(min_length=1, max_length=50)
-PhoneStr = constr(min_length=7, max_length=30, pattern=r"^[0-9+\-()\s]+$")
 VerificationCodeStr = constr(min_length=4, max_length=10, pattern=r"^[0-9A-Za-z]+$")
+SecurityQuestionStr = constr(min_length=2, max_length=200)
+SecurityAnswerStr = constr(min_length=1, max_length=200)
 
 
 class UserCreate(BaseModel):
@@ -16,6 +17,8 @@ class UserCreate(BaseModel):
     email: EmailStrLite
     password: PasswordStr
     nickname: NicknameStr
+    security_question: SecurityQuestionStr | None = None
+    security_answer: SecurityAnswerStr | None = None
     email_verification_code: VerificationCodeStr | None = None
 
 
@@ -62,7 +65,7 @@ class ProfileOut(BaseModel):
 
     email: str
     nickname: str
-    phone_number: str | None
+    phone_number: str | None = None
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -83,3 +86,42 @@ class PasswordVerifyResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     matched: bool
+
+
+class PasswordRecoveryQuestionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    email: EmailStrLite
+
+
+class PasswordRecoveryQuestionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    question: str
+
+
+class PasswordRecoveryVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    email: EmailStrLite
+    security_answer: SecurityAnswerStr
+
+
+class PasswordRecoveryVerifyResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    matched: bool
+
+
+class PasswordRecoveryResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    email: EmailStrLite
+    security_answer: SecurityAnswerStr
+    new_password: PasswordStr
+
+
+class PasswordRecoveryResetResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    message: str

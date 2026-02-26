@@ -41,11 +41,14 @@ JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/mental_health
 
+ADMIN_EMAILS=mongle@gmail.com
+
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4.1-mini
 
-CHECK_MODEL_PATH=/AI/models/baseline_check_overall_level.joblib
-MONITOR_MODEL_PATH=/AI/models/baseline_monitor_trend_label.joblib
+# 실사용 모델/데이터 경로 (model 폴더 기준)
+CHECK_MODEL_PATH=/model/models/dep_nowcast_rf.joblib
+MONITOR_MODEL_PATH=/model/models/anx_nowcast_rf.joblib
 NOWCAST_MODEL_DIR=/model/models
 NOWCAST_DATA_PATH=/model/data/derived/train_user_day_nowcast.csv
 NOWCAST_CBT_RAW_PATH=/model/data/raw/cbt_session.csv
@@ -55,8 +58,7 @@ POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
 POSTGRES_DB=mental_health
 API_PORT=8001
-FRONTEND_PORT=5173
-VITE_API_BASE_URL=http://localhost:8001
+
 ```
 
 ## Run with Docker

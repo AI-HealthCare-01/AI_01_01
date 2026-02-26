@@ -10,6 +10,12 @@ from app.db.session import get_db
 from app.schemas.auth import (
     EmailVerificationRequest,
     EmailVerificationResponse,
+    PasswordRecoveryQuestionRequest,
+    PasswordRecoveryQuestionResponse,
+    PasswordRecoveryResetRequest,
+    PasswordRecoveryResetResponse,
+    PasswordRecoveryVerifyRequest,
+    PasswordRecoveryVerifyResponse,
     PasswordVerifyRequest,
     PasswordVerifyResponse,
     ProfileOut,
@@ -58,7 +64,15 @@ async def signup(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> Use
     existing = await crud.get_user_by_email(db, payload.email)
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 가입된 이메일입니다.")
-    user = await crud.create_user(db, payload.email, payload.password, payload.nickname)
+
+    user = await crud.create_user(
+        db,
+        payload.email,
+        payload.password,
+        payload.nickname,
+        security_question=payload.security_question,
+        security_answer=payload.security_answer,
+    )
     return UserOut.model_validate(user)
 
 
@@ -70,7 +84,51 @@ async def login(payload: UserLogin, db: AsyncSession = Depends(get_db)) -> Token
 
     expires_delta = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     token = create_access_token(subject=str(user.id), expires_delta=expires_delta)
+    await crud.create_login_event(db, user.id)
     return TokenResponse(access_token=token, expires_in=int(expires_delta.total_seconds()))
+
+
+@router.post("/password-recovery/question", response_model=PasswordRecoveryQuestionResponse)
+async def password_recovery_question(
+    payload: PasswordRecoveryQuestionRequest,
+    db: AsyncSession = Depends(get_db),
+) -> PasswordRecoveryQuestionResponse:
+    user = await crud.get_user_by_email(db, payload.email)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="가입된 이메일을 찾을 수 없습니다.")
+
+    qa = await crud.get_user_security_qa(db, user.id)
+    if not qa:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="등록된 보안 질문이 없습니다.")
+
+    return PasswordRecoveryQuestionResponse(question=qa.question)
+
+
+@router.post("/password-recovery/verify", response_model=PasswordRecoveryVerifyResponse)
+async def password_recovery_verify(
+    payload: PasswordRecoveryVerifyRequest,
+    db: AsyncSession = Depends(get_db),
+) -> PasswordRecoveryVerifyResponse:
+    matched = await crud.verify_security_answer(db, payload.email, payload.security_answer)
+    if not matched:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="보안 질문 답변이 일치하지 않습니다.")
+    return PasswordRecoveryVerifyResponse(matched=True)
+
+
+@router.post("/password-recovery/reset", response_model=PasswordRecoveryResetResponse)
+async def password_recovery_reset(
+    payload: PasswordRecoveryResetRequest,
+    db: AsyncSession = Depends(get_db),
+) -> PasswordRecoveryResetResponse:
+    ok = await crud.reset_password_by_security_answer(
+        db,
+        payload.email,
+        payload.security_answer,
+        payload.new_password,
+    )
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="비밀번호 재설정에 실패했습니다.")
+    return PasswordRecoveryResetResponse(message="비밀번호가 변경되었습니다.")
 
 
 @router.get("/me", response_model=UserOut)

@@ -54,6 +54,7 @@ type RecoveryVerifyResponse = { matched: boolean }
 
 type ChatRole = 'user' | 'assistant'
 type ChatTurn = { role: ChatRole; content: string; loading?: boolean }
+type ChatHistoryPayloadTurn = { role: ChatRole; content: string }
 
 type ChatResponse = {
   reply: string
@@ -737,6 +738,14 @@ function App() {
     chatInputRef.current.style.height = `${Math.min(160, Math.max(44, chatInputRef.current.scrollHeight))}px`
   }, [chatMessage, page])
 
+  function toChatHistoryPayload(turns: ChatTurn[]): ChatHistoryPayloadTurn[] {
+    return turns
+      .filter((turn) => !turn.loading)
+      .map((turn) => ({ role: turn.role, content: turn.content.trim() }))
+      .filter((turn) => turn.content.length > 0)
+      .slice(-12)
+  }
+
 
   async function loadAdminAccess() {
     try {
@@ -1275,18 +1284,18 @@ function App() {
     }
   }
 
-  function upsertAssistantDraft(content: string, isDraft: boolean, completionMessage?: string | null) {
+  function upsertAssistantDraft(content: string, isDraft: boolean) {
     setChatHistory((prev) => {
       const next = [...prev]
       for (let i = next.length - 1; i >= 0; i -= 1) {
         if (next[i].role === 'assistant' && next[i].loading) {
-          next[i] = { role: 'assistant', content, loading: isDraft }
-          if (!isDraft && completionMessage) next.push({ role: 'assistant', content: completionMessage })
+          next[i] = isDraft
+            ? { role: 'assistant', content, loading: true }
+            : { role: 'assistant', content }
           return next
         }
       }
-      const appended: ChatTurn[] = [...prev, { role: 'assistant', content, loading: isDraft }]
-      if (!isDraft && completionMessage) appended.push({ role: 'assistant', content: completionMessage })
+      const appended: ChatTurn[] = [...prev, isDraft ? { role: 'assistant', content, loading: true } : { role: 'assistant', content }]
       return appended
     })
   }
@@ -1304,7 +1313,7 @@ function App() {
       return
     }
 
-    const history = chatHistory.slice(-12)
+    const history = toChatHistoryPayload(chatHistory)
     setChatHistory((prev) => [...prev, { role: 'user', content: text }, { role: 'assistant', content: '', loading: true }])
     setChatMessage('')
     setLoading(true)
@@ -1330,16 +1339,21 @@ function App() {
 
       setChatResult(data)
 
-      const replyText = (data.reply || '').trim() || '응답을 정리했습니다. 이어서 계속 이야기해볼까요?'
+      const baseReply = (data.reply || '').trim() || '응답을 정리했습니다. 이어서 계속 이야기해볼까요?'
+      const completionSuffix = data.challenge_completed && data.completion_message
+        ? `\n\n${data.completion_message}`
+        : ''
+      const replyText = `${baseReply}${completionSuffix}`
       const chunkSize = Math.max(1, Math.ceil(replyText.length / 90))
       let cursor = 0
       while (cursor < replyText.length) {
         cursor = Math.min(replyText.length, cursor + chunkSize)
-        upsertAssistantDraft(replyText.slice(0, cursor), cursor < replyText.length)
-        await new Promise((resolve) => window.setTimeout(resolve, 16))
+        const isDraft = cursor < replyText.length
+        upsertAssistantDraft(replyText.slice(0, cursor), isDraft)
+        if (isDraft) {
+          await new Promise((resolve) => window.setTimeout(resolve, 16))
+        }
       }
-
-      upsertAssistantDraft(replyText, false, data.challenge_completed ? (data.completion_message ?? null) : null)
 
       if (data.active_challenge) {
         setActiveChallenge(data.active_challenge)
@@ -1970,9 +1984,8 @@ function App() {
                     <strong className="chatBubbleHeader">
                       {turn.role === 'user' ? '나' : '인지행동 코치'}
                       {turn.loading && (
-                        <span className="chatLoadingInline">
+                        <span className="chatLoadingInline" title="응답 생성 중" aria-label="응답 생성 중">
                           <span className="loadingDot" />
-                          응답 생성 중
                         </span>
                       )}
                     </strong>

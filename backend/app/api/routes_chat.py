@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.api.routes_auth import get_current_user
 from app.db import crud
@@ -54,7 +55,8 @@ async def chat_cbt(
 ) -> ChatResponse:
     policy = await _load_challenge_policy(db)
 
-    result = generate_cbt_reply(
+    result = await run_in_threadpool(
+        generate_cbt_reply,
         user_message=payload.message,
         active_challenge=payload.active_challenge,
         challenge_phase=payload.challenge_phase,

@@ -296,28 +296,25 @@ def generate_cbt_reply(
 
     messages.append({"role": "user", "content": f"{challenge_meta}{user_message}"})
 
-    response = client.responses.create(
-        model=settings.openai_model,
-        input=messages,
-        temperature=0.4,
-    )
-
-    text = response.output_text if hasattr(response, "output_text") else ""
-    parsed = _extract_json_block(text)
-    if not parsed:
-        return _fallback_heuristic(
-            user_message,
-            active_challenge=active_challenge,
-            challenge_phase=challenge_phase,
-            conversation_history=conversation_history,
-        )
-
     fallback = _fallback_heuristic(
         user_message,
         active_challenge=active_challenge,
         challenge_phase=challenge_phase,
         conversation_history=conversation_history,
     )
+    try:
+        response = client.responses.create(
+            model=settings.openai_model,
+            input=messages,
+            temperature=0.4,
+        )
+        text = response.output_text if hasattr(response, "output_text") else ""
+    except Exception:
+        return fallback
+
+    parsed = _extract_json_block(text)
+    if not parsed:
+        return fallback
     reply = str(parsed.get("reply", "")).strip()[:1500] or fallback.reply
     extracted = _normalize_extracted(parsed.get("extracted", {}))
     summary_card = _normalize_summary_card(parsed.get("summary_card", {}), user_message)

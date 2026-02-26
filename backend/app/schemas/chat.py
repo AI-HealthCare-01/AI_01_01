@@ -29,7 +29,8 @@ class ExtractedIndicators(BaseModel):
 
 
 class ChatTurn(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    # 프론트 임시 필드(예: loading)를 허용하고 무시해 대화 턴 파싱 실패를 방지한다.
+    model_config = ConfigDict(extra="ignore", strict=True)
 
     role: Literal["user", "assistant"]
     content: MessageStr

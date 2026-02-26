@@ -93,6 +93,15 @@ type WeeklyDashboardRow = {
   alert_reason_codes?: string
 }
 
+type DashboardChartRow = {
+  dateKey: string
+  dateLabel: string
+  composite: number
+  dep: number
+  anx: number
+  ins: number
+}
+
 type WeeklyDashboardResponse = {
   user_id: string
   rows: WeeklyDashboardRow[]
@@ -269,6 +278,7 @@ function App() {
   const [checkinNote, setCheckinNote] = useState('')
 
   const [dashboard, setDashboard] = useState<WeeklyDashboardResponse | null>(null)
+  const [dashboardView, setDashboardView] = useState<'weekly' | 'monthly'>('weekly')
   const [phqHistory, setPhqHistory] = useState<PHQ9AssessmentSummary[]>([])
 
   const [profile, setProfile] = useState<ProfileOut | null>(null)
@@ -755,18 +765,52 @@ function App() {
     Number(assessment.context.social_support || 0) +
     Number(assessment.context.coping_skill || 0) +
     Number(assessment.context.motivation_for_change || 0)
-  const latestWeekly = dashboard?.rows?.length ? dashboard.rows[dashboard.rows.length - 1] : null
-  const prevWeekly = dashboard && dashboard.rows.length > 1 ? dashboard.rows[dashboard.rows.length - 2] : null
-  const chartRows = useMemo(() => {
+  const weeklyRows = useMemo<DashboardChartRow[]>(() => {
     if (!dashboard?.rows?.length) return []
-    return dashboard.rows.map((row) => ({
-      dateLabel: new Date(row.week_start_date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }),
-      composite: row.symptom_composite_pred_0_100,
-      dep: row.dep_week_pred_0_100,
-      anx: row.anx_week_pred_0_100,
-      ins: row.ins_week_pred_0_100,
-    }))
+    return dashboard.rows
+      .slice()
+      .sort((a, b) => new Date(a.week_start_date).getTime() - new Date(b.week_start_date).getTime())
+      .map((row) => ({
+        dateKey: row.week_start_date,
+        dateLabel: new Date(row.week_start_date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }),
+        composite: Number(row.symptom_composite_pred_0_100 ?? 0),
+        dep: Number(row.dep_week_pred_0_100 ?? 0),
+        anx: Number(row.anx_week_pred_0_100 ?? 0),
+        ins: Number(row.ins_week_pred_0_100 ?? 0),
+      }))
+      .filter((row) => [row.composite, row.dep, row.anx, row.ins].every((value) => Number.isFinite(value)))
   }, [dashboard])
+  const monthlyRows = useMemo<DashboardChartRow[]>(() => {
+    if (!weeklyRows.length) return []
+    const buckets = new Map<string, { year: number; month: number; dep: number; anx: number; ins: number; composite: number; count: number }>()
+    for (const row of weeklyRows) {
+      const d = new Date(row.dateKey)
+      if (Number.isNaN(d.getTime())) continue
+      const year = d.getFullYear()
+      const month = d.getMonth() + 1
+      const key = `${year}-${String(month).padStart(2, '0')}`
+      const current = buckets.get(key) ?? { year, month, dep: 0, anx: 0, ins: 0, composite: 0, count: 0 }
+      current.dep += row.dep
+      current.anx += row.anx
+      current.ins += row.ins
+      current.composite += row.composite
+      current.count += 1
+      buckets.set(key, current)
+    }
+    return Array.from(buckets.values())
+      .sort((a, b) => (a.year - b.year) || (a.month - b.month))
+      .map((bucket) => ({
+        dateKey: `${bucket.year}-${String(bucket.month).padStart(2, '0')}`,
+        dateLabel: `${String(bucket.year).slice(-2)}.${String(bucket.month).padStart(2, '0')}`,
+        dep: bucket.dep / bucket.count,
+        anx: bucket.anx / bucket.count,
+        ins: bucket.ins / bucket.count,
+        composite: bucket.composite / bucket.count,
+      }))
+  }, [weeklyRows])
+  const chartRows = dashboardView === 'weekly' ? weeklyRows : monthlyRows
+  const latestChartRow = chartRows.length ? chartRows[chartRows.length - 1] : null
+  const prevChartRow = chartRows.length > 1 ? chartRows[chartRows.length - 2] : null
   const chartWidth = 760
   const chartHeight = 280
   const chartPadding = { top: 20, right: 24, bottom: 44, left: 46 }
@@ -789,7 +833,7 @@ function App() {
     .map((p) => `${p.x},${chartPadding.top + ((100 - Math.max(0, Math.min(100, p.ins))) / 100) * plotHeight}`)
     .join(' ')
   const compositePolylinePoints = points.map((p) => `${p.x},${p.y}`).join(' ')
-  const xLabelStep = Math.max(1, Math.ceil(chartRows.length / 6))
+  const xLabelStep = Math.max(1, Math.ceil(chartRows.length / 8))
   return (
     <main className="page">
       <header className="hero">
@@ -1023,19 +1067,23 @@ function App() {
               <div className="actions"><button disabled={loading} onClick={() => void loadMyDashboard()}>내 대시보드 조회</button></div>
               {dashboard && (
                 <>
-                  <p>최근 주차 수: {dashboard.rows.length}</p>
-                  {latestWeekly && (
+                  <p>누적 데이터 포인트: 주간 {weeklyRows.length}개 / 월간 {monthlyRows.length}개</p>
+                  <div className="actions">
+                    <button type="button" className={dashboardView === 'weekly' ? '' : 'ghost'} onClick={() => setDashboardView('weekly')}>주간</button>
+                    <button type="button" className={dashboardView === 'monthly' ? '' : 'ghost'} onClick={() => setDashboardView('monthly')}>월간</button>
+                  </div>
+                  {latestChartRow && (
                     <>
                       <p className="small">
-                        현재 상태: <strong>{riskBand(latestWeekly.symptom_composite_pred_0_100)}</strong> (composite {latestWeekly.symptom_composite_pred_0_100.toFixed(1)})
+                        현재 상태: <strong>{riskBand(latestChartRow.composite)}</strong> (composite {latestChartRow.composite.toFixed(1)})
                       </p>
                       <p className="small">
-                        최근 변화: {deltaText(latestWeekly.symptom_composite_pred_0_100, prevWeekly?.symptom_composite_pred_0_100)}
+                        최근 변화: {deltaText(latestChartRow.composite, prevChartRow?.composite)}
                       </p>
                     </>
                   )}
                   <section className="lineChartSection">
-                    <h3>종합 점수 추이</h3>
+                    <h3>종합 점수 추이 ({dashboardView === 'weekly' ? '주간' : '월간'})</h3>
                     <div className="lineChartLegend">
                       <span><i className="legendSwatch legendComposite" />종합(강조)</span>
                       <span><i className="legendSwatch legendDep" />DEP</span>
@@ -1085,7 +1133,7 @@ function App() {
                             ))}
                           </svg>
                         </div>
-                        <p className="small">X축: 날짜 / Y축: 종합점수(0~100)</p>
+                        <p className="small">X축: {dashboardView === 'weekly' ? '날짜' : '월'} / Y축: 종합점수(0~100)</p>
                       </>
                     )}
                   </section>

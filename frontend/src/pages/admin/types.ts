@@ -14,7 +14,9 @@ export type AdminUserItem = {
   nickname: string
   created_at: string
   assessment_count: number
-  chat_count: number
+  login_count: number
+  login_days: number
+  latest_login_ip: string | null
   board_post_count: number
   latest_assessment_at: string | null
 }
@@ -148,4 +150,32 @@ export type AdminAccountSearchUserListResponse = {
 export type AdminGrantHistoryResponse = {
   total: number
   items: AdminGrantHistoryItem[]
+}
+
+export type AdminBoardRiskKeywords = {
+  keywords: string[]
+}
+
+export type AdminBlockedIPItem = {
+  id: string
+  ip_address: string
+  reason: string | null
+  is_active: boolean
+  created_at: string
+}
+
+export type AdminBlockedIPListResponse = {
+  total: number
+  items: AdminBlockedIPItem[]
+}
+
+export type AdminBlockedEmailItem = {
+  email: string
+  reason: string | null
+  blocked_at: string
+}
+
+export type AdminBlockedEmailListResponse = {
+  total: number
+  items: AdminBlockedEmailItem[]
 }

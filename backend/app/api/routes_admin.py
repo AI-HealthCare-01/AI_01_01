@@ -10,6 +10,12 @@ from app.schemas.admin import (
     AdminAccountListResponse,
     AdminAccountSearchUserListResponse,
     AdminAssessmentListResponse,
+    AdminBlockedEmailCreateRequest,
+    AdminBlockedEmailListResponse,
+    AdminBlockedIPCreateRequest,
+    AdminBlockedIPListResponse,
+    AdminBoardRiskKeywordsResponse,
+    AdminBoardRiskKeywordsUpdateRequest,
     AdminChallengePolicyAuditListResponse,
     AdminChallengePolicyResponse,
     AdminChallengePolicyUpdateRequest,
@@ -23,11 +29,16 @@ from app.schemas.admin import (
 from app.schemas.auth import UserOut
 from app.services.admin_service import (
     add_admin_account_email,
+    add_admin_blocked_email,
+    add_admin_blocked_ip,
+    get_admin_board_risk_keywords,
     get_admin_challenge_policy,
     get_admin_email_set,
     get_admin_summary,
     list_admin_accounts,
     list_admin_assessments,
+    list_admin_blocked_emails,
+    list_admin_blocked_ips,
     list_admin_challenge_policy_audit,
     list_admin_grant_history,
     list_admin_high_risk,
@@ -35,7 +46,10 @@ from app.services.admin_service import (
     list_admin_users,
     list_pending_reply_posts,
     remove_admin_account_email,
+    remove_admin_blocked_email,
+    remove_admin_blocked_ip,
     search_registered_users_for_admin_add,
+    update_admin_board_risk_keywords,
     update_admin_challenge_policy,
 )
 
@@ -62,7 +76,7 @@ async def admin_users(
     page: int = Query(default=1, ge=1, le=2000),
     page_size: int = Query(default=20, ge=1, le=100),
     q: str | None = Query(default=None, min_length=1, max_length=200),
-    sort_by: str = Query(default="created_at", pattern="^(email|nickname|created_at|assessment_count|chat_count|board_post_count)$"),
+    sort_by: str = Query(default="created_at", pattern="^(email|nickname|created_at|assessment_count|login_count|login_days|latest_login_ip|board_post_count)$"),
     sort_order: str = Query(default="desc", pattern="^(asc|desc)$"),
     _: UserOut = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
@@ -91,7 +105,7 @@ async def admin_high_risk(
     return await list_admin_high_risk(db, limit=limit)
 
 
-@router.get('/notifications', response_model=AdminNotificationListResponse)
+@router.get("/notifications", response_model=AdminNotificationListResponse)
 async def admin_notifications(
     limit: int = Query(default=50, ge=1, le=200),
     _: UserOut = Depends(require_admin),
@@ -100,7 +114,7 @@ async def admin_notifications(
     return await list_admin_notifications(db, limit=limit)
 
 
-@router.get('/board/pending-replies', response_model=PendingReplyPostListResponse)
+@router.get("/board/pending-replies", response_model=PendingReplyPostListResponse)
 async def admin_pending_replies(
     limit: int = Query(default=100, ge=1, le=500),
     _: UserOut = Depends(require_admin),
@@ -110,7 +124,7 @@ async def admin_pending_replies(
     return await list_pending_reply_posts(db, admin_emails=admin_emails, limit=limit)
 
 
-@router.get('/accounts', response_model=AdminAccountListResponse)
+@router.get("/accounts", response_model=AdminAccountListResponse)
 async def admin_accounts(
     current_user: UserOut = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
@@ -118,7 +132,7 @@ async def admin_accounts(
     return await list_admin_accounts(db, current_user_email=current_user.email)
 
 
-@router.get('/accounts/search-users', response_model=AdminAccountSearchUserListResponse)
+@router.get("/accounts/search-users", response_model=AdminAccountSearchUserListResponse)
 async def admin_search_registered_users(
     q: str = Query(..., min_length=1, max_length=200),
     limit: int = Query(default=10, ge=1, le=30),
@@ -128,7 +142,7 @@ async def admin_search_registered_users(
     return await search_registered_users_for_admin_add(db, q=q, limit=limit)
 
 
-@router.post('/accounts', response_model=AdminAccountListResponse)
+@router.post("/accounts", response_model=AdminAccountListResponse)
 async def admin_add_account(
     payload: AdminAccountAddRequest,
     current_user: UserOut = Depends(require_admin),
@@ -146,7 +160,7 @@ async def admin_add_account(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-@router.delete('/accounts/{email}', response_model=AdminAccountListResponse)
+@router.delete("/accounts/{email}", response_model=AdminAccountListResponse)
 async def admin_remove_account(
     email: str,
     current_user: UserOut = Depends(require_admin),
@@ -164,7 +178,7 @@ async def admin_remove_account(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
-@router.get('/accounts/grants', response_model=AdminGrantHistoryResponse)
+@router.get("/accounts/grants", response_model=AdminGrantHistoryResponse)
 async def admin_account_grants(
     limit: int = Query(default=100, ge=1, le=500),
     _: UserOut = Depends(require_admin),
@@ -173,7 +187,7 @@ async def admin_account_grants(
     return await list_admin_grant_history(db, limit=limit)
 
 
-@router.get('/challenge-policy', response_model=AdminChallengePolicyResponse)
+@router.get("/challenge-policy", response_model=AdminChallengePolicyResponse)
 async def admin_get_challenge_policy(
     _: UserOut = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
@@ -181,7 +195,7 @@ async def admin_get_challenge_policy(
     return await get_admin_challenge_policy(db)
 
 
-@router.put('/challenge-policy', response_model=AdminChallengePolicyResponse)
+@router.put("/challenge-policy", response_model=AdminChallengePolicyResponse)
 async def admin_put_challenge_policy(
     payload: AdminChallengePolicyUpdateRequest,
     current_user: UserOut = Depends(require_admin),
@@ -196,10 +210,87 @@ async def admin_put_challenge_policy(
     )
 
 
-@router.get('/challenge-policy/audit', response_model=AdminChallengePolicyAuditListResponse)
+@router.get("/challenge-policy/audit", response_model=AdminChallengePolicyAuditListResponse)
 async def admin_challenge_policy_audit(
     limit: int = Query(default=50, ge=1, le=200),
     _: UserOut = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> AdminChallengePolicyAuditListResponse:
     return await list_admin_challenge_policy_audit(db, limit=limit)
+
+
+@router.get("/board-risk-keywords", response_model=AdminBoardRiskKeywordsResponse)
+async def admin_get_board_risk_keywords(
+    _: UserOut = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminBoardRiskKeywordsResponse:
+    return await get_admin_board_risk_keywords(db)
+
+
+@router.put("/board-risk-keywords", response_model=AdminBoardRiskKeywordsResponse)
+async def admin_put_board_risk_keywords(
+    payload: AdminBoardRiskKeywordsUpdateRequest,
+    current_user: UserOut = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminBoardRiskKeywordsResponse:
+    return await update_admin_board_risk_keywords(
+        db,
+        payload,
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        actor_nickname=current_user.nickname,
+    )
+
+
+@router.get("/blocked-ips", response_model=AdminBlockedIPListResponse)
+async def admin_get_blocked_ips(
+    active_only: bool = Query(default=False),
+    limit: int = Query(default=200, ge=1, le=500),
+    _: UserOut = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminBlockedIPListResponse:
+    return await list_admin_blocked_ips(db, active_only=active_only, limit=limit)
+
+
+@router.post("/blocked-ips", response_model=AdminBlockedIPListResponse)
+async def admin_add_blocked_ip(
+    payload: AdminBlockedIPCreateRequest,
+    current_user: UserOut = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminBlockedIPListResponse:
+    return await add_admin_blocked_ip(db, payload, actor_user_id=current_user.id)
+
+
+@router.delete("/blocked-ips/{ip_address}", response_model=AdminBlockedIPListResponse)
+async def admin_remove_blocked_ip(
+    ip_address: str,
+    _: UserOut = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminBlockedIPListResponse:
+    return await remove_admin_blocked_ip(db, ip_address=ip_address)
+
+
+@router.get("/blocked-emails", response_model=AdminBlockedEmailListResponse)
+async def admin_get_blocked_emails(
+    _: UserOut = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminBlockedEmailListResponse:
+    return await list_admin_blocked_emails(db)
+
+
+@router.post("/blocked-emails", response_model=AdminBlockedEmailListResponse)
+async def admin_add_blocked_email(
+    payload: AdminBlockedEmailCreateRequest,
+    _: UserOut = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminBlockedEmailListResponse:
+    return await add_admin_blocked_email(db, payload)
+
+
+@router.delete("/blocked-emails/{email}", response_model=AdminBlockedEmailListResponse)
+async def admin_remove_blocked_email(
+    email: str,
+    _: UserOut = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminBlockedEmailListResponse:
+    return await remove_admin_blocked_email(db, email=email)

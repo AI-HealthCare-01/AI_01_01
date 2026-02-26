@@ -18,6 +18,7 @@ class BoardPostCreateRequest(BaseModel):
     content: ContentStr
     is_notice: bool = False
     is_private: bool = False
+    is_mental_health_post: bool = False
 
 
 class BoardPostUpdateRequest(BaseModel):
@@ -28,12 +29,20 @@ class BoardPostUpdateRequest(BaseModel):
     content: ContentStr | None = None
     is_notice: bool | None = None
     is_private: bool | None = None
+    is_mental_health_post: bool | None = None
 
 
 class BoardCommentCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     content: CommentStr
+
+
+class BoardReportCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    reason: constr(min_length=1, max_length=80)
+    detail: constr(min_length=0, max_length=1000) | None = None
 
 
 class BoardCommentOut(BaseModel):
@@ -58,6 +67,7 @@ class BoardPostOut(BaseModel):
     content: str
     is_notice: bool
     is_private: bool = False
+    is_mental_health_post: bool = False
     likes_count: int = 0
     bookmarks_count: int = 0
     comments_count: int = 0

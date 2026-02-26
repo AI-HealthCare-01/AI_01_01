@@ -60,6 +60,8 @@ class User(Base):
     board_posts: Mapped[list["BoardPost"]] = relationship(back_populates="author", cascade="all, delete-orphan")
     board_comments: Mapped[list["BoardComment"]] = relationship(back_populates="author", cascade="all, delete-orphan")
     challenge_histories: Mapped[list["ChallengeHistory"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    journal_entries: Mapped[list["JournalEntry"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    content_challenge_logs: Mapped[list["ContentChallengeLog"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class UserProfile(Base):
@@ -161,6 +163,7 @@ class LoginEvent(Base):
         nullable=False,
     )
     logged_in_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    login_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class ChatEvent(Base):
@@ -203,6 +206,54 @@ class ChallengeHistory(Base):
     user: Mapped["User"] = relationship(back_populates="challenge_histories")
 
 
+class JournalEntry(Base):
+    __tablename__ = "journal_entry"
+    __table_args__ = (UniqueConstraint("user_id", "entry_date", name="uq_journal_entry_user_date"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    entry_date: Mapped[str] = mapped_column(String(10), index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(160), nullable=False, default="오늘의 기록")
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    checkin_snapshot: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=False, default=dict)
+    cbt_summary: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=False, default=dict)
+    activity_challenges: Mapped[list] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    user: Mapped["User"] = relationship(back_populates="journal_entries")
+
+
+class ContentChallengeLog(Base):
+    __tablename__ = "content_challenge_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    challenge_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    category: Mapped[str] = mapped_column(String(50), nullable=False, default="생활습관")
+    duration_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    performed_date: Mapped[str] = mapped_column(String(10), index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="content_challenge_logs")
+
+
 class BoardPost(Base):
     __tablename__ = "board_post"
 
@@ -218,6 +269,7 @@ class BoardPost(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     is_notice: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_private: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_mental_health_post: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -267,6 +319,28 @@ class BoardPostBookmark(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     post: Mapped["BoardPost"] = relationship(back_populates="bookmarks")
+
+class BoardPostReport(Base):
+    __tablename__ = "board_post_report"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    post_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("board_post.id", ondelete="CASCADE"), index=True, nullable=False)
+    reporter_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), index=True, nullable=False)
+    reason: Mapped[str] = mapped_column(String(80), nullable=False)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reporter_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class BlockedIP(Base):
+    __tablename__ = "blocked_ip"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ip_address: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class AdminNotification(Base):

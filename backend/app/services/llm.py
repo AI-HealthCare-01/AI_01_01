@@ -67,6 +67,24 @@ def _should_defer_challenge(user_message: str, conversation_history: list[dict[s
     return (not explicit_request) and (not enough_depth)
 
 
+def _last_assistant_message(conversation_history: list[dict[str, str]] | None) -> str:
+    for turn in reversed(conversation_history or []):
+        if turn.get("role") == "assistant":
+            return str(turn.get("content", "")).strip()
+    return ""
+
+
+def _pick_non_repetitive_reply(candidates: list[str], last_assistant: str) -> str:
+    if not candidates:
+        return ""
+    norm_last = re.sub(r"\s+", "", last_assistant.lower())
+    for c in candidates:
+        norm_c = re.sub(r"\s+", "", c.lower())
+        if norm_c and norm_c != norm_last and norm_c not in norm_last:
+            return c
+    return candidates[0]
+
+
 def _fallback_heuristic(
     user_message: str,
     active_challenge: str | None = None,
@@ -110,10 +128,13 @@ def _fallback_heuristic(
 
     if active_challenge:
         phase = challenge_phase or "continue"
-        reply = (
-            f"좋아요. 지금은 '{active_challenge}' 챌린지를 함께 진행하고 있어요. "
-            "상황을 사실, 생각, 감정으로 나눠서 한 줄씩 적어볼까요?"
-        )
+        last_assistant = _last_assistant_message(conversation_history)
+        reply_candidates = [
+            f"좋아요. 지금은 '{active_challenge}'를 함께 진행하고 있어요. 상황을 사실, 생각, 감정으로 나눠 한 줄씩 적어볼까요?",
+            f"좋습니다. '{active_challenge}'를 이어가볼게요. 방금 상황에서 사실로 확인되는 내용부터 한 문장으로 적어주세요.",
+            f"계속 잘 따라오고 있어요. '{active_challenge}' 단계에서 지금 떠오른 자동사고를 한 줄로 적어볼까요?",
+        ]
+        reply = _pick_non_repetitive_reply(reply_candidates, last_assistant)
         step = "1) 사실 2) 떠오른 생각 3) 감정강도(0~10)를 순서대로 적어주세요."
         if phase == "reflect":
             step = "오늘 챌린지 전후 감정강도 변화와 배운 점을 2줄로 정리해주세요."
@@ -137,11 +158,17 @@ def _fallback_heuristic(
         )
 
     if _should_defer_challenge(user_message, conversation_history):
+        last_assistant = _last_assistant_message(conversation_history)
+        reply = _pick_non_repetitive_reply(
+            [
+                "좋아요. 오늘 있었던 일을 천천히 정리해볼게요. 먼저 무슨 일이 있었는지 알려주세요.",
+                "지금 감정을 만든 사건을 먼저 짧게 적어주세요. 그다음 생각의 흐름을 같이 보겠습니다.",
+                "괜찮아요. 해결을 서두르지 않고, 사건-감정-생각 순서로 차근차근 정리해보죠.",
+            ],
+            last_assistant,
+        )
         return CBTLLMResult(
-            reply=(
-                "좋아요. 오늘 있었던 일을 천천히 함께 정리해볼게요. "
-                "무슨 일이 있었고, 그 순간 어떤 생각이 먼저 떠올랐는지 알려주세요."
-            ),
+            reply=reply,
             extracted=extracted,
             suggested_challenges=[],
             summary_card=summary_card,
@@ -149,8 +176,14 @@ def _fallback_heuristic(
             challenge_step_prompt="먼저 사건-감정-생각 흐름을 2~3문장으로 적어주세요. 충분히 파악한 뒤 맞춤 챌린지를 추천할게요.",
         )
 
-    reply = (
-        "이야기를 잘 정리해주셨어요. 지금 상태를 기준으로 시도해볼 수 있는 챌린지를 골라 같이 진행해볼게요."
+    last_assistant = _last_assistant_message(conversation_history)
+    reply = _pick_non_repetitive_reply(
+        [
+            "이야기를 잘 정리해주셨어요. 지금 상태에 맞는 생각 정리 도구를 골라 함께 진행해볼게요.",
+            "충분히 맥락을 확인했습니다. 지금부터는 맞춤 생각 정리 단계를 함께 해보겠습니다.",
+            "좋습니다. 현재 상태를 반영해 바로 실천 가능한 생각 정리 도구를 제안해드릴게요.",
+        ],
+        last_assistant,
     )
     step = "아래 추천 챌린지 중 하나를 선택하면 단계별로 같이 진행합니다."
     return CBTLLMResult(
@@ -232,8 +265,8 @@ def generate_cbt_reply(
         "You are a warm CBT coach for depression, anxiety, and insomnia support. "
         "Never diagnose or prescribe medication. Keep tone empathic, validating, and practical. "
         "If user shows self-blame or guilt, explicitly normalize emotion and reduce shame. "
-        "Use short Korean sentences suitable for app UI. "
-        "Before recommending challenges, first explore user's event-emotion-thought flow deeply for enough turns unless user explicitly asks for challenge. "
+        "Use short Korean sentences suitable for app UI. Do not expose CBT mechanism labels like '바로 해결로 가기보다' in your reply. "
+        "Before recommending thought-organization exercises, first explore user's event-emotion-thought flow deeply for enough turns unless user explicitly asks for one. "
         "Also extract indicators from the user's text every turn. "
         "Return strict JSON with keys: reply, extracted, suggested_challenges, summary_card, active_challenge, challenge_step_prompt, challenge_completed, completed_challenge, completion_message. "
         "extracted must include distress_0_10, rumination_0_10, avoidance_0_10, sleep_difficulty_0_10, "

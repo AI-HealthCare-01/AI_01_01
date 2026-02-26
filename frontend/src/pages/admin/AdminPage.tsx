@@ -3,7 +3,12 @@ import AdminTable from '../../components/admin/AdminTable'
 import StatCard from '../../components/admin/StatCard'
 import {
   addAdminAccount,
+  addAdminBlockedEmail,
+  addAdminBlockedIp,
   fetchAdminAccounts,
+  fetchAdminBlockedEmails,
+  fetchAdminBlockedIps,
+  fetchAdminBoardRiskKeywords,
   fetchAdminChallengePolicy,
   fetchAdminChallengePolicyAudit,
   fetchAdminGrantHistory,
@@ -12,13 +17,19 @@ import {
   fetchAdminUsers,
   fetchPendingReplyPosts,
   removeAdminAccount,
+  removeAdminBlockedEmail,
   searchRegisteredUsersForAdminAdd,
+  updateAdminBoardRiskKeywords,
   updateAdminChallengePolicy,
+  removeAdminBlockedIp,
 } from './adminApi'
 import type {
   AdminAccountItem,
   AdminAccountSearchUserItem,
+  AdminBlockedEmailItem,
+  AdminBlockedIPItem,
   AdminChallengePolicy,
+  AdminBoardRiskKeywords,
   AdminChallengePolicyAuditItem,
   AdminGrantHistoryItem,
   AdminHighRiskItem,
@@ -40,7 +51,7 @@ type AdminPageProps = {
   onOpenBoardPost: (postId: string) => void
 }
 
-type AdminMenu = 'dashboard' | 'accounts' | 'pending' | 'policy'
+type AdminMenu = 'dashboard' | 'accounts' | 'pending' | 'policy' | 'moderation'
 
 const TECHNIQUE_LABELS: Record<string, string> = {
   cognitive_reframe: '인지왜곡 교정',
@@ -67,7 +78,7 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
-  const [userSortBy, setUserSortBy] = useState<'created_at' | 'email' | 'nickname' | 'assessment_count' | 'chat_count' | 'board_post_count'>('created_at')
+  const [userSortBy, setUserSortBy] = useState<'created_at' | 'email' | 'nickname' | 'assessment_count' | 'login_days' | 'latest_login_ip' | 'board_post_count'>('created_at')
   const [userSortOrder, setUserSortOrder] = useState<'asc' | 'desc'>('desc')
 
   const [summary, setSummary] = useState<AdminSummary | null>(null)
@@ -90,7 +101,21 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
   })
   const [policyAudits, setPolicyAudits] = useState<AdminChallengePolicyAuditItem[]>([])
 
+  const [boardRiskKeywords, setBoardRiskKeywords] = useState<AdminBoardRiskKeywords>({ keywords: [] })
+  const [boardRiskKeywordsText, setBoardRiskKeywordsText] = useState('')
+  const [blockedIps, setBlockedIps] = useState<AdminBlockedIPItem[]>([])
+  const [blockedEmails, setBlockedEmails] = useState<AdminBlockedEmailItem[]>([])
+  const [blockSearch, setBlockSearch] = useState('')
+  const [blockCandidates, setBlockCandidates] = useState<AdminUserItem[]>([])
+
   const canLoad = useMemo(() => token.trim().length > 0, [token])
+
+  function hideZero(value: number | string | null | undefined): string {
+    if (value == null) return ''
+    const text = String(value).trim()
+    if (text === '' || text === '0' || text === '0.0' || text === '0.00') return ''
+    return text
+  }
 
   async function loadAll() {
     if (!canLoad) {
@@ -101,7 +126,7 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
     setLoading(true)
     setError('')
     try {
-      const [summaryRes, usersRes, highRiskRes, policyRes, auditRes, pendingRes, accRes, grantsRes] = await Promise.all([
+      const [summaryRes, usersRes, highRiskRes, policyRes, auditRes, pendingRes, accRes, grantsRes, keywordsRes, blockedRes, blockedEmailRes] = await Promise.allSettled([
         fetchAdminSummary(token),
         fetchAdminUsers(token, query, 1, 20, userSortBy, userSortOrder),
         fetchAdminHighRisk(token, 30),
@@ -110,19 +135,59 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
         fetchPendingReplyPosts(token, 50),
         fetchAdminAccounts(token),
         fetchAdminGrantHistory(token, 50),
+        fetchAdminBoardRiskKeywords(token),
+        fetchAdminBlockedIps(token, false, 200),
+        fetchAdminBlockedEmails(token),
       ])
-      setSummary(summaryRes)
-      setUsers(usersRes.items)
-      setHighRisk(highRiskRes.items)
-      setPolicy(policyRes)
-      setPolicyAudits(auditRes.items)
-      setPendingReplies(pendingRes.items)
-      setAccounts(accRes.items)
-      setAccountOwnerEmail(accRes.owner_email)
-      setCurrentUserIsOwner(accRes.current_user_is_owner)
-      setGrants(grantsRes.items)
-    } catch (e) {
-      setError((e as Error).message)
+
+      const errors: string[] = []
+      const errText = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason))
+
+      if (summaryRes.status === 'fulfilled') setSummary(summaryRes.value)
+      else errors.push(`요약: ${errText(summaryRes.reason)}`)
+
+      if (usersRes.status === 'fulfilled') setUsers(usersRes.value.items)
+      else errors.push(`사용자목록: ${errText(usersRes.reason)}`)
+
+      if (highRiskRes.status === 'fulfilled') setHighRisk(highRiskRes.value.items)
+      else errors.push(`고위험목록: ${errText(highRiskRes.reason)}`)
+
+      if (policyRes.status === 'fulfilled') setPolicy(policyRes.value)
+      else errors.push(`정책: ${errText(policyRes.reason)}`)
+
+      if (auditRes.status === 'fulfilled') setPolicyAudits(auditRes.value.items)
+      else errors.push(`정책이력: ${errText(auditRes.reason)}`)
+
+      if (pendingRes.status === 'fulfilled') setPendingReplies(pendingRes.value.items)
+      else errors.push(`미답변목록: ${errText(pendingRes.reason)}`)
+
+      if (accRes.status === 'fulfilled') {
+        setAccounts(accRes.value.items)
+        setAccountOwnerEmail(accRes.value.owner_email)
+        setCurrentUserIsOwner(accRes.value.current_user_is_owner)
+      } else {
+        errors.push(`관리자계정: ${errText(accRes.reason)}`)
+      }
+
+      if (grantsRes.status === 'fulfilled') setGrants(grantsRes.value.items)
+      else errors.push(`권한이력: ${errText(grantsRes.reason)}`)
+
+      if (keywordsRes.status === 'fulfilled') {
+        setBoardRiskKeywords(keywordsRes.value)
+        setBoardRiskKeywordsText((keywordsRes.value.keywords || []).join(', '))
+      } else {
+        errors.push(`위험키워드: ${errText(keywordsRes.reason)}`)
+      }
+
+      if (blockedRes.status === 'fulfilled') setBlockedIps(blockedRes.value.items)
+      else errors.push(`IP차단: ${errText(blockedRes.reason)}`)
+
+      if (blockedEmailRes.status === 'fulfilled') setBlockedEmails(blockedEmailRes.value.items)
+      else errors.push(`이메일차단: ${errText(blockedEmailRes.reason)}`)
+
+      if (errors.length > 0) {
+        setError(errors.join(' | '))
+      }
     } finally {
       setLoading(false)
     }
@@ -154,6 +219,103 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
       setPolicy(saved)
       const auditRes = await fetchAdminChallengePolicyAudit(token, 30)
       setPolicyAudits(auditRes.items)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+
+  async function handleSaveBoardRiskKeywords() {
+    const cleaned = boardRiskKeywordsText
+      .split(/[\n,]/)
+      .map((x) => x.trim())
+      .filter(Boolean)
+    if (cleaned.length === 0) {
+      setError('위험 키워드를 1개 이상 입력하세요.')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    try {
+      const saved = await updateAdminBoardRiskKeywords(token, cleaned)
+      setBoardRiskKeywords(saved)
+      setBoardRiskKeywordsText(saved.keywords.join(', '))
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleRemoveBlockedIp(ipAddress: string) {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await removeAdminBlockedIp(token, ipAddress)
+      setBlockedIps(res.items)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleRemoveBlockedEmail(email: string) {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await removeAdminBlockedEmail(token, email)
+      setBlockedEmails(res.items)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleSearchBlockCandidates() {
+    const keyword = blockSearch.trim()
+    if (!keyword) {
+      setBlockCandidates([])
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetchAdminUsers(token, keyword, 1, 50, 'created_at', 'desc')
+      setBlockCandidates(res.items)
+    } catch (e) {
+      setError((e as Error).message)
+      setBlockCandidates([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleBlockEmailFromCandidate(email: string) {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await addAdminBlockedEmail(token, email, '관리자 수동 차단')
+      setBlockedEmails(res.items)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleBlockIpFromCandidate(ipAddress: string, email: string) {
+    if (!ipAddress.trim()) return
+    setLoading(true)
+    setError('')
+    try {
+      const res = await addAdminBlockedIp(token, ipAddress, `${email} 관련 차단`)
+      setBlockedIps(res.items)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -220,7 +382,8 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
         <button className={menu === 'dashboard' ? '' : 'ghost'} onClick={() => setMenu('dashboard')}>대시보드</button>
         <button className={menu === 'accounts' ? '' : 'ghost'} onClick={() => setMenu('accounts')}>관리자 계정 추가</button>
         <button className={menu === 'pending' ? '' : 'ghost'} onClick={() => setMenu('pending')}>문의/피드백 미답변</button>
-        <button className={menu === 'policy' ? '' : 'ghost'} onClick={() => setMenu('policy')}>챌린지 정책 관리</button>
+        <button className={menu === 'policy' ? '' : 'ghost'} onClick={() => setMenu('policy')}>생각 정리 추천 정책</button>
+        <button className={menu === 'moderation' ? '' : 'ghost'} onClick={() => setMenu('moderation')}>모더레이션 관리</button>
         <button className="ghost" onClick={loadAll} disabled={loading}>{loading ? '로딩 중...' : '새로고침'}</button>
       </div>
 
@@ -234,6 +397,7 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
               <StatCard label="로그인 유저 수" value={summary.login_users_today} />
               <StatCard label="총 사용자" value={summary.total_users} />
               <StatCard label="고위험 플래그" value={summary.high_risk_assessments} />
+              <StatCard label="게시판 알림" value={summary.board_question_feedback_alerts} />
             </section>
           )}
 
@@ -247,7 +411,8 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
                   <option value="email">이메일</option>
                   <option value="nickname">닉네임</option>
                   <option value="assessment_count">검사 수</option>
-                  <option value="chat_count">마음일기 시행 수</option>
+                  <option value="login_days">접속 일수</option>
+                  <option value="latest_login_ip">최근 접속 IP</option>
                   <option value="board_post_count">게시글 수</option>
                 </select>
                 <select value={userSortOrder} onChange={(e) => setUserSortOrder(e.target.value as typeof userSortOrder)}>
@@ -256,20 +421,21 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
                 </select>
                 <button onClick={loadAll} disabled={loading}>조회</button>
               </div>
-              <AdminTable headers={['이메일', '닉네임', '가입일', '검사 수', '마음일기 시행 수', '게시글 수']}>
+              <AdminTable headers={['이메일', '닉네임', '가입일', '최근 접속 IP', '검사 수', '접속 일수', '게시글 수']}>
                 {users.map((user) => (
                   <tr key={user.id}>
                     <td>{user.email}</td>
                     <td>{user.nickname}</td>
                     <td>{formatDate(user.created_at)}</td>
-                    <td>{user.assessment_count}</td>
-                    <td>{user.chat_count}</td>
-                    <td>{user.board_post_count}</td>
+                    <td>{user.latest_login_ip ?? '미수집'}</td>
+                    <td>{hideZero(user.assessment_count)}</td>
+                    <td>{hideZero(user.login_days)}</td>
+                    <td>{hideZero(user.board_post_count)}</td>
                   </tr>
                 ))}
                 {users.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="adminMuted">데이터가 없습니다.</td>
+                    <td colSpan={7} className="adminMuted">데이터가 없습니다.</td>
                   </tr>
                 )}
               </AdminTable>
@@ -283,10 +449,10 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
                     <td>{formatDate(item.occurred_at)}</td>
                     <td>{item.user_email}</td>
                     <td>{item.user_nickname}</td>
-                    <td>{item.dep_score == null ? '-' : item.dep_score.toFixed(1)}</td>
-                    <td>{item.anx_score == null ? '-' : item.anx_score.toFixed(1)}</td>
-                    <td>{item.ins_score == null ? '-' : item.ins_score.toFixed(1)}</td>
-                    <td>{item.composite_score == null ? '-' : item.composite_score.toFixed(1)}</td>
+                    <td>{hideZero(item.dep_score == null ? null : item.dep_score.toFixed(1))}</td>
+                    <td>{hideZero(item.anx_score == null ? null : item.anx_score.toFixed(1))}</td>
+                    <td>{hideZero(item.ins_score == null ? null : item.ins_score.toFixed(1))}</td>
+                    <td>{hideZero(item.composite_score == null ? null : item.composite_score.toFixed(1))}</td>
                     <td>{item.major_risk_factors}</td>
                   </tr>
                 ))}
@@ -389,10 +555,10 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
       {menu === 'policy' && (
         <>
           <section className="adminSection">
-            <h3>챌린지 추천 정책</h3>
+            <h3>생각 정리 추천 정책</h3>
             <div className="adminToolbar" style={{ gap: 12, alignItems: 'center' }}>
               <label>
-                중복 체크 기간(일)
+                중복 회피 기간(일)
                 <input
                   type="number"
                   min={1}
@@ -413,7 +579,7 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
                 />
               </label>
             </div>
-            <p className="adminMuted">반복 허용 챌린지 기법</p>
+            <p className="adminMuted">반복 허용 생각 정리 기법</p>
             <div className="adminToolbar" style={{ flexWrap: 'wrap', gap: 10 }}>
               {TECHNIQUE_OPTIONS.map((tech) => (
                 <label key={tech}>
@@ -450,6 +616,98 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
               {policyAudits.length === 0 && (
                 <tr>
                   <td colSpan={3} className="adminMuted">변경 이력이 없습니다.</td>
+                </tr>
+              )}
+            </AdminTable>
+          </section>
+
+        </>
+      )}
+
+      {menu === 'moderation' && (
+        <>
+          <section className="adminSection">
+            <h3>게시물 위험 키워드 설정</h3>
+            <p className="adminMuted">쉼표(,) 또는 줄바꿈으로 구분해서 입력하세요.</p>
+            <textarea
+              rows={4}
+              value={boardRiskKeywordsText}
+              onChange={(e) => setBoardRiskKeywordsText(e.target.value)}
+              placeholder="예: 협박, 폭행, 자해"
+            />
+            <div className="adminToolbar" style={{ marginTop: 10 }}>
+              <button onClick={handleSaveBoardRiskKeywords} disabled={loading}>위험 키워드 저장</button>
+              <span className="adminMuted">현재 {hideZero(boardRiskKeywords.keywords.length) || '없음'}</span>
+            </div>
+          </section>
+
+          <section className="adminSection">
+            <h3>계정 차단 관리</h3>
+            <div className="adminToolbar">
+              <input
+                value={blockSearch}
+                onChange={(e) => setBlockSearch(e.target.value)}
+                placeholder="이메일 또는 IP 주소 검색"
+              />
+              <button onClick={() => void handleSearchBlockCandidates()} disabled={loading}>조회</button>
+            </div>
+
+            <AdminTable headers={['이메일', '닉네임', '최근 접속 IP', '이메일 차단', 'IP 차단']}>
+              {blockCandidates.map((user) => (
+                <tr key={`candidate-${user.id}`}>
+                  <td>{user.email}</td>
+                  <td>{user.nickname}</td>
+                  <td>{user.latest_login_ip ?? '미수집'}</td>
+                  <td>
+                    <button className="ghost" disabled={loading} onClick={() => void handleBlockEmailFromCandidate(user.email)}>
+                      이메일 차단
+                    </button>
+                  </td>
+                  <td>
+                    <button
+                      className="ghost"
+                      disabled={loading || !user.latest_login_ip}
+                      onClick={() => void handleBlockIpFromCandidate(user.latest_login_ip ?? '', user.email)}
+                    >
+                      IP 차단
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {blockCandidates.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="adminMuted">검색 결과가 없습니다.</td>
+                </tr>
+              )}
+            </AdminTable>
+
+            <h3 style={{ marginTop: 12 }}>차단 목록</h3>
+            <AdminTable headers={['유형', '대상', '사유', '등록 시각', '해제']}>
+              {blockedEmails.map((item) => (
+                <tr key={`blocked-email-${item.email}-${item.blocked_at}`}>
+                  <td>이메일</td>
+                  <td>{item.email}</td>
+                  <td>{item.reason ?? ''}</td>
+                  <td>{formatDate(item.blocked_at)}</td>
+                  <td><button className="ghost" disabled={loading} onClick={() => void handleRemoveBlockedEmail(item.email)}>해제</button></td>
+                </tr>
+              ))}
+              {blockedIps.map((item) => (
+                <tr key={`blocked-ip-${item.id}`}>
+                  <td>IP</td>
+                  <td>{item.ip_address}</td>
+                  <td>{item.reason ?? ''}</td>
+                  <td>{formatDate(item.created_at)}</td>
+                  <td>
+                    <button className="ghost" disabled={loading || !item.is_active} onClick={() => void handleRemoveBlockedIp(item.ip_address)}>
+                      해제
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {blockedEmails.length === 0 && blockedIps.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="adminMuted">차단된 대상이 없습니다.</td>
                 </tr>
               )}
             </AdminTable>

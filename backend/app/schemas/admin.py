@@ -21,7 +21,9 @@ class AdminUserItem(BaseModel):
     nickname: str
     created_at: str
     assessment_count: int
-    chat_count: int = 0
+    login_count: int = 0
+    login_days: int = 0
+    latest_login_ip: str | None = None
     board_post_count: int = 0
     latest_assessment_at: str | None = None
 
@@ -188,6 +190,64 @@ class AdminGrantHistoryResponse(BaseModel):
 
     total: int
     items: list[AdminGrantHistoryItem]
+
+
+class AdminBlockedIPItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    id: str
+    ip_address: str
+    reason: str | None = None
+    is_active: bool
+    created_at: str
+
+
+class AdminBlockedIPListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    total: int
+    items: list[AdminBlockedIPItem]
+
+
+class AdminBlockedIPCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    ip_address: str = Field(min_length=3, max_length=64)
+    reason: str | None = Field(default=None, max_length=200)
+
+
+class AdminBlockedEmailItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    email: str
+    reason: str | None = None
+    blocked_at: str
+
+
+class AdminBlockedEmailListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    total: int
+    items: list[AdminBlockedEmailItem]
+
+
+class AdminBlockedEmailCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    email: str = Field(min_length=5, max_length=320)
+    reason: str | None = Field(default=None, max_length=200)
+
+
+class AdminBoardRiskKeywordsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    keywords: list[str]
+
+
+class AdminBoardRiskKeywordsUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    keywords: conlist(str, min_length=1, max_length=80)
 
 
 class PendingReplyPostItem(BaseModel):

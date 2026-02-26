@@ -1,7 +1,8 @@
 from datetime import timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token, decode_access_token, oauth2_scheme, verify_password
@@ -25,16 +26,90 @@ from app.schemas.auth import (
     UserLogin,
     UserOut,
 )
+from app.services.admin_service import is_email_blocked
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+_AUTH_SCHEMA_READY = False
+
+
+def _extract_client_ip(request: Request) -> str | None:
+    # Reverse proxy / cloud 환경을 우선 고려해 표준 헤더를 순차 확인
+    header_candidates = [
+        "cf-connecting-ip",
+        "x-real-ip",
+        "x-client-ip",
+        "x-forwarded-for",
+    ]
+    for key in header_candidates:
+        raw = request.headers.get(key, "").strip()
+        if not raw:
+            continue
+        if key == "x-forwarded-for":
+            raw = raw.split(",")[0].strip()
+        if raw and raw.lower() != "unknown":
+            return raw
+
+    forwarded = request.headers.get("forwarded", "").strip()
+    if forwarded:
+        # 예: Forwarded: for=203.0.113.43;proto=https
+        for part in forwarded.split(";"):
+            p = part.strip()
+            if not p.lower().startswith("for="):
+                continue
+            value = p.split("=", 1)[1].strip().strip('"')
+            if value:
+                return value
+
+    if request.client and request.client.host:
+        return request.client.host
+    return None
+
+
+async def _ensure_auth_schema(db: AsyncSession) -> None:
+    global _AUTH_SCHEMA_READY
+    if _AUTH_SCHEMA_READY:
+        return
+
+    try:
+        dialect = db.bind.dialect.name if db.bind is not None else ""
+
+        if dialect.startswith("sqlite"):
+            rows = (await db.execute(text("PRAGMA table_info(login_event)"))).all()
+            columns = {str(r[1]) for r in rows if len(r) > 1}
+            if "login_ip" not in columns:
+                await db.execute(text("ALTER TABLE login_event ADD COLUMN login_ip VARCHAR(64)"))
+                await db.commit()
+        elif dialect.startswith("postgres"):
+            rows = (
+                await db.execute(
+                    text(
+                        """
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = 'login_event'
+                        """
+                    )
+                )
+            ).all()
+            columns = {str(r[0]) for r in rows if len(r) > 0}
+            if "login_ip" not in columns:
+                await db.execute(text("ALTER TABLE login_event ADD COLUMN IF NOT EXISTS login_ip VARCHAR(64)"))
+                await db.commit()
+
+        _AUTH_SCHEMA_READY = True
+    except Exception:
+        await db.rollback()
 
 
 async def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
+    await _ensure_auth_schema(db)
+
     payload = decode_access_token(token)
     subject = payload.get("sub")
     try:
@@ -42,9 +117,17 @@ async def get_current_user(
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="토큰 정보가 올바르지 않습니다.") from exc
 
+    ip = _extract_client_ip(request)
+    if ip and await crud.is_ip_blocked(db, ip):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="차단된 IP입니다. 관리자에게 문의하세요.")
+
     user = await crud.get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="사용자 정보를 찾을 수 없습니다.")
+
+    if await is_email_blocked(db, user.email):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="차단된 계정입니다. 관리자에게 문의하세요.")
+
     return UserOut.model_validate(user)
 
 
@@ -61,6 +144,9 @@ async def request_email_verification_code(
 
 @router.post("/signup", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def signup(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> UserOut:
+    if await is_email_blocked(db, payload.email):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="차단된 계정입니다. 관리자에게 문의하세요.")
+
     existing = await crud.get_user_by_email(db, payload.email)
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 가입된 이메일입니다.")
@@ -77,14 +163,27 @@ async def signup(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> Use
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: UserLogin, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+async def login(payload: UserLogin, request: Request, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+    await _ensure_auth_schema(db)
+
+    ip = _extract_client_ip(request)
+    if ip and await crud.is_ip_blocked(db, ip):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="차단된 IP입니다. 관리자에게 문의하세요.")
+
+    if await is_email_blocked(db, payload.email):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="차단된 계정입니다. 관리자에게 문의하세요.")
+
     user = await crud.authenticate_user(db, payload.email, payload.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
 
     expires_delta = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     token = create_access_token(subject=str(user.id), expires_delta=expires_delta)
-    await crud.create_login_event(db, user.id)
+    try:
+        await crud.create_login_event(db, user.id, login_ip=ip)
+    except Exception:
+        # 로그인 이벤트 적재 실패가 로그인 자체를 막지 않도록 보호
+        await db.rollback()
     return TokenResponse(access_token=token, expires_in=int(expires_delta.total_seconds()))
 
 

@@ -17,9 +17,13 @@ from app.db.models import (
     BoardPost,
     BoardPostBookmark,
     BoardPostLike,
+    BoardPostReport,
+    BlockedIP,
     ChatEvent,
     ChallengeHistory,
     CheckIn,
+    ContentChallengeLog,
+    JournalEntry,
     EmailVerification,
     LoginEvent,
     User,
@@ -257,6 +261,7 @@ async def create_board_post(
     content: str,
     is_notice: bool,
     is_private: bool,
+    is_mental_health_post: bool = False,
 ) -> BoardPost:
     row = BoardPost(
         author_id=author_id,
@@ -265,6 +270,7 @@ async def create_board_post(
         content=content,
         is_notice=is_notice,
         is_private=is_private,
+        is_mental_health_post=is_mental_health_post,
     )
     db.add(row)
     await db.commit()
@@ -282,6 +288,7 @@ async def list_board_posts(
     *,
     q: str | None = None,
     category: BoardCategory | None = None,
+    mental_health_only: bool | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[BoardPost], int]:
@@ -297,6 +304,10 @@ async def list_board_posts(
         else:
             stmt = stmt.where(BoardPost.category == category)
             count_stmt = count_stmt.where(BoardPost.category == category)
+
+    if mental_health_only is not None:
+        stmt = stmt.where(BoardPost.is_mental_health_post.is_(mental_health_only))
+        count_stmt = count_stmt.where(BoardPost.is_mental_health_post.is_(mental_health_only))
 
     if q:
         keyword = f"%{q}%"
@@ -319,6 +330,7 @@ async def update_board_post(
     category: BoardCategory | None = None,
     is_notice: bool | None = None,
     is_private: bool | None = None,
+    is_mental_health_post: bool | None = None,
 ) -> BoardPost:
     if title is not None:
         row.title = title
@@ -330,11 +342,44 @@ async def update_board_post(
         row.is_notice = is_notice
     if is_private is not None:
         row.is_private = is_private
+    if is_mental_health_post is not None:
+        row.is_mental_health_post = is_mental_health_post
     await db.commit()
     await db.refresh(row)
     return row
 
 
+
+async def get_board_comment_by_id(db: AsyncSession, comment_id: uuid.UUID) -> BoardComment | None:
+    stmt: Select[tuple[BoardComment]] = select(BoardComment).where(BoardComment.id == comment_id)
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def delete_board_comment(db: AsyncSession, row: BoardComment) -> None:
+    await db.delete(row)
+    await db.commit()
+
+
+async def create_board_post_report(
+    db: AsyncSession,
+    *,
+    post_id: uuid.UUID,
+    reporter_id: uuid.UUID,
+    reason: str,
+    detail: str | None,
+    reporter_ip: str | None,
+) -> BoardPostReport:
+    row = BoardPostReport(
+        post_id=post_id,
+        reporter_id=reporter_id,
+        reason=reason,
+        detail=detail,
+        reporter_ip=reporter_ip,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
 async def delete_board_post(db: AsyncSession, row: BoardPost) -> None:
     await db.delete(row)
     await db.commit()
@@ -453,6 +498,97 @@ async def list_recent_challenge_histories(
 
 
 
+async def create_or_update_journal_entry(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    entry_date: str,
+    title: str,
+    content: str,
+    checkin_snapshot: dict,
+    cbt_summary: dict,
+    activity_challenges: list[dict],
+) -> JournalEntry:
+    stmt: Select[tuple[JournalEntry]] = select(JournalEntry).where(
+        JournalEntry.user_id == user_id,
+        JournalEntry.entry_date == entry_date,
+    )
+    row = (await db.execute(stmt)).scalar_one_or_none()
+    if row is None:
+        row = JournalEntry(
+            user_id=user_id,
+            entry_date=entry_date,
+            title=title,
+            content=content,
+            checkin_snapshot=checkin_snapshot,
+            cbt_summary=cbt_summary,
+            activity_challenges=activity_challenges,
+        )
+        db.add(row)
+    else:
+        row.title = title
+        row.content = content
+        row.checkin_snapshot = checkin_snapshot
+        row.cbt_summary = cbt_summary
+        row.activity_challenges = activity_challenges
+
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def list_journal_entries_by_user(db: AsyncSession, *, user_id: uuid.UUID, limit: int = 180) -> list[JournalEntry]:
+    stmt: Select[tuple[JournalEntry]] = (
+        select(JournalEntry)
+        .where(JournalEntry.user_id == user_id)
+        .order_by(desc(JournalEntry.entry_date), desc(JournalEntry.updated_at))
+        .limit(limit)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def get_journal_entry_by_id(db: AsyncSession, *, user_id: uuid.UUID, entry_id: uuid.UUID) -> JournalEntry | None:
+    stmt: Select[tuple[JournalEntry]] = select(JournalEntry).where(
+        JournalEntry.id == entry_id,
+        JournalEntry.user_id == user_id,
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def create_content_challenge_log(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    challenge_name: str,
+    category: str,
+    performed_date: str,
+    duration_minutes: int | None,
+    detail: str | None,
+) -> ContentChallengeLog:
+    row = ContentChallengeLog(
+        user_id=user_id,
+        challenge_name=challenge_name,
+        category=category,
+        performed_date=performed_date,
+        duration_minutes=duration_minutes,
+        detail=detail,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def list_content_challenge_logs_by_user(db: AsyncSession, *, user_id: uuid.UUID, limit: int = 200) -> list[ContentChallengeLog]:
+    stmt: Select[tuple[ContentChallengeLog]] = (
+        select(ContentChallengeLog)
+        .where(ContentChallengeLog.user_id == user_id)
+        .order_by(desc(ContentChallengeLog.performed_date), desc(ContentChallengeLog.created_at))
+        .limit(limit)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def get_app_config_json(db: AsyncSession, key: str) -> dict | None:
     stmt: Select[tuple[AppConfig]] = select(AppConfig).where(AppConfig.key == key)
     row = (await db.execute(stmt)).scalar_one_or_none()
@@ -512,8 +648,66 @@ async def list_app_config_audit(db: AsyncSession, *, config_key: str, limit: int
 
 
 
-async def create_login_event(db: AsyncSession, user_id: uuid.UUID) -> LoginEvent:
-    row = LoginEvent(user_id=user_id)
+async def is_ip_blocked(db: AsyncSession, ip_address: str) -> bool:
+    ip = ip_address.strip()
+    if not ip:
+        return False
+    stmt: Select[tuple[BlockedIP]] = select(BlockedIP).where(
+        BlockedIP.ip_address == ip,
+        BlockedIP.is_active.is_(True),
+    )
+    return (await db.execute(stmt)).scalar_one_or_none() is not None
+
+
+async def upsert_blocked_ip(
+    db: AsyncSession,
+    *,
+    ip_address: str,
+    reason: str | None,
+    created_by_user_id: uuid.UUID | None,
+    is_active: bool = True,
+) -> BlockedIP:
+    ip = ip_address.strip()
+    stmt: Select[tuple[BlockedIP]] = select(BlockedIP).where(BlockedIP.ip_address == ip)
+    row = (await db.execute(stmt)).scalar_one_or_none()
+    if row is None:
+        row = BlockedIP(
+            ip_address=ip,
+            reason=reason,
+            created_by_user_id=created_by_user_id,
+            is_active=is_active,
+        )
+        db.add(row)
+    else:
+        row.reason = reason
+        row.created_by_user_id = created_by_user_id
+        row.is_active = is_active
+
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def deactivate_blocked_ip(db: AsyncSession, ip_address: str) -> bool:
+    ip = ip_address.strip()
+    stmt: Select[tuple[BlockedIP]] = select(BlockedIP).where(BlockedIP.ip_address == ip)
+    row = (await db.execute(stmt)).scalar_one_or_none()
+    if row is None:
+        return False
+    row.is_active = False
+    await db.commit()
+    return True
+
+
+async def list_blocked_ips(db: AsyncSession, *, active_only: bool = False, limit: int = 200) -> list[BlockedIP]:
+    stmt: Select[tuple[BlockedIP]] = select(BlockedIP)
+    if active_only:
+        stmt = stmt.where(BlockedIP.is_active.is_(True))
+    stmt = stmt.order_by(desc(BlockedIP.created_at)).limit(limit)
+    return list((await db.execute(stmt)).scalars().all())
+
+async def create_login_event(db: AsyncSession, user_id: uuid.UUID, login_ip: str | None = None) -> LoginEvent:
+    row = LoginEvent(user_id=user_id, login_ip=login_ip)
     db.add(row)
     await db.commit()
     await db.refresh(row)

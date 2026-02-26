@@ -102,3 +102,17 @@
   padding: 0.55rem;
   background: #f5fafc;
 }
+
+.noticeTag.mentalTag {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.probList li {
+  flex-wrap: wrap;
+}
+
+.probList li button.ghost {
+  padding: 0.22rem 0.45rem;
+  font-size: 0.78rem;
+}

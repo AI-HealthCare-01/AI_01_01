@@ -179,6 +179,13 @@ type JournalEntry = {
   updated_at: string
 }
 
+type RecommendedPost = {
+  id: string
+  title: string
+  likes_count: number
+  comments_count: number
+}
+
 type AssessmentState = {
   phq9: LikertValue[]
   gad7: LikertValue[]
@@ -613,6 +620,35 @@ function buildPayload(assessment: AssessmentState): CheckPredictRequest {
   }
 }
 
+function normalizeNoticeMessage(raw: string): string | null {
+  const msg = raw.trim()
+  if (!msg) return null
+
+  const hidden = new Set([
+    'Ready.',
+    '대화 분석 완료',
+    '인지행동치료 대화를 시작했습니다.',
+    '대화를 마치고 일기 작성 단계로 이동합니다.',
+  ])
+  if (hidden.has(msg)) return null
+
+  const mapped: Record<string, string> = {
+    '로그인 성공': '로그인이 완료되었습니다.',
+    '회원가입 완료. 로그인 후 종합심리검사를 1회 진행해주세요.': '회원가입 정보가 저장되었습니다. 로그인 후 종합심리검사를 진행해주세요.',
+    '검사 결과를 저장했습니다.': '검사 결과가 저장되었습니다.',
+    '체크인 되었습니다.': '체크인 정보가 저장되었습니다.',
+    '챌린지 수행 기록을 저장했습니다.': '챌린지 수행 기록이 저장되었습니다.',
+    '일기를 저장했습니다.': '일기 내용이 저장되었습니다.',
+    '회원정보 수정 완료': '회원정보가 저장되었습니다.',
+    '비밀번호가 변경되었습니다. 로그인해주세요.': '비밀번호가 저장되었습니다. 다시 로그인해주세요.',
+    '리포트 JPG 파일을 저장했습니다.': '리포트 이미지가 저장되었습니다.',
+    '의료진 참고용 요약 리포트를 생성했습니다.': '요약 리포트가 생성되었습니다.',
+    '로그아웃되었습니다.': '로그아웃되었습니다.',
+  }
+
+  return mapped[msg] ?? msg
+}
+
 function App() {
   const [page, setPage] = useState<PageKey>('landing')
   const [accountMode, setAccountMode] = useState<AccountMode>('login')
@@ -624,7 +660,9 @@ function App() {
   const [isAdmin, setIsAdmin] = useState(false)
 
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('Ready.')
+  const [message, setMessage] = useState('')
+  const [noticeOpen, setNoticeOpen] = useState(false)
+  const [noticeText, setNoticeText] = useState('')
 
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
@@ -665,6 +703,7 @@ function App() {
 
   const [contentCatalog, setContentCatalog] = useState<ContentChallengeCatalogItem[]>([])
   const [contentLogs, setContentLogs] = useState<ContentChallengeLogItem[]>([])
+  const [recommendedPosts, setRecommendedPosts] = useState<RecommendedPost[]>([])
   const [selectedContentTitle, setSelectedContentTitle] = useState('')
   const [contentDuration, setContentDuration] = useState('')
   const [contentDetail, setContentDetail] = useState('')
@@ -701,6 +740,7 @@ function App() {
       setCheckinCompletedToday(false)
       setCheckinSummaryText('')
       setAutoCbtStarted(false)
+      setRecommendedPosts([])
       setPage('landing')
       return
     }
@@ -712,9 +752,17 @@ function App() {
     void loadAdminAccess()
     void loadContentCatalog()
     void loadContentLogs()
+    void loadRecommendedPosts()
     void loadJournalEntries()
     setPage('checkin')
   }, [token])
+
+  useEffect(() => {
+    const text = normalizeNoticeMessage(message)
+    if (!text) return
+    setNoticeText(text)
+    setNoticeOpen(true)
+  }, [message])
 
   useEffect(() => {
     if (!chatResult) return
@@ -853,6 +901,23 @@ function App() {
       setContentLogs(data.items ?? [])
     } catch (error) {
       setMessage(`챌린지 기록 조회 오류: ${(error as Error).message}`)
+    }
+  }
+
+  async function loadRecommendedPosts() {
+    try {
+      const response = await fetch(`${API_BASE}/board/posts?page=1&page_size=8`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      const data = (await response.json()) as { items?: Array<RecommendedPost> }
+      const items = (data.items ?? [])
+        .slice()
+        .sort((a, b) => ((b.likes_count ?? 0) + (b.comments_count ?? 0)) - ((a.likes_count ?? 0) + (a.comments_count ?? 0)))
+        .slice(0, 3)
+      setRecommendedPosts(items)
+    } catch (error) {
+      setMessage(`추천 게시물 조회 오류: ${(error as Error).message}`)
     }
   }
 
@@ -1765,7 +1830,7 @@ function App() {
           <p className="kicker">CBT Mind Partner</p>
           <h1>체크인 + 인지행동치료 + 일기 + 실행형 챌린지</h1>
           <p className="subtitle">체크인 후 인지행동치료 대화로 생각을 정리하고, 일기와 실행형 챌린지까지 한 흐름으로 관리합니다.</p>
-          <div className="actions">
+          <div className="actions heroActions">
             <button onClick={() => { setPage('account'); setAccountMode('login') }}>Log in</button>
             <button className="ghost" onClick={() => { setPage('account'); setAccountMode('signup') }}>Sign Up</button>
           </div>
@@ -1779,7 +1844,7 @@ function App() {
               <strong>MindCare</strong>
               <span>{me?.nickname ?? '사용자'}님</span>
             </div>
-            <div className="actions">
+            <div className="actions navActions">
               <button className={page === 'mypage' ? '' : 'ghost'} onClick={() => setPage('mypage')}>마이페이지</button>
               <button className={page === 'checkin' ? '' : 'ghost'} onClick={() => setPage('checkin')}>접속화면</button>
               <button className={page === 'dashboard' ? '' : 'ghost'} onClick={() => setPage('dashboard')}>대시보드</button>
@@ -1797,6 +1862,11 @@ function App() {
 
       {page === 'account' && (
         <section className="panel accountPanel">
+          <div className="accountModeTabs actions">
+            <button className={accountMode === 'login' ? '' : 'ghost'} type="button" onClick={() => setAccountMode('login')}>로그인</button>
+            <button className={accountMode === 'signup' ? '' : 'ghost'} type="button" onClick={() => setAccountMode('signup')}>회원가입</button>
+          </div>
+
           {accountMode === 'login' && (
             <form onSubmit={handleLogin} className="form">
               <h2>로그인</h2>
@@ -1866,36 +1936,30 @@ function App() {
 
       {page === 'checkin' && token && (
         <section className="panel checkinLayout">
-          <article className="cbtMain">
-            <h2>접속 화면</h2>
+          <h2>접속 화면(로그인 후 바로 보이는 화면)</h2>
+          <p className="welcomeBadge">{me?.nickname ?? '사용자'}님 어서오세요</p>
 
-            <div className="checkinStatsGrid">
-              <div className="panel checkinCard">
-                <MonthlyAttendanceCalendar monthLabel={monthlyAttendance.monthLabel} cells={monthlyAttendance.cells} />
-                <p className="small">이번 달 출석: {monthlyAttendance.monthAttended}일 / {monthlyAttendance.monthTotal}일</p>
-              </div>
-
-              <div className="panel checkinCard">
-                <div className="monthCalendarHead">
-                  <h3>주간 활동 통계</h3>
-                  <span>WEEKLY ACTIVITY</span>
-                </div>
-                <WeeklyCurveChart labels={weeklyProgress.items.map((x) => x.date)} values={weeklyProgress.items.map((x) => x.contentCount)} />
-                <p className="small">최근 7일 활동 수행일: {weeklyProgress.items.filter((x) => x.contentCount > 0).length}일 ({weeklyProgress.challengeRate}%)</p>
-              </div>
+          <div className="checkinStatsGrid">
+            <div className="panel checkinCard">
+              <MonthlyAttendanceCalendar monthLabel={monthlyAttendance.monthLabel} cells={monthlyAttendance.cells} />
+              <p className="small">이번 달 출석: {monthlyAttendance.monthAttended}일 / {monthlyAttendance.monthTotal}일</p>
             </div>
 
-            {checkinCompletedToday ? (
-              <div className="panel checkinDoneCover">
-                <h3>체크인 되었습니다.</h3>
-                <p className="small">{checkinSummaryText || '오늘 상태가 저장되었습니다.'}</p>
-                <div className="actions">
-                  <button onClick={() => void startCbtFromCheckinSummary()} disabled={loading || chatGenerating}>인지행동치료 시작</button>
-                </div>
+            <div className="panel checkinCard">
+              <div className="monthCalendarHead">
+                <h3>주간 챌린지 활동률 그래프</h3>
+                <span>WEEKLY CHALLENGE</span>
               </div>
-            ) : (
+              <WeeklyCurveChart labels={weeklyProgress.items.map((x) => x.date)} values={weeklyProgress.items.map((x) => x.contentCount)} />
+              <p className="small">최근 7일 활동 수행일: {weeklyProgress.items.filter((x) => x.contentCount > 0).length}일 ({weeklyProgress.challengeRate}%)</p>
+            </div>
+          </div>
+
+          <div className={`panel checkinInputPanel ${checkinCompletedToday ? 'checkinInputDone' : ''}`}>
+            {!checkinCompletedToday ? (
               <>
-                <h3>데일리 체크인</h3>
+                <h3>데일리 체크인 입력</h3>
+                <p className="small">오늘의 상태를 간단히 기록해주세요.</p>
                 <div className="miniGrid">
                   <label>오늘의 기분 점수(1~10)<input inputMode="numeric" value={checkin.mood_score} onChange={(e) => handleCheckinInput('mood_score', e.target.value)} /></label>
                   <label>수면 시간(시간)<input inputMode="decimal" value={checkin.sleep_hours} onChange={(e) => handleCheckinInput('sleep_hours', e.target.value)} /></label>
@@ -1909,66 +1973,79 @@ function App() {
                     </select>
                   </label>
                 </div>
-                <div className="actions">
+                <div className="actions checkinPrimaryAction">
                   <button onClick={() => void handleCheckinSubmit()} disabled={loading}>체크인</button>
                 </div>
               </>
+            ) : (
+              <div className="checkinDoneCenter">
+                <h3>체크인 완료</h3>
+                <p className="small">{checkinSummaryText || '오늘 체크인이 저장되었습니다.'}</p>
+                <button onClick={() => void startCbtFromCheckinSummary()} disabled={loading || chatGenerating}>인지행동치료로 이동</button>
+              </div>
             )}
+          </div>
 
-            <div className="checkinChallengeRow">
-              <div className="panel checkinCard">
-                <h3>챌린지 컨텐츠</h3>
+          <div className="homeMiddleRow">
+            <article className="panel homeShortcutCard diaryLibraryCard">
+              <h3>일기 보관함</h3>
+              <p className="small">기록해둔 일기를 모아 확인할 수 있습니다.</p>
+              <div className="actions">
+                <button
+                  className="ghost"
+                  onClick={() => {
+                    setJournalLibraryOpen(true)
+                    setPage('journal')
+                  }}
+                >
+                  열기
+                </button>
+              </div>
+            </article>
+
+            <article className="panel homeShortcutCard recommendPostCard">
+              <h3>게시글 추천 top-k</h3>
+              {recommendedPosts.length === 0 ? (
+                <p className="small">추천 게시글을 불러오는 중입니다.</p>
+              ) : (
                 <ul className="probList">
-                  {contentCatalog.slice(0, 5).map((item) => (
-                    <li key={item.id}>
-                      <span>{item.title}</span>
+                  {recommendedPosts.map((post) => (
+                    <li key={post.id}>
+                      <span>{post.title}</span>
                       <button
                         className="ghost"
                         onClick={() => {
-                          setSelectedContentTitle(item.title)
-                          setPage('challenge')
+                          setBoardFocusPostId(post.id)
+                          setPage('board')
                         }}
                       >
-                        진행하기
+                        보기
                       </button>
                     </li>
                   ))}
                 </ul>
-              </div>
+              )}
+            </article>
+          </div>
 
-              <div className="panel checkinCard">
-                <h3>수행 중인 챌린지</h3>
-                {todayLogs.length === 0 ? (
-                  <p className="small">진행 중 항목이 없습니다.</p>
-                ) : (
-                  <ul className="todoList">
-                    {todayLogs.map((item) => (
-                      <li key={item.id}>
-                        <label>
-                          <input type="checkbox" checked readOnly />
-                          <span>{item.challenge_name}</span>
-                        </label>
-                        <strong>{displayIfMeaningful(item.duration_minutes, '분')}</strong>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-
-            <div className="actions">
-              <button
-                className="ghost"
-                onClick={() => {
-                  setJournalLibraryOpen(true)
-                  setPage('journal')
-                }}
-              >
-                일기 도서관 보기
-              </button>
-            </div>
-          </article>
-
+          <div className="challengeTileGrid">
+            {contentCatalog.slice(0, 3).map((item) => (
+              <article key={item.id} className="panel challengeTile">
+                <h3>챌린지</h3>
+                <p><strong>{item.title}</strong></p>
+                <p className="small">{item.description}</p>
+                <button
+                  className="ghost"
+                  onClick={() => {
+                    setSelectedContentTitle(item.title)
+                    setPage('challenge')
+                  }}
+                >
+                  시작하기
+                </button>
+              </article>
+            ))}
+          </div>
         </section>
       )}
 
@@ -2514,10 +2591,49 @@ function App() {
         </section>
       )}
 
-      <footer className="status">
-        <span>{loading ? 'Working...' : 'Idle'}</span>
-        <span>{message}</span>
-      </footer>
+      {token && (
+        <nav className="floatingDock" aria-label="빠른 메뉴">
+          <button className={page === 'checkin' ? 'active' : ''} onClick={() => setPage('checkin')}>
+            <span className="dockIcon" aria-hidden>⌂</span>
+            <span>홈</span>
+          </button>
+          <button className={page === 'diary' ? 'active' : ''} onClick={() => setPage('diary')}>
+            <span className="dockIcon" aria-hidden>◍</span>
+            <span>대화</span>
+          </button>
+          <button className={page === 'journal' ? 'active' : ''} onClick={() => setPage('journal')}>
+            <span className="dockIcon" aria-hidden>✎</span>
+            <span>일기</span>
+          </button>
+          <button className={page === 'dashboard' ? 'active' : ''} onClick={() => setPage('dashboard')}>
+            <span className="dockIcon" aria-hidden>▤</span>
+            <span>지표</span>
+          </button>
+          <button className={page === 'mypage' ? 'active' : ''} onClick={() => setPage('mypage')}>
+            <span className="dockIcon" aria-hidden>⚙</span>
+            <span>설정</span>
+          </button>
+        </nav>
+      )}
+
+      {noticeOpen && (
+        <div className="noticeOverlay" role="dialog" aria-modal="true">
+          <div className="noticeCard">
+            <p>{noticeText}</p>
+            <div className="actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setNoticeOpen(false)
+                  setMessage('')
+                }}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

@@ -4,14 +4,16 @@ import os
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import String, asc, cast, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import crud
-from app.db.models import Assessment, BoardCategory, BoardComment, BoardPost, User
+from app.db.models import Assessment, BoardCategory, BoardComment, BoardPost, ChatEvent, User
 from app.schemas.admin import (
     AdminAccountItem,
     AdminAccountListResponse,
+    AdminAccountSearchUserItem,
+    AdminAccountSearchUserListResponse,
     AdminAssessmentItem,
     AdminAssessmentListResponse,
     AdminChallengePolicyAuditItem,
@@ -31,6 +33,7 @@ from app.schemas.admin import (
     PendingReplyPostListResponse,
 )
 from app.services.challenge_recommend import ALL_TECHNIQUES, default_challenge_policy, normalize_challenge_policy
+from app.services.user_dashboard import build_user_weekly_dashboard
 
 
 HIGH_RISK_SEVERITIES = {"높은 수준", "다소 높은 수준", "severe", "moderately_severe"}
@@ -117,28 +120,70 @@ async def get_admin_summary(db: AsyncSession) -> AdminSummaryResponse:
     )
 
 
-async def list_admin_users(db: AsyncSession, *, page: int, page_size: int, q: str | None) -> AdminUserListResponse:
-    base = (
-        select(
-            User.id,
-            User.email,
-            User.nickname,
-            User.created_at,
-            func.count(Assessment.id).label("assessment_count"),
-            func.max(Assessment.created_at).label("latest_assessment_at"),
-        )
-        .select_from(User)
-        .outerjoin(Assessment, Assessment.user_id == User.id)
-        .group_by(User.id)
+async def list_admin_users(
+    db: AsyncSession,
+    *,
+    page: int,
+    page_size: int,
+    q: str | None,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+) -> AdminUserListResponse:
+    assessment_count_sq = (
+        select(func.count(Assessment.id))
+        .where(Assessment.user_id == User.id)
+        .correlate(User)
+        .scalar_subquery()
     )
+    latest_assessment_at_sq = (
+        select(func.max(Assessment.created_at))
+        .where(Assessment.user_id == User.id)
+        .correlate(User)
+        .scalar_subquery()
+    )
+    chat_count_sq = (
+        select(func.count(ChatEvent.id))
+        .where(ChatEvent.user_id == User.id)
+        .correlate(User)
+        .scalar_subquery()
+    )
+    board_post_count_sq = (
+        select(func.count(BoardPost.id))
+        .where(BoardPost.author_id == User.id)
+        .correlate(User)
+        .scalar_subquery()
+    )
+
+    base = select(
+        User.id,
+        User.email,
+        User.nickname,
+        User.created_at,
+        assessment_count_sq.label("assessment_count"),
+        latest_assessment_at_sq.label("latest_assessment_at"),
+        chat_count_sq.label("chat_count"),
+        board_post_count_sq.label("board_post_count"),
+    ).select_from(User)
 
     if q:
         pattern = f"%{q.strip()}%"
         base = base.where(or_(User.email.ilike(pattern), User.nickname.ilike(pattern)))
 
     total = int((await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one())
+
+    sort_map = {
+        "email": User.email,
+        "nickname": User.nickname,
+        "created_at": User.created_at,
+        "assessment_count": assessment_count_sq,
+        "chat_count": chat_count_sq,
+        "board_post_count": board_post_count_sq,
+    }
+    sort_expr = sort_map.get(sort_by, User.created_at)
+    order_expr = asc(sort_expr) if sort_order == "asc" else desc(sort_expr)
+
     offset = (page - 1) * page_size
-    rows = (await db.execute(base.order_by(User.created_at.desc()).offset(offset).limit(page_size))).all()
+    rows = (await db.execute(base.order_by(order_expr, User.created_at.desc()).offset(offset).limit(page_size))).all()
 
     items = [
         AdminUserItem(
@@ -147,12 +192,23 @@ async def list_admin_users(db: AsyncSession, *, page: int, page_size: int, q: st
             nickname=r.nickname,
             created_at=_iso(r.created_at) or "",
             assessment_count=int(r.assessment_count or 0),
+            chat_count=int(r.chat_count or 0),
+            board_post_count=int(r.board_post_count or 0),
             latest_assessment_at=_iso(r.latest_assessment_at),
         )
         for r in rows
     ]
 
     return AdminUserListResponse(page=page, page_size=page_size, total=total, items=items)
+
+
+async def search_registered_users_for_admin_add(db: AsyncSession, *, q: str, limit: int = 10) -> AdminAccountSearchUserListResponse:
+    rows = await crud.search_users_by_email_or_nickname(db, q=q, limit=limit)
+    items = [
+        AdminAccountSearchUserItem(id=str(u.id), email=u.email, nickname=u.nickname)
+        for u in rows
+    ]
+    return AdminAccountSearchUserListResponse(total=len(items), items=items)
 
 
 async def list_admin_assessments(db: AsyncSession, *, page: int, page_size: int, q: str | None, high_risk_only: bool) -> AdminAssessmentListResponse:
@@ -198,6 +254,30 @@ async def list_admin_assessments(db: AsyncSession, *, page: int, page_size: int,
     return AdminAssessmentListResponse(page=page, page_size=page_size, total=total, items=items)
 
 
+def _major_risk_factor_text(*, alert_reason_codes: str | None, total_score: int, severity: str) -> str:
+    reasons: list[str] = []
+    mapping = {
+        "worsening_delta": "전주 대비 점수 상승",
+        "severe_band": "중증 구간",
+        "high_composite": "종합 점수 높음",
+    }
+    if alert_reason_codes:
+        for code in str(alert_reason_codes).split("|"):
+            c = code.strip()
+            if not c:
+                continue
+            reasons.append(mapping.get(c, c))
+    if total_score >= 15:
+        reasons.append("검사 총점 15점 이상")
+    if severity:
+        reasons.append(f"심각도: {severity}")
+    unique: list[str] = []
+    for r in reasons:
+        if r not in unique:
+            unique.append(r)
+    return ", ".join(unique) if unique else "고위험 규칙 조건 충족"
+
+
 async def list_admin_high_risk(db: AsyncSession, *, limit: int = 100) -> AdminHighRiskListResponse:
     stmt = (
         select(
@@ -219,11 +299,14 @@ async def list_admin_high_risk(db: AsyncSession, *, limit: int = 100) -> AdminHi
 
     items: list[AdminHighRiskItem] = []
     for r in rows:
-        reasons = []
-        if int(r.total_score) >= 15:
-            reasons.append("score>=15")
-        if r.severity in HIGH_RISK_SEVERITIES:
-            reasons.append(f"severity={r.severity}")
+        dashboard_rows = await build_user_weekly_dashboard(db, r.user_id)
+        latest = dashboard_rows[-1] if dashboard_rows else None
+
+        dep = float(latest["dep_week_pred_0_100"]) if latest else None
+        anx = float(latest["anx_week_pred_0_100"]) if latest else None
+        ins = float(latest["ins_week_pred_0_100"]) if latest else None
+        comp = float(latest["symptom_composite_pred_0_100"]) if latest else None
+        alert_codes = str(latest.get("alert_reason_codes") or "") if latest else ""
 
         items.append(
             AdminHighRiskItem(
@@ -231,11 +314,19 @@ async def list_admin_high_risk(db: AsyncSession, *, limit: int = 100) -> AdminHi
                 user_id=str(r.user_id),
                 user_email=r.email,
                 user_nickname=r.nickname,
+                occurred_at=_iso(r.created_at) or "",
+                dep_score=dep,
+                anx_score=anx,
+                ins_score=ins,
+                composite_score=comp,
+                major_risk_factors=_major_risk_factor_text(
+                    alert_reason_codes=alert_codes,
+                    total_score=int(r.total_score),
+                    severity=r.severity,
+                ),
                 type=str(r.type),
                 total_score=int(r.total_score),
                 severity=r.severity,
-                risk_reason="|".join(reasons) if reasons else "rule_match",
-                created_at=_iso(r.created_at) or "",
             )
         )
 
@@ -353,6 +444,9 @@ async def list_admin_accounts(db: AsyncSession, *, current_user_email: str | Non
 
 async def add_admin_account_email(db: AsyncSession, *, email: str, actor_user_id: UUID, actor_email: str, actor_nickname: str | None) -> AdminAccountListResponse:
     target = email.strip().lower()
+    user = await crud.get_user_by_email(db, target)
+    if user is None:
+        raise ValueError("회원가입된 계정만 관리자 권한을 부여할 수 있습니다.")
     cfg = await crud.get_app_config_json(db, ADMIN_EMAILS_CONFIG_KEY) or {"emails": []}
     emails = cfg.get("emails", []) if isinstance(cfg, dict) else []
     cleaned = sorted({str(x).strip().lower() for x in emails if str(x).strip()} | {target})
@@ -436,7 +530,19 @@ async def list_pending_reply_posts(db: AsyncSession, *, admin_emails: set[str], 
     stmt = (
         select(BoardPost.id, BoardPost.category, BoardPost.title, BoardPost.created_at, User.nickname)
         .join(User, User.id == BoardPost.author_id)
-        .where(BoardPost.category.in_([BoardCategory.INQUIRY, BoardCategory.FEEDBACK]))
+        # 구/신 enum 혼용("질문"/"문의") 환경 모두 지원
+        .where(
+            cast(BoardPost.category, String).in_(
+                [
+                    BoardCategory.INQUIRY.name,
+                    BoardCategory.LEGACY_INQUIRY.name,
+                    BoardCategory.FEEDBACK.name,
+                    BoardCategory.INQUIRY.value,
+                    BoardCategory.LEGACY_INQUIRY.value,
+                    BoardCategory.FEEDBACK.value,
+                ]
+            )
+        )
         .order_by(BoardPost.created_at.desc())
         .limit(limit)
     )
@@ -448,10 +554,15 @@ async def list_pending_reply_posts(db: AsyncSession, *, admin_emails: set[str], 
         answered = any(c.author_id in admin_ids for c in comments)
         if answered:
             continue
+
+        raw_category = str(r.category.value if hasattr(r.category, "value") else r.category)
+        if raw_category == BoardCategory.LEGACY_INQUIRY.value:
+            raw_category = BoardCategory.INQUIRY.value
+
         items.append(
             PendingReplyPostItem(
                 post_id=str(r.id),
-                category=str(r.category.value if hasattr(r.category, "value") else r.category),
+                category=raw_category,
                 title=r.title,
                 author_nickname=r.nickname,
                 created_at=_iso(r.created_at) or "",

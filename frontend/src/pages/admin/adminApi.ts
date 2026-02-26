@@ -1,5 +1,6 @@
 import type {
   AdminAccountListResponse,
+  AdminAccountSearchUserListResponse,
   AdminAssessmentListResponse,
   AdminChallengePolicy,
   AdminChallengePolicyAuditListResponse,
@@ -41,8 +42,20 @@ export function fetchAdminSummary(token: string) {
   return request<AdminSummary>('/admin/summary', token)
 }
 
-export function fetchAdminUsers(token: string, q: string, page = 1, pageSize = 20) {
-  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+export function fetchAdminUsers(
+  token: string,
+  q: string,
+  page = 1,
+  pageSize = 20,
+  sortBy: 'email' | 'nickname' | 'created_at' | 'assessment_count' | 'chat_count' | 'board_post_count' = 'created_at',
+  sortOrder: 'asc' | 'desc' = 'desc',
+) {
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+    sort_by: sortBy,
+    sort_order: sortOrder,
+  })
   if (q.trim() !== '') params.set('q', q.trim())
   return request<AdminUserListResponse>(`/admin/users?${params.toString()}`, token)
 }
@@ -73,6 +86,11 @@ export function fetchAdminAccounts(token: string) {
   return request<AdminAccountListResponse>('/admin/accounts', token)
 }
 
+export function searchRegisteredUsersForAdminAdd(token: string, q: string, limit = 10) {
+  const params = new URLSearchParams({ q: q.trim(), limit: String(limit) })
+  return request<AdminAccountSearchUserListResponse>(`/admin/accounts/search-users?${params.toString()}`, token)
+}
+
 export function addAdminAccount(token: string, email: string) {
   return request<AdminAccountListResponse>('/admin/accounts', token, {
     method: 'POST',
@@ -98,7 +116,6 @@ export function updateAdminChallengePolicy(token: string, payload: AdminChalleng
 export function fetchAdminChallengePolicyAudit(token: string, limit = 50) {
   return request<AdminChallengePolicyAuditListResponse>(`/admin/challenge-policy/audit?limit=${limit}`, token)
 }
-
 
 export function removeAdminAccount(token: string, email: string) {
   return request<AdminAccountListResponse>(`/admin/accounts/${encodeURIComponent(email)}`, token, {

@@ -14,6 +14,8 @@ export type AdminUserItem = {
   nickname: string
   created_at: string
   assessment_count: number
+  chat_count: number
+  board_post_count: number
   latest_assessment_at: string | null
 }
 
@@ -33,11 +35,15 @@ export type AdminHighRiskItem = {
   user_id: string
   user_email: string
   user_nickname: string
-  type: string
-  total_score: number
-  severity: string
-  risk_reason: string
-  created_at: string
+  occurred_at: string
+  dep_score: number | null
+  anx_score: number | null
+  ins_score: number | null
+  composite_score: number | null
+  major_risk_factors: string
+  type: string | null
+  total_score: number | null
+  severity: string | null
 }
 
 export type AdminNotificationItem = {
@@ -126,6 +132,17 @@ export type AdminAccountListResponse = {
   owner_email: string | null
   current_user_is_owner: boolean
   items: AdminAccountItem[]
+}
+
+export type AdminAccountSearchUserItem = {
+  id: string
+  email: string
+  nickname: string
+}
+
+export type AdminAccountSearchUserListResponse = {
+  total: number
+  items: AdminAccountSearchUserItem[]
 }
 
 export type AdminGrantHistoryResponse = {

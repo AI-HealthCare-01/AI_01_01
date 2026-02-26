@@ -21,6 +21,8 @@ class AdminUserItem(BaseModel):
     nickname: str
     created_at: str
     assessment_count: int
+    chat_count: int = 0
+    board_post_count: int = 0
     latest_assessment_at: str | None = None
 
 
@@ -62,11 +64,15 @@ class AdminHighRiskItem(BaseModel):
     user_id: str
     user_email: str
     user_nickname: str
-    type: str
-    total_score: int
-    severity: str
-    risk_reason: str
-    created_at: str
+    occurred_at: str
+    dep_score: float | None = None
+    anx_score: float | None = None
+    ins_score: float | None = None
+    composite_score: float | None = None
+    major_risk_factors: str
+    type: str | None = None
+    total_score: int | None = None
+    severity: str | None = None
 
 
 class AdminHighRiskListResponse(BaseModel):
@@ -151,6 +157,21 @@ class AdminAccountAddRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     email: str = Field(min_length=5, max_length=320)
+
+
+class AdminAccountSearchUserItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    id: str
+    email: str
+    nickname: str
+
+
+class AdminAccountSearchUserListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    total: int
+    items: list[AdminAccountSearchUserItem]
 
 
 class AdminGrantHistoryItem(BaseModel):

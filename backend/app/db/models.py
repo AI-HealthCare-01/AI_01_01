@@ -31,6 +31,7 @@ class AssessmentType(str, enum.Enum):
 
 class BoardCategory(str, enum.Enum):
     INQUIRY = "문의"
+    LEGACY_INQUIRY = "질문"
     FREE = "자유"
     TIP = "꿀팁"
     FEEDBACK = "피드백"

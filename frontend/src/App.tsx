@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 import AdminPage from './pages/admin/AdminPage'
@@ -53,7 +53,7 @@ type RecoveryQuestionResponse = { question: string }
 type RecoveryVerifyResponse = { matched: boolean }
 
 type ChatRole = 'user' | 'assistant'
-type ChatTurn = { role: ChatRole; content: string }
+type ChatTurn = { role: ChatRole; content: string; loading?: boolean }
 
 type ChatResponse = {
   reply: string
@@ -96,6 +96,17 @@ type WeeklyDashboardResponse = {
   rows: WeeklyDashboardRow[]
 }
 
+type CheckinHistoryItem = {
+  timestamp: string
+  mood_score: number
+  sleep_hours: number | null
+  exercise_minutes_today: number | null
+  daylight_minutes_today: number | null
+  screen_time_min_today: number | null
+  sleep_quality_0_10_today: number | null
+}
+
+
 type PHQ9AssessmentSummary = {
   id: string
   total_score: number
@@ -122,8 +133,20 @@ type ClinicalReport = {
     checkin_days: number
     cbt_sessions: number
     distortion_total_mean: number | null
+    challenge_completed_total: number
+    challenge_total: number
+    challenge_completion_rate: number | null
   }
   clinician_note: string
+  narrative_sections: Array<{ title: string; detail: string; major_dialogue?: string | null; llm_summary?: string | null }>
+  score_trends: Array<{
+    week_start_date: string
+    composite: number
+    dep: number
+    anx: number
+    ins: number
+    composite_delta_from_prev: number | null
+  }>
 }
 
 type AssessmentState = {
@@ -156,12 +179,12 @@ type LifestyleCheckinState = {
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8001'
 
-const LIKERT_OPTIONS: Array<{ value: LikertValue; label: string; desc: string }> = [
-  { value: '', label: '선택해주세요', desc: '' },
-  { value: '0', label: '전혀 그렇지 않았어요', desc: '전혀 없음' },
-  { value: '1', label: '가끔 그랬어요', desc: '며칠 정도' },
-  { value: '2', label: '자주 그랬어요', desc: '절반 이상' },
-  { value: '3', label: '거의 대부분 그랬어요', desc: '거의 매일' },
+const LIKERT_OPTIONS: Array<{ value: LikertValue; label: string }> = [
+  { value: '', label: '선택해주세요' },
+  { value: '0', label: '전혀 그렇지 않았어요' },
+  { value: '1', label: '가끔 그랬어요' },
+  { value: '2', label: '자주 그랬어요' },
+  { value: '3', label: '거의 대부분 그랬어요' },
 ]
 
 const SECURITY_QUESTIONS = [
@@ -260,24 +283,81 @@ async function extractApiError(response: Response): Promise<string> {
 }
 
 
-function MiniTrendChart({ values, color }: { values: number[]; color: string }) {
-  if (!values.length) return <p className="small">데이터가 없습니다.</p>
-  const max = Math.max(...values, 1)
-  const min = Math.min(...values, 0)
+function formatDateYYYYMMDD(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function startOfWeekMonday(input: Date): Date {
+  const d = new Date(input)
+  const day = d.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  d.setDate(d.getDate() + diff)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function MultiMetricTrendChart({
+  labels,
+  series,
+}: {
+  labels: string[]
+  series: Array<{ name: string; color: string; values: Array<number | null> }>
+}) {
+  if (!labels.length || !series.length) return <p className="small">데이터가 없습니다.</p>
+  const all = series.flatMap((sr) => sr.values.filter((v): v is number => v != null))
+  if (!all.length) return <p className="small">데이터가 없습니다.</p>
+
+  const max = Math.max(...all, 100)
+  const min = Math.min(...all, 0)
   const range = Math.max(1, max - min)
-  const points = values
-    .map((v, i) => {
-      const x = (i / Math.max(1, values.length - 1)) * 100
-      const y = 100 - (((v - min) / range) * 100)
-      return `${x},${y}`
-    })
-    .join(' ')
+
   return (
-    <svg viewBox="0 0 100 100" width="100%" height={120} role="img" aria-label="trend chart">
-      <polyline fill="none" stroke={color} strokeWidth="3" points={points} />
+    <svg viewBox="0 0 120 100" width="100%" height={190} role="img" aria-label="multi trend chart">
+      {[0, 25, 50, 75, 100].map((g) => (
+        <line key={g} x1="0" y1={String(100 - g)} x2="100" y2={String(100 - g)} stroke="#edf2f7" strokeWidth="0.6" />
+      ))}
+      {series.map((line) => {
+        const points = line.values.map((v, idx) => {
+          if (v == null) return null
+          const x = (idx / Math.max(1, labels.length - 1)) * 100
+          const y = 100 - (((v - min) / range) * 100)
+          return { x, y }
+        })
+
+        const segments: string[] = []
+        let current: string[] = []
+        points.forEach((p) => {
+          if (!p) {
+            if (current.length > 1) segments.push(current.join(' '))
+            current = []
+            return
+          }
+          current.push(`${p.x},${p.y}`)
+        })
+        if (current.length > 1) segments.push(current.join(' '))
+
+        const lastPoint = [...points].reverse().find((p) => p != null) ?? null
+
+        return (
+          <g key={line.name}>
+            {segments.map((seg, i) => (
+              <polyline key={`${line.name}-${i}`} fill="none" stroke={line.color} strokeWidth="2.5" points={seg} />
+            ))}
+            {lastPoint && (
+              <text x={Math.min(118, lastPoint.x + 1.6)} y={lastPoint.y} fill={line.color} fontSize="4" dominantBaseline="middle">
+                {line.name}
+              </text>
+            )}
+          </g>
+        )
+      })}
     </svg>
   )
 }
+
 
 function MiniBarChart({ labels, values, color }: { labels: string[]; values: number[]; color: string }) {
   if (!values.length) return <p className="small">데이터가 없습니다.</p>
@@ -330,7 +410,7 @@ function App() {
   const [myTab, setMyTab] = useState<MyPageTab>('dashboard')
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>('today')
 
-  const [token, setToken] = useState<string>(() => localStorage.getItem('access_token') ?? '')
+  const [token, setToken] = useState<string>('')
   const [me, setMe] = useState<UserOut | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
 
@@ -365,10 +445,16 @@ function App() {
   const [activeChallenge, setActiveChallenge] = useState('')
   const [challengePhase, setChallengePhase] = useState<'start' | 'continue' | 'reflect'>('continue')
   const [challengeStatus, setChallengeStatus] = useState<Record<string, boolean>>({})
-  const [recommendedChallenges, setRecommendedChallenges] = useState<string[]>([])
+  const [chatGenerating, setChatGenerating] = useState(false)
+  const [challengeHintText, setChallengeHintText] = useState('')
+  const [dialogueFinishedOpen, setDialogueFinishedOpen] = useState(false)
   const [boardFocusPostId, setBoardFocusPostId] = useState<string | null>(null)
 
+  const chatMessagesRef = useRef<HTMLDivElement | null>(null)
+  const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
+
   const [dashboard, setDashboard] = useState<WeeklyDashboardResponse | null>(null)
+  const [checkinHistory, setCheckinHistory] = useState<CheckinHistoryItem[]>([])
   const [, setPhqHistory] = useState<PHQ9AssessmentSummary[]>([])
   const [reportStartDate, setReportStartDate] = useState(() => new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))
   const [reportEndDate, setReportEndDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -394,6 +480,7 @@ function App() {
     void loadProfile()
     void loadMyProfile()
     void loadMyDashboard()
+    void loadCheckinHistory()
     void loadPhqHistory()
     void loadAdminAccess()
     setPage('checkin')
@@ -411,9 +498,16 @@ function App() {
   }, [chatResult])
 
   useEffect(() => {
-    if (!token || page !== 'diary') return
-    void loadChallengeRecommendations()
-  }, [token, page])
+    if (!chatMessagesRef.current) return
+    chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight
+  }, [chatHistory, chatGenerating])
+
+  useEffect(() => {
+    if (!chatInputRef.current) return
+    chatInputRef.current.style.height = '0px'
+    chatInputRef.current.style.height = `${Math.min(160, Math.max(44, chatInputRef.current.scrollHeight))}px`
+  }, [chatMessage, page])
+
 
   async function loadAdminAccess() {
     try {
@@ -427,6 +521,12 @@ function App() {
   async function loadProfile() {
     try {
       const response = await fetch(`${API_BASE}/auth/me`, { headers: authHeaders })
+      if (response.status === 401) {
+        setToken('')
+        localStorage.removeItem('access_token')
+        setPage('landing')
+        return
+      }
       if (!response.ok) throw new Error(await extractApiError(response))
       setMe((await response.json()) as UserOut)
     } catch (error) {
@@ -466,24 +566,6 @@ function App() {
     }
   }
 
-  async function loadChallengeRecommendations() {
-    if (!token) return
-    try {
-      const response = await fetch(`${API_BASE}/chat/challenges/recommend`, { headers: authHeaders })
-      if (!response.ok) throw new Error(await extractApiError(response))
-      const data = (await response.json()) as { suggested_challenges: string[] }
-      setRecommendedChallenges(data.suggested_challenges ?? [])
-      setChallengeStatus((prev) => {
-        const next = { ...prev }
-        for (const c of data.suggested_challenges ?? []) {
-          if (next[c] == null) next[c] = false
-        }
-        return next
-      })
-    } catch {
-      setRecommendedChallenges([])
-    }
-  }
   async function loadMyDashboard() {
     if (!token) return
     try {
@@ -492,6 +574,18 @@ function App() {
       setDashboard((await response.json()) as WeeklyDashboardResponse)
     } catch (error) {
       setMessage(`대시보드 조회 오류: ${(error as Error).message}`)
+    }
+  }
+
+  async function loadCheckinHistory() {
+    if (!token) return
+    try {
+      const response = await fetch(`${API_BASE}/checkins/history?days=90`, { headers: authHeaders })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      const data = (await response.json()) as CheckinHistoryItem[]
+      setCheckinHistory(data)
+    } catch (error) {
+      setMessage(`체크인 이력 조회 오류: ${(error as Error).message}`)
     }
   }
 
@@ -518,6 +612,83 @@ function App() {
       setLoading(false)
     }
   }
+  async function handleDownloadReportJpg() {
+    if (!clinicalReport) {
+      setMessage('먼저 리포트를 확인해주세요.')
+      return
+    }
+
+    const canvas = document.createElement('canvas')
+    canvas.width = 1200
+    canvas.height = 1700
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      setMessage('리포트 이미지 생성에 실패했습니다.')
+      return
+    }
+
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.fillStyle = '#0f172a'
+    ctx.font = 'bold 36px sans-serif'
+    ctx.fillText('CBT 요약 리포트', 60, 80)
+    ctx.font = '24px sans-serif'
+    ctx.fillText(`기간: ${clinicalReport.period_start} ~ ${clinicalReport.period_end}`, 60, 130)
+
+    let y = 190
+    const drawLine = (text: string, isTitle = false) => {
+      ctx.font = isTitle ? 'bold 24px sans-serif' : '20px sans-serif'
+      const maxWidth = 1080
+      const words = text.split(' ')
+      let line = ''
+      for (const w of words) {
+        const t = line ? `${line} ${w}` : w
+        if (ctx.measureText(t).width > maxWidth) {
+          ctx.fillText(line, 60, y)
+          y += 34
+          line = w
+        } else {
+          line = t
+        }
+      }
+      if (line) {
+        ctx.fillText(line, 60, y)
+        y += 34
+      }
+      y += 8
+    }
+
+    drawLine('대화 기반 임상 참고 서술', true)
+    for (const item of clinicalReport.narrative_sections) {
+      drawLine(`${item.title}: ${item.detail}`)
+    }
+
+    drawLine('점수 참고지표', true)
+    drawLine(`Composite 최근 ${clinicalReport.score_summary.composite_latest ?? '-'} / 변화 ${clinicalReport.score_summary.composite_delta ?? '-'}`)
+    for (const row of clinicalReport.score_trends) {
+      drawLine(`${row.week_start_date} | comp ${row.composite.toFixed(1)} / dep ${row.dep.toFixed(1)} / anx ${row.anx.toFixed(1)} / ins ${row.ins.toFixed(1)}`)
+    }
+
+    drawLine('위험 신호', true)
+    if (!clinicalReport.risk_flags.length) {
+      drawLine('현재 기간에서 뚜렷한 고위험 플래그가 없습니다.')
+    } else {
+      for (const f of clinicalReport.risk_flags) {
+        drawLine(`${f.title}: ${f.detail}`)
+      }
+    }
+
+    drawLine('진료 메모', true)
+    drawLine(clinicalReport.clinician_note)
+
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
+    const a = document.createElement('a')
+    a.href = dataUrl
+    a.download = `clinical_report_${clinicalReport.period_start}_${clinicalReport.period_end}.jpg`
+    a.click()
+    setMessage('리포트 JPG 파일을 저장했습니다.')
+  }
+
   async function handleLogin(event: FormEvent) {
     event.preventDefault()
     setLoading(true)
@@ -529,7 +700,6 @@ function App() {
       })
       if (!response.ok) throw new Error(await extractApiError(response))
       const data = (await response.json()) as TokenResponse
-      localStorage.setItem('access_token', data.access_token)
       setToken(data.access_token)
       setMessage('로그인 성공')
     } catch (error) {
@@ -788,12 +958,29 @@ function App() {
       setPage('diary')
       setChatMessage(`오늘 체크인 요약: ${summary}. 이 데이터를 참고해서 오늘 상태를 같이 정리해줘.`)
       await loadMyDashboard()
+      await loadCheckinHistory()
       setMessage('체크인이 저장되었습니다. 감정일기 대화를 시작해보세요.')
     } catch (error) {
       setMessage(`체크인 오류: ${(error as Error).message}`)
     } finally {
       setLoading(false)
     }
+  }
+
+  function upsertAssistantDraft(content: string, isDraft: boolean, completionMessage?: string | null) {
+    setChatHistory((prev) => {
+      const next = [...prev]
+      for (let i = next.length - 1; i >= 0; i -= 1) {
+        if (next[i].role === 'assistant' && next[i].loading) {
+          next[i] = { role: 'assistant', content, loading: isDraft }
+          if (!isDraft && completionMessage) next.push({ role: 'assistant', content: completionMessage })
+          return next
+        }
+      }
+      const appended: ChatTurn[] = [...prev, { role: 'assistant', content, loading: isDraft }]
+      if (!isDraft && completionMessage) appended.push({ role: 'assistant', content: completionMessage })
+      return appended
+    })
   }
 
   async function handleChatSubmit(event: FormEvent) {
@@ -809,9 +996,11 @@ function App() {
       return
     }
 
-    setLoading(true)
     const history = chatHistory.slice(-12)
-    setChatHistory((prev) => [...prev, { role: 'user', content: text }])
+    setChatHistory((prev) => [...prev, { role: 'user', content: text }, { role: 'assistant', content: '', loading: true }])
+    setChatMessage('')
+    setLoading(true)
+    setChatGenerating(true)
 
     try {
       const payload: Record<string, unknown> = {
@@ -832,14 +1021,17 @@ function App() {
       const data = (await response.json()) as ChatResponse
 
       setChatResult(data)
-      setChatMessage('')
-      setChatHistory((prev) => {
-        const next: ChatTurn[] = [...prev, { role: 'assistant', content: data.reply }]
-        if (data.challenge_completed && data.completion_message) {
-          next.push({ role: 'assistant', content: data.completion_message })
-        }
-        return next
-      })
+
+      const replyText = (data.reply || '').trim() || '응답을 정리했습니다. 이어서 계속 이야기해볼까요?'
+      const chunkSize = Math.max(1, Math.ceil(replyText.length / 90))
+      let cursor = 0
+      while (cursor < replyText.length) {
+        cursor = Math.min(replyText.length, cursor + chunkSize)
+        upsertAssistantDraft(replyText.slice(0, cursor), cursor < replyText.length)
+        await new Promise((resolve) => window.setTimeout(resolve, 16))
+      }
+
+      upsertAssistantDraft(replyText, false, data.challenge_completed ? (data.completion_message ?? null) : null)
 
       if (data.active_challenge) {
         setActiveChallenge(data.active_challenge)
@@ -847,25 +1039,36 @@ function App() {
       }
       if (data.challenge_completed && data.completed_challenge) {
         setChallengeStatus((prev) => ({ ...prev, [data.completed_challenge as string]: true }))
-        void loadChallengeRecommendations()
       }
+
+      const difficultyWords = ['어렵', '모르겠', '막혀', '힘들', 'confused', 'stuck']
+      const isStuck = difficultyWords.some((w) => text.toLowerCase().includes(w))
+      if (isStuck || (data.extracted?.distress_0_10 ?? 0) >= 7) {
+        setChallengeHintText(data.challenge_step_prompt ?? '지금 단계가 어렵다면 사실 1개, 생각 1개, 감정 1개만 짧게 적어보세요.')
+      } else if (data.challenge_step_prompt) {
+        setChallengeHintText(data.challenge_step_prompt)
+      }
+
       setMessage('대화 분석 완료')
     } catch (error) {
+      setChatHistory((prev) => prev.filter((turn) => !turn.loading))
       setMessage(`감정일기 오류: ${(error as Error).message}`)
     } finally {
       setLoading(false)
+      setChatGenerating(false)
     }
   }
 
   function startChallenge(challenge: string) {
     setActiveChallenge(challenge)
     setChallengePhase('start')
-    setChatHistory((prev) => [...prev, { role: 'assistant', content: `좋아요. '${challenge}' 챌린지를 지금부터 같이 진행해볼게요.` }])
+    setChallengeHintText('선택한 챌린지를 단계별로 진행합니다. 사실-감정-생각을 순서대로 적어주세요.')
+    setChatHistory((prev) => [...prev, { role: 'assistant', content: `좋아요. '${challenge}'를 함께 해볼게요. 먼저 지금 상황에서 사실로 확인되는 내용 1가지를 적어주세요. 다음 단계에서 감정과 생각을 차례로 정리해볼게요.` }])
   }
 
   async function handleFinishDialogue() {
     if (!token) return
-    const challenges = (chatResult?.suggested_challenges?.length ? chatResult.suggested_challenges : recommendedChallenges)
+    const challenges = (chatResult?.suggested_challenges ?? [])
     const completedCount = challenges.filter((c) => challengeStatus[c]).length
 
     const mood = Number(checkin.mood_score || 5)
@@ -897,6 +1100,8 @@ function App() {
       })
       if (!response.ok) throw new Error(await extractApiError(response))
       await loadMyDashboard()
+      await loadCheckinHistory()
+      setDialogueFinishedOpen(true)
       setMessage('대화를 마치고 지표 저장을 완료했습니다.')
     } catch (error) {
       setMessage(`대화 마치기 오류: ${(error as Error).message}`)
@@ -978,39 +1183,119 @@ function App() {
 
   const latestWeekly = dashboard?.rows?.length ? dashboard.rows[dashboard.rows.length - 1] : null
 
-  const weeklyRows = useMemo(() => (dashboard?.rows ?? []).slice(-8), [dashboard])
-  const monthlyRows = useMemo(() => {
-    if (!dashboard?.rows?.length) return []
-    const byMonth: Record<string, WeeklyDashboardRow[]> = {}
-    for (const row of dashboard.rows) {
-      const k = row.week_start_date.slice(0, 7)
-      byMonth[k] = byMonth[k] ? [...byMonth[k], row] : [row]
+  const weeklyRows = useMemo(() => {
+    const rows = dashboard?.rows ?? []
+    const byDate = new Map(rows.map((r) => [r.week_start_date, r]))
+    const out: Array<WeeklyDashboardRow | null> = []
+    for (let i = 6; i >= 0; i -= 1) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      const key = formatDateYYYYMMDD(d)
+      out.push(byDate.get(key) ?? null)
     }
-    return Object.entries(byMonth).map(([month, rows]) => {
-      const dep = rows.reduce((a, b) => a + b.dep_week_pred_0_100, 0) / rows.length
-      const anx = rows.reduce((a, b) => a + b.anx_week_pred_0_100, 0) / rows.length
-      const ins = rows.reduce((a, b) => a + b.ins_week_pred_0_100, 0) / rows.length
-      return {
-        week_start_date: month,
-        dep_week_pred_0_100: dep,
-        anx_week_pred_0_100: anx,
-        ins_week_pred_0_100: ins,
-        symptom_composite_pred_0_100: (dep + anx + ins) / 3,
+    return out
+  }, [dashboard])
+
+  const dailyLifestyleRows = useMemo(() => {
+    const src = [...checkinHistory].sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+    const byDate = new Map(src.map((r) => [r.timestamp.slice(0, 10), r]))
+    const out: Array<CheckinHistoryItem | null> = []
+    for (let i = 6; i >= 0; i -= 1) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      const key = formatDateYYYYMMDD(d)
+      out.push(byDate.get(key) ?? null)
+    }
+    return out
+  }, [checkinHistory])
+
+  const weeklyLifestyleRows = useMemo(() => {
+    const src = [...checkinHistory].sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+    const grouped = new Map<string, CheckinHistoryItem[]>()
+    for (const row of src) {
+      const wk = formatDateYYYYMMDD(startOfWeekMonday(new Date(`${row.timestamp.slice(0, 10)}T00:00:00`)))
+      const prev = grouped.get(wk) ?? []
+      grouped.set(wk, [...prev, row])
+    }
+    const keys = [...grouped.keys()].sort().slice(-8)
+    return keys.map((k) => {
+      const arr = grouped.get(k) ?? []
+      const mean = (vals: Array<number | null>) => {
+        const only = vals.filter((v): v is number => v != null)
+        return only.length ? only.reduce((a, b) => a + b, 0) / only.length : null
       }
+      return {
+        week: k,
+        sleep: mean(arr.map((x) => x.sleep_hours)),
+        exercise: mean(arr.map((x) => x.exercise_minutes_today)),
+        daylight: mean(arr.map((x) => x.daylight_minutes_today)),
+        screen: mean(arr.map((x) => x.screen_time_min_today)),
+      }
+    })
+  }, [checkinHistory])
+
+  const monthlyRows = useMemo(() => {
+    const rows = dashboard?.rows ?? []
+    if (!rows.length) return [] as Array<{ week: string; dep: number | null; anx: number | null; ins: number | null; comp: number | null }>
+
+    const grouped = new Map<string, WeeklyDashboardRow[]>()
+    for (const row of rows) {
+      const dateObj = new Date(`${row.week_start_date}T00:00:00`)
+      const weekKey = formatDateYYYYMMDD(startOfWeekMonday(dateObj))
+      const prev = grouped.get(weekKey) ?? []
+      grouped.set(weekKey, [...prev, row])
+    }
+
+    const sortedKeys = [...grouped.keys()].sort()
+    return sortedKeys.slice(-8).map((k) => {
+      const arr = grouped.get(k) ?? []
+      const dep = arr.reduce((a, b) => a + b.dep_week_pred_0_100, 0) / arr.length
+      const anx = arr.reduce((a, b) => a + b.anx_week_pred_0_100, 0) / arr.length
+      const ins = arr.reduce((a, b) => a + b.ins_week_pred_0_100, 0) / arr.length
+      const comp = (dep + anx + ins) / 3
+      return { week: k, dep, anx, ins, comp }
     })
   }, [dashboard])
 
   const topRisk = useMemo(() => {
-    if (!chatResult) return []
+    if (!chatResult) return [] as Array<{ key: string; label: string; value: number; guide: string }>
     const d = chatResult.extracted.distortion
+    const labelMap: Record<string, string> = {
+      catastrophizing_count: '파국화 경향',
+      all_or_nothing_count: '흑백사고 경향',
+      mind_reading_count: '독심추론 경향',
+      should_statements_count: '과한 당위문',
+      personalization_count: '개인화 경향',
+      overgeneralization_count: '과잉일반화',
+    }
+    const guideMap: Record<string, string> = {
+      catastrophizing_count: '미래를 최악으로 단정하는 생각이 반복될 수 있어요. 사실 근거를 하나씩 확인해보세요.',
+      all_or_nothing_count: '흑백으로 판단하는 경향이 보이면 중간지점을 찾는 연습이 도움이 됩니다.',
+      mind_reading_count: '상대 마음을 단정하기보다 확인 가능한 사실부터 정리해보는 게 좋아요.',
+      should_statements_count: '나에게 과한 당위가 걸리면 피로가 커질 수 있어요. 유연한 표현으로 바꿔보세요.',
+      personalization_count: '모든 원인을 나에게 돌리는 경향이 보이면 외부 요인도 함께 살펴보세요.',
+      overgeneralization_count: '한 번의 경험을 전체로 확대해석하지 않도록 예외 사례를 함께 적어보세요.',
+    }
     return Object.entries(d)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
-      .map(([k, v]) => ({ key: k, value: v }))
+      .map(([k, v]) => ({ key: k, label: labelMap[k] ?? k, value: v, guide: guideMap[k] ?? '현재 패턴을 무리 없이 조정할 수 있도록 작은 단위 실천을 권장합니다.' }))
   }, [chatResult])
 
-  const challenges = (chatResult?.suggested_challenges?.length ? chatResult.suggested_challenges : recommendedChallenges)
+  const challenges = (chatResult?.suggested_challenges ?? [])
   const completedChallenges = challenges.filter((c) => challengeStatus[c]).length
+  const liveEmotionSummary = useMemo(() => {
+    const recentUserText = [...chatHistory].reverse().find((t) => t.role === 'user')?.content ?? chatMessage
+    const label = (chatResult?.extracted?.distress_0_10 ?? 0) >= 7 ? '고긴장' : (chatResult?.extracted?.distress_0_10 ?? 0) >= 4 ? '중간 긴장' : '비교적 안정'
+    const situation = chatResult?.summary_card?.situation ?? (recentUserText ? recentUserText.slice(0, 100) : '-')
+    return {
+      moodLabel: label,
+      situation,
+      selfBlameSignal: chatResult?.summary_card?.self_blame_signal ?? '-',
+      reframe: chatResult?.summary_card?.reframe ?? '-',
+      nextAction: chatResult?.summary_card?.next_action ?? '-',
+    }
+  }, [chatHistory, chatMessage, chatResult])
   const highRiskProbability = checkPrediction == null ? 0 : (checkPrediction.probabilities['3'] ?? 0) + (checkPrediction.probabilities['4'] ?? 0)
 
   return (
@@ -1149,32 +1434,41 @@ function App() {
       )}
 
       {page === 'diary' && token && (
-        <section className="panel cbtLayout">
+        <section className="panel cbtLayout diaryPanel">
           <article className="cbtMain">
             <h2>마음일기</h2>
-            <div className="chatShell">
-              <div className="chatMessages">
-                {chatHistory.length === 0 && <div className="chatEmpty">오늘 있었던 일과 감정을 이야기해보세요.</div>}
+            <div className="chatShell diaryTight">
+              <div className="chatMessages" ref={chatMessagesRef}>
+                {chatHistory.length === 0 && <div className="chatEmpty">오늘 있었던 사건, 감정, 생각을 편하게 이야기해 주세요.</div>}
                 {chatHistory.map((turn, idx) => (
                   <div key={`turn-${idx}`} className={`chatBubble ${turn.role === 'user' ? 'chatUser' : 'chatAssistant'}`}>
-                    <strong>{turn.role === 'user' ? '나' : '마음코치'}</strong>
+                    <strong className="chatBubbleHeader">
+                      {turn.role === 'user' ? '나' : '마음코치'}
+                      {turn.loading && (
+                        <span className="chatLoadingInline">
+                          <span className="loadingDot" />
+                          응답 생성 중
+                        </span>
+                      )}
+                    </strong>
                     <p>{turn.content}</p>
                   </div>
                 ))}
               </div>
               <form onSubmit={handleChatSubmit} className="chatComposer">
                 <div className="chatInputRow">
-                  <textarea rows={3} value={chatMessage} onChange={(e) => setChatMessage(e.target.value)} placeholder="오늘 있었던 일과 감정을 적어주세요" />
-                  <button className="chatSendBtn" disabled={loading}>채팅 입력</button>
+                  <textarea ref={chatInputRef} rows={1} value={chatMessage} onChange={(e) => setChatMessage(e.target.value)} placeholder="오늘 있었던 일, 감정, 떠오른 생각을 적어주세요" />
+                  <button className="chatSendBtn" disabled={loading || chatGenerating}>입력</button>
                 </div>
-                <button type="button" className="chatFinishBtn" onClick={() => void handleFinishDialogue()} disabled={loading}>대화 마치기</button>
+                <button type="button" className="chatFinishBtn" onClick={() => void handleFinishDialogue()} disabled={loading || chatGenerating}>대화 마치기</button>
               </form>
             </div>
           </article>
 
           <aside className="cbtSide">
             <div className="panel sideCard">
-              <h3>챌린지 힌트</h3>
+              <h3>추천 챌린지 선택</h3>
+              {challenges.length === 0 && <p className="small">대화를 충분히 나누면 현재 상태에 맞춰 추천해드릴게요.</p>}
               <ul className="probList">
                 {challenges.map((c) => (
                   <li key={c}>
@@ -1185,25 +1479,35 @@ function App() {
               </ul>
             </div>
             <div className="panel sideCard">
-              <h3>챌린지 진행도</h3>
-              <p>{completedChallenges}/{challenges.length}</p>
-              <ul className="probList">
-                {challenges.map((c) => (
-                  <li key={`done-${c}`}>
-                    <span>{c}</span>
-                    <strong>{challengeStatus[c] ? '완료' : '진행중'}</strong>
-                  </li>
-                ))}
-              </ul>
+              <h3>진행 중 챌린지</h3>
+              <p>{activeChallenge ? activeChallenge : '선택된 챌린지가 없습니다.'}</p>
+              <p className="small">완료 {completedChallenges}/{challenges.length}</p>
+            </div>
+            <div className="panel sideCard">
+              <h3>챌린지 힌트</h3>
+              <p>{challengeHintText || chatResult?.challenge_step_prompt || '진행이 어렵다면 현재 감정강도(0~10)와 떠오른 생각 1개를 먼저 적어보세요.'}</p>
             </div>
             <div className="panel sideCard">
               <h3>감정 요약 카드</h3>
-              <p><strong>상황:</strong> {chatResult?.summary_card?.situation ?? '-'}</p>
-              <p><strong>왜곡 신호:</strong> {chatResult?.summary_card?.self_blame_signal ?? '-'}</p>
-              <p><strong>재해석:</strong> {chatResult?.summary_card?.reframe ?? '-'}</p>
-              <p><strong>다음 행동:</strong> {chatResult?.summary_card?.next_action ?? '-'}</p>
+              <p><strong>현재 정서:</strong> {liveEmotionSummary.moodLabel}</p>
+              <p><strong>상황:</strong> {liveEmotionSummary.situation}</p>
+              <p><strong>왜곡 신호:</strong> {liveEmotionSummary.selfBlameSignal}</p>
+              <p><strong>재해석:</strong> {liveEmotionSummary.reframe}</p>
+              <p><strong>다음 행동:</strong> {liveEmotionSummary.nextAction}</p>
             </div>
           </aside>
+
+          {dialogueFinishedOpen && (
+            <div className="dialogueDoneOverlay" role="dialog" aria-modal="true">
+              <div className="dialogueDoneCard">
+                <h3>대화를 마칩니다</h3>
+                <p>오늘도 수고하셨습니다. 기록해주신 내용은 대시보드와 리포트에 반영되었어요.</p>
+                <div className="actions">
+                  <button type="button" onClick={() => setDialogueFinishedOpen(false)}>확인</button>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -1212,70 +1516,104 @@ function App() {
           <h2>종합 심리 검사</h2>
           <form onSubmit={handleSurveySubmit} className="form">
             <article className="panel questionBlock">
-              <h3>우울 섹션</h3>
+              <h3>마음 에너지 변화</h3>
               <p className="small">총점: {phqTotal}/27</p>
               <div className="questionList">
                 {PHQ9_QUESTIONS.map((q, idx) => (
-                  <label key={`phq-${idx}`}>
-                    {idx + 1}. {q}
-                    <select value={assessment.phq9[idx]} onChange={(e) => setPhqAnswer(idx, e.target.value as LikertValue)}>
-                      {LIKERT_OPTIONS.map((opt) => <option key={`phq-${idx}-${opt.value}`} value={opt.value}>{opt.label}</option>)}
-                    </select>
-                    <span className="hint">보기: {LIKERT_OPTIONS.filter((o) => o.value !== '').map((o) => o.desc).join(' / ')}</span>
-                  </label>
+                  <div key={`phq-${idx}`} className="questionItem">
+                    <p>{idx + 1}. {q}</p>
+                    <div className="likertButtons">
+                      {LIKERT_OPTIONS.filter((opt) => opt.value !== '').map((opt) => (
+                        <button
+                          key={`phq-${idx}-${opt.value}`}
+                          type="button"
+                          className={assessment.phq9[idx] === opt.value ? 'likertBtn active' : 'likertBtn ghost'}
+                          onClick={() => setPhqAnswer(idx, opt.value as LikertValue)}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </article>
 
             <article className="panel questionBlock">
-              <h3>불안 섹션</h3>
+              <h3>긴장과 걱정 반응</h3>
               <p className="small">총점: {gadTotal}/21</p>
               <div className="questionList">
                 {GAD7_QUESTIONS.map((q, idx) => (
-                  <label key={`gad-${idx}`}>
-                    {idx + 1}. {q}
-                    <select value={assessment.gad7[idx]} onChange={(e) => setGadAnswer(idx, e.target.value as LikertValue)}>
-                      {LIKERT_OPTIONS.map((opt) => <option key={`gad-${idx}-${opt.value}`} value={opt.value}>{opt.label}</option>)}
-                    </select>
-                  </label>
+                  <div key={`gad-${idx}`} className="questionItem">
+                    <p>{idx + 1}. {q}</p>
+                    <div className="likertButtons">
+                      {LIKERT_OPTIONS.filter((opt) => opt.value !== '').map((opt) => (
+                        <button
+                          key={`gad-${idx}-${opt.value}`}
+                          type="button"
+                          className={assessment.gad7[idx] === opt.value ? 'likertBtn active' : 'likertBtn ghost'}
+                          onClick={() => setGadAnswer(idx, opt.value as LikertValue)}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </article>
 
             <article className="panel questionBlock">
-              <h3>수면 섹션</h3>
+              <h3>수면 회복 상태</h3>
               <p className="small">총점: {sleepTotal}/9</p>
               <div className="questionList">
                 {SLEEP_QUESTIONS.map((q, idx) => (
-                  <label key={`sleep-${idx}`}>
-                    {idx + 1}. {q}
-                    <select value={assessment.sleep[idx]} onChange={(e) => setSleepAnswer(idx, e.target.value as LikertValue)}>
-                      {LIKERT_OPTIONS.map((opt) => <option key={`sleep-${idx}-${opt.value}`} value={opt.value}>{opt.label}</option>)}
-                    </select>
-                  </label>
+                  <div key={`sleep-${idx}`} className="questionItem">
+                    <p>{idx + 1}. {q}</p>
+                    <div className="likertButtons">
+                      {LIKERT_OPTIONS.filter((opt) => opt.value !== '').map((opt) => (
+                        <button
+                          key={`sleep-${idx}-${opt.value}`}
+                          type="button"
+                          className={assessment.sleep[idx] === opt.value ? 'likertBtn active' : 'likertBtn ghost'}
+                          onClick={() => setSleepAnswer(idx, opt.value as LikertValue)}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </article>
 
             <article className="panel questionBlock">
-              <h3>생활 맥락 섹션</h3>
+              <h3>생활 맥락 체크</h3>
               <p className="small">총점: {contextTotal}/15</p>
               <div className="questionList">
-                <label>최근 일상 기능이 눈에 띄게 떨어졌나요?
-                  <select value={assessment.context.daily_functioning} onChange={(e) => setContextAnswer('daily_functioning', e.target.value as LikertValue)}>{LIKERT_OPTIONS.map((opt) => <option key={`ctx1-${opt.value}`} value={opt.value}>{opt.label}</option>)}</select>
-                </label>
-                <label>최근 스트레스 사건 영향이 크게 느껴졌나요?
-                  <select value={assessment.context.stressful_event} onChange={(e) => setContextAnswer('stressful_event', e.target.value as LikertValue)}>{LIKERT_OPTIONS.map((opt) => <option key={`ctx2-${opt.value}`} value={opt.value}>{opt.label}</option>)}</select>
-                </label>
-                <label>지지받기 어렵다고 느껴졌나요?
-                  <select value={assessment.context.social_support} onChange={(e) => setContextAnswer('social_support', e.target.value as LikertValue)}>{LIKERT_OPTIONS.map((opt) => <option key={`ctx3-${opt.value}`} value={opt.value}>{opt.label}</option>)}</select>
-                </label>
-                <label>감정 대처가 어렵게 느껴졌나요?
-                  <select value={assessment.context.coping_skill} onChange={(e) => setContextAnswer('coping_skill', e.target.value as LikertValue)}>{LIKERT_OPTIONS.map((opt) => <option key={`ctx4-${opt.value}`} value={opt.value}>{opt.label}</option>)}</select>
-                </label>
-                <label>변화하고 싶은 동기가 떨어졌나요?
-                  <select value={assessment.context.motivation_for_change} onChange={(e) => setContextAnswer('motivation_for_change', e.target.value as LikertValue)}>{LIKERT_OPTIONS.map((opt) => <option key={`ctx5-${opt.value}`} value={opt.value}>{opt.label}</option>)}</select>
-                </label>
+                {[
+                  ['daily_functioning', '최근 일상 기능이 눈에 띄게 떨어졌나요?'],
+                  ['stressful_event', '최근 스트레스 사건 영향이 크게 느껴졌나요?'],
+                  ['social_support', '지지받기 어렵다고 느껴졌나요?'],
+                  ['coping_skill', '감정 대처가 어렵게 느껴졌나요?'],
+                  ['motivation_for_change', '변화하고 싶은 동기가 떨어졌나요?'],
+                ].map(([key, text]) => (
+                  <div key={String(key)} className="questionItem">
+                    <p>{text}</p>
+                    <div className="likertButtons">
+                      {LIKERT_OPTIONS.filter((opt) => opt.value !== '').map((opt) => (
+                        <button
+                          key={`ctx-${String(key)}-${opt.value}`}
+                          type="button"
+                          className={assessment.context[key as keyof AssessmentState['context']] === opt.value ? 'likertBtn active' : 'likertBtn ghost'}
+                          onClick={() => setContextAnswer(key as keyof AssessmentState['context'], opt.value as LikertValue)}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </article>
 
@@ -1331,46 +1669,112 @@ function App() {
                   {topRisk.length === 0 ? (
                     <p className="small">대화 기반 위험 변수 데이터가 아직 없습니다.</p>
                   ) : (
-                    <MiniBarChart
-                      labels={topRisk.map((x) => x.key)}
-                      values={topRisk.map((x) => x.value)}
-                      color="#f59e0b"
-                    />
+                    <ul className="probList">
+                      {topRisk.map((x) => (
+                        <li key={x.key}>
+                          <span>{x.label} ({x.value.toFixed(1)})</span>
+                          <strong>{x.guide}</strong>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
               )}
 
               {dashboardTab === 'weekly' && (
                 <div className="result">
-                  <MiniTrendChart values={weeklyRows.map((r) => r.symptom_composite_pred_0_100)} color="#0f766e" />
+                  <MultiMetricTrendChart
+                    labels={weeklyRows.map((r, idx) => {
+                      if (!r) {
+                        const d = new Date()
+                        d.setDate(d.getDate() - (6 - idx))
+                        return formatDateYYYYMMDD(d).slice(5)
+                      }
+                      return r.week_start_date.slice(5)
+                    })}
+                    series={[
+                      { name: '종합', color: '#0f766e', values: weeklyRows.map((r) => (r ? r.symptom_composite_pred_0_100 : null)) },
+                      { name: '우울', color: '#2563eb', values: weeklyRows.map((r) => (r ? r.dep_week_pred_0_100 : null)) },
+                      { name: '불안', color: '#f59e0b', values: weeklyRows.map((r) => (r ? r.anx_week_pred_0_100 : null)) },
+                      { name: '불면', color: '#ef4444', values: weeklyRows.map((r) => (r ? r.ins_week_pred_0_100 : null)) },
+                    ]}
+                  />
                   <ul className="probList">
                     {weeklyRows.map((row, idx) => {
-                      const prev = idx > 0 ? weeklyRows[idx - 1] : undefined
+                      const d = new Date()
+                      d.setDate(d.getDate() - (6 - idx))
+                      const label = formatDateYYYYMMDD(d)
+                      if (!row) {
+                        return (
+                          <li key={`empty-${label}`}>
+                            <span>{label}</span>
+                            <strong>기록 없음</strong>
+                          </li>
+                        )
+                      }
+                      const prev = idx > 0 ? weeklyRows[idx - 1] : null
                       return (
-                        <li key={row.week_start_date}>
-                          <span>{row.week_start_date} | composite {row.symptom_composite_pred_0_100.toFixed(1)} ({formatDelta(row.symptom_composite_pred_0_100, prev?.symptom_composite_pred_0_100)})</span>
-                          <strong>dep {row.dep_week_pred_0_100.toFixed(1)} / anx {row.anx_week_pred_0_100.toFixed(1)} / ins {row.ins_week_pred_0_100.toFixed(1)}</strong>
+                        <li key={label}>
+                          <span>{label} | composite {row.symptom_composite_pred_0_100.toFixed(1)} ({formatDelta(row.symptom_composite_pred_0_100, prev?.symptom_composite_pred_0_100)})</span>
+                          <strong>우울 {row.dep_week_pred_0_100.toFixed(1)} / 불안 {row.anx_week_pred_0_100.toFixed(1)} / 불면 {row.ins_week_pred_0_100.toFixed(1)}</strong>
                         </li>
                       )
                     })}
                   </ul>
+
+                  <h3>생활습관 추이 (최근 7일)</h3>
+                  <MultiMetricTrendChart
+                    labels={dailyLifestyleRows.map((r, idx) => {
+                      if (!r) {
+                        const d = new Date()
+                        d.setDate(d.getDate() - (6 - idx))
+                        return formatDateYYYYMMDD(d).slice(5)
+                      }
+                      return r.timestamp.slice(5, 10)
+                    })}
+                    series={[
+                      { name: '수면시간(h)', color: '#0f766e', values: dailyLifestyleRows.map((r) => (r ? r.sleep_hours : null)) },
+                      { name: '운동(분)', color: '#2563eb', values: dailyLifestyleRows.map((r) => (r ? r.exercise_minutes_today : null)) },
+                      { name: '햇빛(분)', color: '#f59e0b', values: dailyLifestyleRows.map((r) => (r ? r.daylight_minutes_today : null)) },
+                      { name: '스크린(분)', color: '#ef4444', values: dailyLifestyleRows.map((r) => (r ? r.screen_time_min_today : null)) },
+                    ]}
+                  />
                 </div>
               )}
 
               {dashboardTab === 'monthly' && (
                 <div className="result">
-                  <MiniTrendChart values={monthlyRows.map((r) => r.symptom_composite_pred_0_100)} color="#2563eb" />
+                  <MultiMetricTrendChart
+                    labels={monthlyRows.map((r) => r.week.slice(5))}
+                    series={[
+                      { name: '종합', color: '#0f766e', values: monthlyRows.map((r) => r.comp) },
+                      { name: '우울', color: '#2563eb', values: monthlyRows.map((r) => r.dep) },
+                      { name: '불안', color: '#f59e0b', values: monthlyRows.map((r) => r.anx) },
+                      { name: '불면', color: '#ef4444', values: monthlyRows.map((r) => r.ins) },
+                    ]}
+                  />
                   <ul className="probList">
                     {monthlyRows.map((row, idx) => {
                       const prev = idx > 0 ? monthlyRows[idx - 1] : undefined
                       return (
-                        <li key={row.week_start_date}>
-                          <span>{row.week_start_date} | composite {row.symptom_composite_pred_0_100.toFixed(1)} ({formatDelta(row.symptom_composite_pred_0_100, prev?.symptom_composite_pred_0_100)})</span>
-                          <strong>dep {row.dep_week_pred_0_100.toFixed(1)} / anx {row.anx_week_pred_0_100.toFixed(1)} / ins {row.ins_week_pred_0_100.toFixed(1)}</strong>
+                        <li key={row.week}>
+                          <span>{row.week} (1주 평균) | composite {row.comp?.toFixed(1)} ({formatDelta(row.comp ?? 0, prev?.comp ?? undefined)})</span>
+                          <strong>우울 {row.dep?.toFixed(1)} / 불안 {row.anx?.toFixed(1)} / 불면 {row.ins?.toFixed(1)}</strong>
                         </li>
                       )
                     })}
                   </ul>
+
+                  <h3>생활습관 추이 (주 평균)</h3>
+                  <MultiMetricTrendChart
+                    labels={weeklyLifestyleRows.map((r) => r.week.slice(5))}
+                    series={[
+                      { name: '수면시간(h)', color: '#0f766e', values: weeklyLifestyleRows.map((r) => r.sleep) },
+                      { name: '운동(분)', color: '#2563eb', values: weeklyLifestyleRows.map((r) => r.exercise) },
+                      { name: '햇빛(분)', color: '#f59e0b', values: weeklyLifestyleRows.map((r) => r.daylight) },
+                      { name: '스크린(분)', color: '#ef4444', values: weeklyLifestyleRows.map((r) => r.screen) },
+                    ]}
+                  />
                 </div>
               )}
             </article>
@@ -1401,17 +1805,60 @@ function App() {
                 <label>시작일<input type="date" value={reportStartDate} onChange={(e) => setReportStartDate(e.target.value)} /></label>
                 <label>종료일<input type="date" value={reportEndDate} onChange={(e) => setReportEndDate(e.target.value)} /></label>
               </div>
-              <div className="actions"><button type="button" onClick={() => void handleGenerateClinicalReport()} disabled={loading}>리포트 추출</button></div>
+              <div className="actions"><button type="button" onClick={() => void handleGenerateClinicalReport()} disabled={loading}>리포트 보기</button><button type="button" className="ghost" onClick={() => void handleDownloadReportJpg()} disabled={!clinicalReport}>리포트 추출</button></div>
 
               {clinicalReport && (
                 <div className="result">
                   <p><strong>기간:</strong> {clinicalReport.period_start} ~ {clinicalReport.period_end}</p>
                   <p><strong>요약:</strong> {clinicalReport.summary_text}</p>
+
+                  <div className="miniGrid" style={{ marginTop: 8 }}>
+                    <div className="panel" style={{ marginTop: 0 }}>
+                      <h3>점수 변화</h3>
+                      <p><strong>최근 Composite:</strong> {clinicalReport.score_summary.composite_latest?.toFixed(1) ?? '-'}</p>
+                      <p><strong>변화량:</strong> {clinicalReport.score_summary.composite_delta?.toFixed(1) ?? '-'}</p>
+                    </div>
+                    <div className="panel" style={{ marginTop: 0 }}>
+                      <h3>챌린지 수행</h3>
+                      <p><strong>완료/전체:</strong> {clinicalReport.behavior_summary.challenge_completed_total} / {clinicalReport.behavior_summary.challenge_total}</p>
+                      <p><strong>완료율:</strong> {clinicalReport.behavior_summary.challenge_completion_rate == null ? '-' : `${(clinicalReport.behavior_summary.challenge_completion_rate * 100).toFixed(1)}%`}</p>
+                    </div>
+                  </div>
+
+                  <h3>지표 추이 시각화</h3>
+                  <MultiMetricTrendChart
+                    labels={clinicalReport.score_trends.map((r) => r.week_start_date.slice(5))}
+                    series={[
+                      { name: '종합', color: '#0f766e', values: clinicalReport.score_trends.map((r) => r.composite) },
+                      { name: '우울', color: '#2563eb', values: clinicalReport.score_trends.map((r) => r.dep) },
+                      { name: '불안', color: '#f59e0b', values: clinicalReport.score_trends.map((r) => r.anx) },
+                      { name: '불면', color: '#ef4444', values: clinicalReport.score_trends.map((r) => r.ins) },
+                    ]}
+                  />
+
+
+                  <h3>대화 기반 임상 참고 서술</h3>
+                  <ul className="probList">
+                    {clinicalReport.narrative_sections.map((item, idx) => (
+                      <li key={`narrative-${idx}`}>
+                        <span>{item.title}</span>
+                        <p className="small" style={{ margin: 0 }}><strong>주요 대화:</strong> {item.major_dialogue ?? '-'}</p>
+                        <p className="small" style={{ margin: '2px 0 0' }}><strong>분석 요약:</strong></p>
+                        <strong>{item.llm_summary ?? item.detail}</strong>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <h3>점수 참고지표 (기간 변화)</h3>
                   <p><strong>Composite(최근):</strong> {clinicalReport.score_summary.composite_latest?.toFixed(1) ?? '-'} / 변화 {clinicalReport.score_summary.composite_delta?.toFixed(1) ?? '-'}</p>
-                  <p><strong>DEP/ANX/INS:</strong> {clinicalReport.score_summary.dep_latest?.toFixed(1) ?? '-'} / {clinicalReport.score_summary.anx_latest?.toFixed(1) ?? '-'} / {clinicalReport.score_summary.ins_latest?.toFixed(1) ?? '-'}</p>
-                  <p><strong>평균 수면/기분:</strong> {clinicalReport.behavior_summary.avg_sleep_hours?.toFixed(1) ?? '-'}h / {clinicalReport.behavior_summary.avg_mood_score?.toFixed(1) ?? '-'}점</p>
-                  <p><strong>체크인/CBT:</strong> {clinicalReport.behavior_summary.checkin_days}일 / {clinicalReport.behavior_summary.cbt_sessions}회</p>
-                  <p><strong>인지왜곡 평균:</strong> {clinicalReport.behavior_summary.distortion_total_mean?.toFixed(1) ?? '-'}</p>
+                  <ul className="probList">
+                    {clinicalReport.score_trends.map((row) => (
+                      <li key={row.week_start_date}>
+                        <span>{row.week_start_date}</span>
+                        <strong>comp {row.composite.toFixed(1)} ({row.composite_delta_from_prev == null ? '-' : (row.composite_delta_from_prev >= 0 ? '+' : '') + row.composite_delta_from_prev.toFixed(1)}) / dep {row.dep.toFixed(1)} anx {row.anx.toFixed(1)} ins {row.ins.toFixed(1)}</strong>
+                      </li>
+                    ))}
+                  </ul>
 
                   <h3>의학적 참고 위험 신호</h3>
                   <ul className="probList">
@@ -1424,8 +1871,7 @@ function App() {
                     ))}
                   </ul>
 
-                  <h3>진료 메모</h3>
-                  <p>{clinicalReport.clinician_note}</p>
+                  <p className="small" style={{ marginTop: 10 }}>{clinicalReport.clinician_note}</p>
                 </div>
               )}
             </article>

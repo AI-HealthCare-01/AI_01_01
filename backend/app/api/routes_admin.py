@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.schemas.admin import (
     AdminAccountAddRequest,
     AdminAccountListResponse,
+    AdminAccountSearchUserListResponse,
     AdminAssessmentListResponse,
     AdminChallengePolicyAuditListResponse,
     AdminChallengePolicyResponse,
@@ -34,6 +35,7 @@ from app.services.admin_service import (
     list_admin_users,
     list_pending_reply_posts,
     remove_admin_account_email,
+    search_registered_users_for_admin_add,
     update_admin_challenge_policy,
 )
 
@@ -60,10 +62,12 @@ async def admin_users(
     page: int = Query(default=1, ge=1, le=2000),
     page_size: int = Query(default=20, ge=1, le=100),
     q: str | None = Query(default=None, min_length=1, max_length=200),
+    sort_by: str = Query(default="created_at", pattern="^(email|nickname|created_at|assessment_count|chat_count|board_post_count)$"),
+    sort_order: str = Query(default="desc", pattern="^(asc|desc)$"),
     _: UserOut = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> AdminUserListResponse:
-    return await list_admin_users(db, page=page, page_size=page_size, q=q)
+    return await list_admin_users(db, page=page, page_size=page_size, q=q, sort_by=sort_by, sort_order=sort_order)
 
 
 @router.get("/assessments", response_model=AdminAssessmentListResponse)
@@ -114,21 +118,32 @@ async def admin_accounts(
     return await list_admin_accounts(db, current_user_email=current_user.email)
 
 
+@router.get('/accounts/search-users', response_model=AdminAccountSearchUserListResponse)
+async def admin_search_registered_users(
+    q: str = Query(..., min_length=1, max_length=200),
+    limit: int = Query(default=10, ge=1, le=30),
+    _: UserOut = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminAccountSearchUserListResponse:
+    return await search_registered_users_for_admin_add(db, q=q, limit=limit)
+
+
 @router.post('/accounts', response_model=AdminAccountListResponse)
 async def admin_add_account(
     payload: AdminAccountAddRequest,
     current_user: UserOut = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> AdminAccountListResponse:
-    return await add_admin_account_email(
-        db,
-        email=payload.email,
-        actor_user_id=current_user.id,
-        actor_email=current_user.email,
-        actor_nickname=current_user.nickname,
-    )
-
-
+    try:
+        return await add_admin_account_email(
+            db,
+            email=payload.email,
+            actor_user_id=current_user.id,
+            actor_email=current_user.email,
+            actor_nickname=current_user.nickname,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.delete('/accounts/{email}', response_model=AdminAccountListResponse)

@@ -4,6 +4,7 @@ import './BoardPage.css'
 import {
   BOARD_CATEGORIES,
   type BoardCategory,
+  type BoardCategoryApi,
   type BoardPost,
   type BoardPostDetail,
   createBoardComment,
@@ -27,6 +28,10 @@ const PAGE_SIZE = 10
 type CategoryInput = '' | BoardCategory | '공지'
 type EditorMode = 'list' | 'create' | 'edit'
 
+function normalizeBoardCategory(value: BoardCategoryApi): BoardCategory {
+  return value === '질문' ? '문의' : value
+}
+
 export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: BoardPageProps) {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
@@ -46,20 +51,25 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
   const [isPrivateInput, setIsPrivateInput] = useState(false)
 
   const [commentInput, setCommentInput] = useState('')
+  const [adminReplyInput, setAdminReplyInput] = useState('')
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
-  async function loadPosts(nextPage = page) {
+  async function loadPosts(nextPage = page, preferredSelectedId: string | null = null) {
     setLoading(true)
     try {
-      const data = await fetchBoardPosts({ page: nextPage, pageSize: PAGE_SIZE, q, category: categoryFilter })
+      const data = await fetchBoardPosts({ page: nextPage, pageSize: PAGE_SIZE, q, category: categoryFilter, token })
       setPosts(data.items)
       setTotal(data.total)
       setPage(data.page)
-      if (data.items.length > 0 && !selectedId) setSelectedId(data.items[0].id)
-      if (data.items.length === 0) {
-        setSelectedId(null)
-        setSelectedDetail(null)
+
+      if (data.items.length > 0) {
+        const keepId = preferredSelectedId ?? selectedId
+        const exists = keepId ? data.items.some((item) => item.id === keepId) : false
+        setSelectedId(exists ? keepId : data.items[0].id)
+      } else {
+        setSelectedId(preferredSelectedId)
+        if (!preferredSelectedId) setSelectedDetail(null)
       }
     } catch (error) {
       setMessage(`게시글 조회 오류: ${(error as Error).message}`)
@@ -70,7 +80,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
 
   async function loadDetail(postId: string) {
     try {
-      const detail = await fetchBoardPostDetail(postId)
+      const detail = await fetchBoardPostDetail(postId, token)
       setSelectedDetail(detail)
     } catch (error) {
       setMessage(`상세 조회 오류: ${(error as Error).message}`)
@@ -110,7 +120,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
     setEditId(post.id)
     setTitle(post.title)
     setContent(post.content)
-    setCategoryInput(post.is_notice ? '공지' : post.category)
+    setCategoryInput(post.is_notice ? '공지' : normalizeBoardCategory(post.category))
     setIsPrivateInput(post.is_private)
     setEditorMode('edit')
   }
@@ -125,24 +135,34 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
       setMessage('카테고리를 선택하세요.')
       return
     }
+    if (!title.trim() || !content.trim()) {
+      setMessage('제목과 내용을 입력하세요.')
+      return
+    }
 
     const category = categoryInput === '공지' ? '문의' : categoryInput
     const isNotice = categoryInput === '공지'
 
     setLoading(true)
     try {
+      let targetId = ''
       if (editId) {
-        const updated = await updateBoardPost(token, editId, { title, content, category, is_notice: isNotice, is_private: isPrivateInput })
+        const updated = await updateBoardPost(token, editId, { title: title.trim(), content: content.trim(), category, is_notice: isNotice, is_private: isPrivateInput })
         setMessage('게시글이 수정되었습니다.')
-        setSelectedId(updated.id)
+        targetId = updated.id
       } else {
-        const created = await createBoardPost(token, { title, content, category, is_notice: isNotice, is_private: isPrivateInput })
+        const created = await createBoardPost(token, { title: title.trim(), content: content.trim(), category, is_notice: isNotice, is_private: isPrivateInput })
         setMessage('게시글이 등록되었습니다.')
-        setSelectedId(created.id)
+        targetId = created.id
       }
+
+      setQ('')
+      setCategoryFilter('')
       resetForm()
       setEditorMode('list')
-      await loadPosts(1)
+      setSelectedId(targetId)
+      await loadDetail(targetId)
+      await loadPosts(1, targetId)
     } catch (error) {
       setMessage(`저장 오류: ${(error as Error).message}`)
     } finally {
@@ -182,7 +202,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
     try {
       await toggleBoardLike(token, selectedId)
       await loadDetail(selectedId)
-      await loadPosts(page)
+      await loadPosts(page, selectedId)
     } catch (error) {
       setMessage(`좋아요 오류: ${(error as Error).message}`)
     }
@@ -196,7 +216,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
     try {
       await toggleBoardBookmark(token, selectedId)
       await loadDetail(selectedId)
-      await loadPosts(page)
+      await loadPosts(page, selectedId)
     } catch (error) {
       setMessage(`북마크 오류: ${(error as Error).message}`)
     }
@@ -216,9 +236,30 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
       await createBoardComment(token, selectedId, commentInput.trim())
       setCommentInput('')
       await loadDetail(selectedId)
-      await loadPosts(page)
+      await loadPosts(page, selectedId)
     } catch (error) {
       setMessage(`댓글 등록 오류: ${(error as Error).message}`)
+    }
+  }
+
+  async function handleAddAdminReply(event: FormEvent) {
+    event.preventDefault()
+    if (!token || !selectedId || !isAdmin) {
+      setMessage('관리자만 답변을 등록할 수 있습니다.')
+      return
+    }
+    if (!adminReplyInput.trim()) {
+      setMessage('답변 내용을 입력하세요.')
+      return
+    }
+    try {
+      await createBoardComment(token, selectedId, `[관리자답변] ${adminReplyInput.trim()}`)
+      setAdminReplyInput('')
+      await loadDetail(selectedId)
+      await loadPosts(page, selectedId)
+      setMessage('관리자 답변이 등록되었습니다.')
+    } catch (error) {
+      setMessage(`관리자 답변 등록 오류: ${(error as Error).message}`)
     }
   }
 
@@ -248,7 +289,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
           <label>제목 입력<input value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
           <label>내용 입력<textarea value={content} onChange={(e) => setContent(e.target.value)} rows={10} required /></label>
           <div className="actions">
-            <button disabled={loading || !token}>{editorMode === 'edit' ? '수정 저장' : '게시하기'}</button>
+            <button type="submit" disabled={loading || !token}>{editorMode === 'edit' ? '수정 저장' : '게시하기'}</button>
             <button type="button" className="ghost" onClick={() => setEditorMode('list')}>게시물 보기로 돌아가기</button>
           </div>
         </form>
@@ -283,7 +324,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
                 <strong>{post.title}</strong>
               </span>
               <span className="boardMeta">
-                {post.is_notice ? '공지' : post.category} · {post.author_nickname} · {new Date(post.created_at).toLocaleString('ko-KR')}
+                {post.is_notice ? '공지' : normalizeBoardCategory(post.category)} · {post.author_nickname} · {new Date(post.created_at).toLocaleString('ko-KR')}
               </span>
             </button>
           ))}
@@ -298,7 +339,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
           {selectedDetail ? (
             <>
               <h3>{selectedDetail.title}</h3>
-              <p className="small">{(selectedDetail.is_notice ? '공지' : selectedDetail.category)} · {selectedDetail.author_nickname} · {new Date(selectedDetail.created_at).toLocaleString('ko-KR')}</p>
+              <p className="small">{(selectedDetail.is_notice ? '공지' : normalizeBoardCategory(selectedDetail.category))} · {selectedDetail.author_nickname} · {new Date(selectedDetail.created_at).toLocaleString('ko-KR')}</p>
               <pre className="boardContent">{selectedDetail.content}</pre>
 
               <div className="actions">
@@ -330,9 +371,21 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
                   <input value={commentInput} onChange={(e) => setCommentInput(e.target.value)} placeholder="댓글을 입력하세요" />
                 </label>
                 <div className="actions">
-                  <button disabled={!token}>댓글 입력</button>
+                  <button type="submit" disabled={!token}>댓글 입력</button>
                 </div>
               </form>
+
+              {((normalizeBoardCategory(selectedDetail.category) === '문의') || normalizeBoardCategory(selectedDetail.category) === '피드백') && isAdmin && (
+                <form className="form adminReplyBox" onSubmit={handleAddAdminReply}>
+                  <label>
+                    관리자 답변
+                    <textarea value={adminReplyInput} onChange={(e) => setAdminReplyInput(e.target.value)} rows={4} placeholder="문의/피드백에 대한 관리자 답변을 입력하세요" />
+                  </label>
+                  <div className="actions">
+                    <button type="submit">관리자 답변 등록</button>
+                  </div>
+                </form>
+              )}
             </>
           ) : (
             <p className="small">왼쪽에서 게시글을 선택하세요.</p>

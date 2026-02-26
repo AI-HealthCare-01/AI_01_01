@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Select, and_, desc, func, or_, select
+from sqlalchemy import Select, String, and_, cast, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password, verify_password
@@ -213,6 +213,16 @@ async def get_latest_checkin(db: AsyncSession, user_id: uuid.UUID) -> CheckIn | 
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
+async def list_checkins_by_user(db: AsyncSession, user_id: uuid.UUID, limit: int = 90) -> list[CheckIn]:
+    stmt: Select[tuple[CheckIn]] = (
+        select(CheckIn)
+        .where(CheckIn.user_id == user_id)
+        .order_by(desc(CheckIn.created_at))
+        .limit(limit)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def create_admin_notification(
     db: AsyncSession,
     *,
@@ -279,8 +289,14 @@ async def list_board_posts(
     count_stmt = select(func.count(BoardPost.id))
 
     if category is not None:
-        stmt = stmt.where(BoardPost.category == category)
-        count_stmt = count_stmt.where(BoardPost.category == category)
+        if category == BoardCategory.INQUIRY:
+            inquiry_values = [BoardCategory.INQUIRY.value, BoardCategory.LEGACY_INQUIRY.value]
+            # 구/신 enum("질문"/"문의") 혼용 DB에서도 안전하게 조회하기 위해 문자열 비교를 사용한다.
+            stmt = stmt.where(cast(BoardPost.category, String).in_(inquiry_values))
+            count_stmt = count_stmt.where(cast(BoardPost.category, String).in_(inquiry_values))
+        else:
+            stmt = stmt.where(BoardPost.category == category)
+            count_stmt = count_stmt.where(BoardPost.category == category)
 
     if q:
         keyword = f"%{q}%"
@@ -509,6 +525,20 @@ async def list_users_by_emails(db: AsyncSession, emails: list[str]) -> list[User
         return []
     lower_emails = [e.lower() for e in emails]
     stmt: Select[tuple[User]] = select(User).where(func.lower(User.email).in_(lower_emails))
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def search_users_by_email_or_nickname(db: AsyncSession, q: str, limit: int = 10) -> list[User]:
+    keyword = q.strip()
+    if not keyword:
+        return []
+    pattern = f"%{keyword}%"
+    stmt: Select[tuple[User]] = (
+        select(User)
+        .where(or_(User.email.ilike(pattern), User.nickname.ilike(pattern)))
+        .order_by(User.created_at.desc())
+        .limit(limit)
+    )
     return list((await db.execute(stmt)).scalars().all())
 
 

@@ -49,3 +49,21 @@ class CheckinResponse(BaseModel):
     message: str
     disclaimer: str
     timestamp: datetime
+
+
+class CheckinHistoryItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    timestamp: datetime
+    mood_score: int
+    sleep_hours: float | None = None
+    steps_today: int | None = None
+    exercise_minutes_today: int | None = None
+    daylight_minutes_today: int | None = None
+    screen_time_min_today: int | None = None
+    meal_regularity_0_10_today: int | None = None
+    caffeine_after_2pm_flag_today: bool | None = None
+    alcohol_flag_today: bool | None = None
+    sleep_onset_latency_min_today: int | None = None
+    awakenings_count_today: int | None = None
+    sleep_quality_0_10_today: int | None = None

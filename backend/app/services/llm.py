@@ -21,6 +21,7 @@ DISTORTION_KEYS = [
 ]
 
 COMPLETION_HINTS = ["완료", "끝냈", "해냈", "수행했", "실천했", "done", "finished"]
+CHALLENGE_REQUEST_HINTS = ["챌린지", "과제", "훈련", "연습", "실습", "challenge"]
 
 
 @dataclass(slots=True)
@@ -58,10 +59,19 @@ def _default_summary_card(user_message: str) -> dict[str, str]:
     }
 
 
+def _should_defer_challenge(user_message: str, conversation_history: list[dict[str, str]] | None) -> bool:
+    history = conversation_history or []
+    user_turns = sum(1 for t in history if t.get("role") == "user") + 1
+    explicit_request = any(h in user_message.lower() for h in CHALLENGE_REQUEST_HINTS)
+    enough_depth = user_turns >= 3 and len(user_message.strip()) >= 20
+    return (not explicit_request) and (not enough_depth)
+
+
 def _fallback_heuristic(
     user_message: str,
     active_challenge: str | None = None,
     challenge_phase: str | None = None,
+    conversation_history: list[dict[str, str]] | None = None,
 ) -> CBTLLMResult:
     text = user_message.lower()
     extracted = _default_extracted()
@@ -126,11 +136,23 @@ def _fallback_heuristic(
             completion_message=completion_message,
         )
 
+    if _should_defer_challenge(user_message, conversation_history):
+        return CBTLLMResult(
+            reply=(
+                "좋아요. 오늘 있었던 일을 천천히 함께 정리해볼게요. "
+                "무슨 일이 있었고, 그 순간 어떤 생각이 먼저 떠올랐는지 알려주세요."
+            ),
+            extracted=extracted,
+            suggested_challenges=[],
+            summary_card=summary_card,
+            active_challenge=None,
+            challenge_step_prompt="먼저 사건-감정-생각 흐름을 2~3문장으로 적어주세요. 충분히 파악한 뒤 맞춤 챌린지를 추천할게요.",
+        )
+
     reply = (
-        "오늘 이야기를 차분히 나눠주셔서 고마워요. "
-        "지금 느낌을 사실과 해석으로 나누면 마음이 조금 더 정리될 수 있어요."
+        "이야기를 잘 정리해주셨어요. 지금 상태를 기준으로 시도해볼 수 있는 챌린지를 골라 같이 진행해볼게요."
     )
-    step = "원하면 아래 추천 챌린지를 선택해서 대화로 바로 함께 진행할 수 있어요."
+    step = "아래 추천 챌린지 중 하나를 선택하면 단계별로 같이 진행합니다."
     return CBTLLMResult(
         reply=reply,
         extracted=extracted,
@@ -187,7 +209,12 @@ def generate_cbt_reply(
     conversation_history: list[dict[str, str]] | None = None,
 ) -> CBTLLMResult:
     if not settings.openai_api_key or OpenAI is None:
-        return _fallback_heuristic(user_message, active_challenge=active_challenge, challenge_phase=challenge_phase)
+        return _fallback_heuristic(
+            user_message,
+            active_challenge=active_challenge,
+            challenge_phase=challenge_phase,
+            conversation_history=conversation_history,
+        )
 
     client = OpenAI(api_key=settings.openai_api_key)
 
@@ -206,6 +233,7 @@ def generate_cbt_reply(
         "Never diagnose or prescribe medication. Keep tone empathic, validating, and practical. "
         "If user shows self-blame or guilt, explicitly normalize emotion and reduce shame. "
         "Use short Korean sentences suitable for app UI. "
+        "Before recommending challenges, first explore user's event-emotion-thought flow deeply for enough turns unless user explicitly asks for challenge. "
         "Also extract indicators from the user's text every turn. "
         "Return strict JSON with keys: reply, extracted, suggested_challenges, summary_card, active_challenge, challenge_step_prompt, challenge_completed, completed_challenge, completion_message. "
         "extracted must include distress_0_10, rumination_0_10, avoidance_0_10, sleep_difficulty_0_10, "
@@ -214,7 +242,7 @@ def generate_cbt_reply(
         "summary_card must include 5 keys: situation, self_blame_signal, reframe, next_action, encouragement. "
         "reframe should sound like '그건 네 잘못이 전부는 아니다' style without blaming user. "
         "next_action should be one concrete action user can do today."
-        "suggested_challenges must be 3 short actionable CBT challenges. "
+        "suggested_challenges must be 3 short actionable CBT challenges when it is the right timing. "
         "challenge_completed must be true only when there is clear textual evidence of completion. "
         "When challenge_completed is true, completion_message should be '챌린지 수행을 완료하였습니다.'. "
         f"{challenge_instruction}"
@@ -244,16 +272,26 @@ def generate_cbt_reply(
     text = response.output_text if hasattr(response, "output_text") else ""
     parsed = _extract_json_block(text)
     if not parsed:
-        return _fallback_heuristic(user_message, active_challenge=active_challenge, challenge_phase=challenge_phase)
+        return _fallback_heuristic(
+            user_message,
+            active_challenge=active_challenge,
+            challenge_phase=challenge_phase,
+            conversation_history=conversation_history,
+        )
 
-    fallback = _fallback_heuristic(user_message, active_challenge=active_challenge, challenge_phase=challenge_phase)
+    fallback = _fallback_heuristic(
+        user_message,
+        active_challenge=active_challenge,
+        challenge_phase=challenge_phase,
+        conversation_history=conversation_history,
+    )
     reply = str(parsed.get("reply", "")).strip()[:1500] or fallback.reply
     extracted = _normalize_extracted(parsed.get("extracted", {}))
     summary_card = _normalize_summary_card(parsed.get("summary_card", {}), user_message)
 
     challenges_raw = parsed.get("suggested_challenges", [])
     challenges = [str(x).strip()[:120] for x in challenges_raw if str(x).strip()][:3]
-    if len(challenges) < 3:
+    if len(challenges) < 3 and fallback.suggested_challenges:
         challenges = fallback.suggested_challenges
 
     selected = parsed.get("active_challenge", active_challenge)
@@ -267,6 +305,11 @@ def generate_cbt_reply(
     if challenge_completed and not completion_message:
         completion_message = "챌린지 수행을 완료하였습니다."
 
+    if not active_challenge and _should_defer_challenge(user_message, conversation_history):
+        challenges = []
+        if not step_prompt:
+            step_prompt = "먼저 사건-감정-생각 흐름을 조금 더 들려주세요. 이후 맞춤 챌린지를 추천할게요."
+
     return CBTLLMResult(
         reply=reply,
         extracted=extracted,
@@ -278,3 +321,63 @@ def generate_cbt_reply(
         completed_challenge=completed_challenge,
         completion_message=completion_message,
     )
+
+
+
+def summarize_clinical_narrative(
+    *,
+    user_messages: list[str],
+    score_summary: dict[str, Any],
+    behavior_summary: dict[str, Any],
+    thought_pattern_hint: str,
+    intervention_hint: str,
+) -> dict[str, str]:
+    fallback = {
+        'situation_context': '일상 사건 부담이 반복되는 양상이 나타난다.',
+        'emotion_summary': '복합 정서 반응이 이어지는 양상이 나타난다.',
+        'cognitive_pattern': thought_pattern_hint or '인지왜곡이 동반되는 사고 흐름 양상이 나타난다.',
+        'intervention_summary': intervention_hint or '교정 활동 수행 양상이 나타난다.',
+        'overall_impression': '사건-감정-사고 흐름의 변동 양상이 나타난다.',
+    }
+
+    if not settings.openai_api_key or OpenAI is None:
+        return fallback
+
+    client = OpenAI(api_key=settings.openai_api_key)
+
+    clipped_msgs = [m.strip().replace("\n", " ")[:240] for m in user_messages if m.strip()][:24]
+    user_blob = "\n".join(f"- {m}" for m in clipped_msgs) if clipped_msgs else "- 대화 기록이 부족하다."
+
+    prompt = (
+        "아래 상담 대화 및 지표를 바탕으로 의사용 참고 서술을 JSON으로 요약하라. "
+        "반드시 '-다' 어조의 한국어 문장으로 작성하고, 원문을 그대로 복사하지 말고 정제하라. "
+        "진단/판단/권고 표현은 금지하고, 주요 대화를 짧게 인용한 뒤 관찰된 양상만 기술하라. "
+        "JSON keys: situation_context, emotion_summary, cognitive_pattern, intervention_summary, overall_impression.\n\n"
+        f"대화요약원문:\n{user_blob}\n\n"
+        f"점수요약: {score_summary}\n"
+        f"행동요약: {behavior_summary}\n"
+        f"사고패턴힌트: {thought_pattern_hint}\n"
+        f"개입힌트: {intervention_hint}\n"
+    )
+
+    try:
+        response = client.responses.create(
+            model=settings.openai_model,
+            input=[
+                {"role": "system", "content": "당신은 정신건강의학과 의사용 리포트 요약 도우미다."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+        )
+        text = response.output_text if hasattr(response, "output_text") else ""
+        parsed = _extract_json_block(text)
+        if not isinstance(parsed, dict):
+            return fallback
+
+        out: dict[str, str] = {}
+        for k, v in fallback.items():
+            raw = str(parsed.get(k, "")).strip()
+            out[k] = (raw if raw else v)[:500]
+        return out
+    except Exception:
+        return fallback

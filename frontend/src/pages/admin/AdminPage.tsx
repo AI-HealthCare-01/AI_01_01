@@ -4,26 +4,24 @@ import StatCard from '../../components/admin/StatCard'
 import {
   addAdminAccount,
   fetchAdminAccounts,
-  fetchAdminAssessments,
   fetchAdminChallengePolicy,
   fetchAdminChallengePolicyAudit,
   fetchAdminGrantHistory,
   fetchAdminHighRisk,
-  fetchAdminNotifications,
   fetchAdminSummary,
   fetchAdminUsers,
   fetchPendingReplyPosts,
   removeAdminAccount,
+  searchRegisteredUsersForAdminAdd,
   updateAdminChallengePolicy,
 } from './adminApi'
 import type {
   AdminAccountItem,
-  AdminAssessmentItem,
+  AdminAccountSearchUserItem,
   AdminChallengePolicy,
   AdminChallengePolicyAuditItem,
   AdminGrantHistoryItem,
   AdminHighRiskItem,
-  AdminNotificationItem,
   AdminSummary,
   AdminUserItem,
   PendingReplyPostItem,
@@ -69,19 +67,20 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
-  const [highRiskOnly, setHighRiskOnly] = useState(false)
+  const [userSortBy, setUserSortBy] = useState<'created_at' | 'email' | 'nickname' | 'assessment_count' | 'chat_count' | 'board_post_count'>('created_at')
+  const [userSortOrder, setUserSortOrder] = useState<'asc' | 'desc'>('desc')
 
   const [summary, setSummary] = useState<AdminSummary | null>(null)
   const [users, setUsers] = useState<AdminUserItem[]>([])
-  const [assessments, setAssessments] = useState<AdminAssessmentItem[]>([])
   const [highRisk, setHighRisk] = useState<AdminHighRiskItem[]>([])
-  const [notifications, setNotifications] = useState<AdminNotificationItem[]>([])
   const [pendingReplies, setPendingReplies] = useState<PendingReplyPostItem[]>([])
 
   const [accounts, setAccounts] = useState<AdminAccountItem[]>([])
   const [accountOwnerEmail, setAccountOwnerEmail] = useState<string | null>(null)
   const [currentUserIsOwner, setCurrentUserIsOwner] = useState(false)
   const [newAdminEmail, setNewAdminEmail] = useState('')
+  const [adminSearchQuery, setAdminSearchQuery] = useState('')
+  const [adminSearchResults, setAdminSearchResults] = useState<AdminAccountSearchUserItem[]>([])
   const [grants, setGrants] = useState<AdminGrantHistoryItem[]>([])
 
   const [policy, setPolicy] = useState<AdminChallengePolicy>({
@@ -102,12 +101,10 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
     setLoading(true)
     setError('')
     try {
-      const [summaryRes, usersRes, assessmentsRes, highRiskRes, notiRes, policyRes, auditRes, pendingRes, accRes, grantsRes] = await Promise.all([
+      const [summaryRes, usersRes, highRiskRes, policyRes, auditRes, pendingRes, accRes, grantsRes] = await Promise.all([
         fetchAdminSummary(token),
-        fetchAdminUsers(token, query, 1, 20),
-        fetchAdminAssessments(token, query, highRiskOnly, 1, 20),
+        fetchAdminUsers(token, query, 1, 20, userSortBy, userSortOrder),
         fetchAdminHighRisk(token, 30),
-        fetchAdminNotifications(token, 30),
         fetchAdminChallengePolicy(token),
         fetchAdminChallengePolicyAudit(token, 30),
         fetchPendingReplyPosts(token, 50),
@@ -116,9 +113,7 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
       ])
       setSummary(summaryRes)
       setUsers(usersRes.items)
-      setAssessments(assessmentsRes.items)
       setHighRisk(highRiskRes.items)
-      setNotifications(notiRes.items)
       setPolicy(policyRes)
       setPolicyAudits(auditRes.items)
       setPendingReplies(pendingRes.items)
@@ -128,6 +123,24 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
       setGrants(grantsRes.items)
     } catch (e) {
       setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleSearchAdminCandidates() {
+    if (!adminSearchQuery.trim()) {
+      setAdminSearchResults([])
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      const res = await searchRegisteredUsersForAdminAdd(token, adminSearchQuery.trim(), 10)
+      setAdminSearchResults(res.items)
+    } catch (e) {
+      setError((e as Error).message)
+      setAdminSearchResults([])
     } finally {
       setLoading(false)
     }
@@ -158,6 +171,8 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
       setAccountOwnerEmail(result.owner_email)
       setCurrentUserIsOwner(result.current_user_is_owner)
       setNewAdminEmail('')
+      setAdminSearchQuery('')
+      setAdminSearchResults([])
       const grantsRes = await fetchAdminGrantHistory(token, 50)
       setGrants(grantsRes.items)
     } catch (e) {
@@ -222,25 +237,39 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
             </section>
           )}
 
-          <div className="adminDashboardSplit">
+          <div className="adminDashboardStack">
             <section className="adminSection">
               <h3>사용자 목록 조회</h3>
               <div className="adminToolbar">
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="이메일/닉네임 검색" />
+                <select value={userSortBy} onChange={(e) => setUserSortBy(e.target.value as typeof userSortBy)}>
+                  <option value="created_at">가입일</option>
+                  <option value="email">이메일</option>
+                  <option value="nickname">닉네임</option>
+                  <option value="assessment_count">검사 수</option>
+                  <option value="chat_count">마음일기 시행 수</option>
+                  <option value="board_post_count">게시글 수</option>
+                </select>
+                <select value={userSortOrder} onChange={(e) => setUserSortOrder(e.target.value as typeof userSortOrder)}>
+                  <option value="desc">내림차순</option>
+                  <option value="asc">오름차순</option>
+                </select>
                 <button onClick={loadAll} disabled={loading}>조회</button>
               </div>
-              <AdminTable headers={['이메일', '닉네임', '가입일', '검사 수']}>
+              <AdminTable headers={['이메일', '닉네임', '가입일', '검사 수', '마음일기 시행 수', '게시글 수']}>
                 {users.map((user) => (
                   <tr key={user.id}>
                     <td>{user.email}</td>
                     <td>{user.nickname}</td>
                     <td>{formatDate(user.created_at)}</td>
                     <td>{user.assessment_count}</td>
+                    <td>{user.chat_count}</td>
+                    <td>{user.board_post_count}</td>
                   </tr>
                 ))}
                 {users.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="adminMuted">데이터가 없습니다.</td>
+                    <td colSpan={6} className="adminMuted">데이터가 없습니다.</td>
                   </tr>
                 )}
               </AdminTable>
@@ -248,19 +277,22 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
 
             <section className="adminSection">
               <h3>고위험 플래그 목록</h3>
-              <AdminTable headers={['일시', '이메일', '검사', '점수', '사유']}>
+              <AdminTable headers={['일시', '이메일', '닉네임', '우울', '불안', '불면', '종합', '주요 위험 변수']}>
                 {highRisk.map((item) => (
                   <tr key={item.assessment_id}>
-                    <td>{formatDate(item.created_at)}</td>
+                    <td>{formatDate(item.occurred_at)}</td>
                     <td>{item.user_email}</td>
-                    <td>{item.type}</td>
-                    <td>{item.total_score}</td>
-                    <td>{item.risk_reason}</td>
+                    <td>{item.user_nickname}</td>
+                    <td>{item.dep_score == null ? '-' : item.dep_score.toFixed(1)}</td>
+                    <td>{item.anx_score == null ? '-' : item.anx_score.toFixed(1)}</td>
+                    <td>{item.ins_score == null ? '-' : item.ins_score.toFixed(1)}</td>
+                    <td>{item.composite_score == null ? '-' : item.composite_score.toFixed(1)}</td>
+                    <td>{item.major_risk_factors}</td>
                   </tr>
                 ))}
                 {highRisk.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="adminMuted">고위험 데이터가 없습니다.</td>
+                    <td colSpan={8} className="adminMuted">고위험 데이터가 없습니다.</td>
                   </tr>
                 )}
               </AdminTable>
@@ -274,8 +306,22 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
           <section className="adminSection">
             <h3>관리자 계정 추가</h3>
             <div className="adminToolbar">
-              <input value={newAdminEmail} onChange={(e) => setNewAdminEmail(e.target.value)} placeholder="추가할 관리자 이메일" />
-              <button onClick={() => void handleAddAdmin()} disabled={loading}>권한 부여</button>
+              <input value={adminSearchQuery} onChange={(e) => setAdminSearchQuery(e.target.value)} placeholder="회원 이메일/닉네임 검색" />
+              <button className="ghost" onClick={() => void handleSearchAdminCandidates()} disabled={loading}>회원 조회</button>
+            </div>
+            {adminSearchResults.length > 0 && (
+              <ul className="probList" style={{ marginTop: 8 }}>
+                {adminSearchResults.map((u) => (
+                  <li key={u.id}>
+                    <span>{u.nickname} ({u.email})</span>
+                    <button className="ghost" onClick={() => setNewAdminEmail(u.email)}>선택</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="adminToolbar" style={{ marginTop: 8 }}>
+              <input value={newAdminEmail} onChange={(e) => setNewAdminEmail(e.target.value)} placeholder="선택된 회원 이메일" />
+              <button onClick={() => void handleAddAdmin()} disabled={loading || !newAdminEmail.trim()}>권한 부여</button>
             </div>
             <p className="adminMuted">총 관리자 계정: {accounts.length} / 오너: {accountOwnerEmail ?? '-'}</p>
             <AdminTable headers={['이메일', '출처', '오너', '권한 회수']}>
@@ -319,41 +365,25 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
       )}
 
       {menu === 'pending' && (
-        <>
-          <section className="adminSection">
-            <h3>게시판 미답변 목록 (문의/피드백)</h3>
-            <AdminTable headers={['작성 시각', '유형', '제목', '작성자', '이동']}>
-              {pendingReplies.map((item) => (
-                <tr key={item.post_id}>
-                  <td>{formatDate(item.created_at)}</td>
-                  <td>{item.category}</td>
-                  <td>{item.title}</td>
-                  <td>{item.author_nickname}</td>
-                  <td><button className="ghost" onClick={() => onOpenBoardPost(item.post_id)}>게시물 보기</button></td>
-                </tr>
-              ))}
-              {pendingReplies.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="adminMuted">미답변 게시물이 없습니다.</td>
-                </tr>
-              )}
-            </AdminTable>
-          </section>
-
-          <section className="adminSection">
-            <h3>질문/피드백 알림</h3>
-            <AdminTable headers={['일시', '유형', '제목', '내용']}>
-              {notifications.map((item) => (
-                <tr key={item.id}>
-                  <td>{formatDate(item.created_at)}</td>
-                  <td>{item.type}</td>
-                  <td>{item.title}</td>
-                  <td>{item.message}</td>
-                </tr>
-              ))}
-            </AdminTable>
-          </section>
-        </>
+        <section className="adminSection">
+          <h3>게시판 미답변 목록 (문의/피드백)</h3>
+          <AdminTable headers={['작성 시각', '유형', '제목', '작성자', '이동']}>
+            {pendingReplies.map((item) => (
+              <tr key={item.post_id}>
+                <td>{formatDate(item.created_at)}</td>
+                <td>{item.category}</td>
+                <td>{item.title}</td>
+                <td>{item.author_nickname}</td>
+                <td><button className="ghost" onClick={() => onOpenBoardPost(item.post_id)}>게시물 보기</button></td>
+              </tr>
+            ))}
+            {pendingReplies.length === 0 && (
+              <tr>
+                <td colSpan={5} className="adminMuted">미답변 게시물이 없습니다.</td>
+              </tr>
+            )}
+          </AdminTable>
+        </section>
       )}
 
       {menu === 'policy' && (
@@ -426,34 +456,6 @@ export default function AdminPage({ token, onOpenBoardPost }: AdminPageProps) {
           </section>
         </>
       )}
-
-      <section className="adminSection">
-        <h3>검사 이력</h3>
-        <div className="adminToolbar">
-          <label>
-            <input type="checkbox" checked={highRiskOnly} onChange={(e) => setHighRiskOnly(e.target.checked)} />
-            고위험만 보기
-          </label>
-          <button className="ghost" onClick={loadAll} disabled={loading}>검사이력 갱신</button>
-        </div>
-        <AdminTable headers={['일시', '이메일', '닉네임', '검사', '점수', '심각도']}>
-          {assessments.map((item) => (
-            <tr key={item.id}>
-              <td>{formatDate(item.created_at)}</td>
-              <td>{item.user_email}</td>
-              <td>{item.user_nickname}</td>
-              <td>{item.type}</td>
-              <td>{item.total_score}</td>
-              <td>{item.severity}</td>
-            </tr>
-          ))}
-          {assessments.length === 0 && (
-            <tr>
-              <td colSpan={6} className="adminMuted">데이터가 없습니다.</td>
-            </tr>
-          )}
-        </AdminTable>
-      </section>
     </section>
   )
 }

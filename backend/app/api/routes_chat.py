@@ -62,13 +62,17 @@ async def chat_cbt(
     )
 
     recent = await crud.list_recent_challenge_histories(db=db, user_id=current_user.id, days=int(policy["window_days"]))
-    filtered_suggestions = pick_non_duplicate_challenges(
-        llm_suggestions=result.suggested_challenges,
-        recent_challenge_names=[h.challenge_name for h in recent],
-        recent_techniques=[h.technique for h in recent],
-        size=3,
-        similarity_threshold=float(policy["similarity_threshold"]),
-        repeatable_techniques=list(policy["repeatable_techniques"]),
+    filtered_suggestions = (
+        pick_non_duplicate_challenges(
+            llm_suggestions=result.suggested_challenges,
+            recent_challenge_names=[h.challenge_name for h in recent],
+            recent_techniques=[h.technique for h in recent],
+            size=3,
+            similarity_threshold=float(policy["similarity_threshold"]),
+            repeatable_techniques=list(policy["repeatable_techniques"]),
+        )
+        if result.suggested_challenges
+        else []
     )
 
     if result.challenge_completed and result.completed_challenge:

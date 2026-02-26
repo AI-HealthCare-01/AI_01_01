@@ -41,9 +41,9 @@
   font-size: 1.4rem;
 }
 
-.adminDashboardSplit {
+.adminDashboardStack {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 0.9rem;
 }
 
@@ -90,8 +90,3 @@
   color: #607483;
 }
 
-@media (max-width: 980px) {
-  .adminDashboardSplit {
-    grid-template-columns: 1fr;
-  }
-}

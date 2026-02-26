@@ -94,3 +94,11 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+.adminReplyBox {
+  border: 1px solid #c7dbe3;
+  border-radius: 10px;
+  padding: 0.55rem;
+  background: #f5fafc;
+}

@@ -2,6 +2,9 @@ import type {
   AdminAccountListResponse,
   AdminAccountSearchUserListResponse,
   AdminAssessmentListResponse,
+  AdminBlockedEmailListResponse,
+  AdminBoardRiskKeywords,
+  AdminBlockedIPListResponse,
   AdminChallengePolicy,
   AdminChallengePolicyAuditListResponse,
   AdminGrantHistoryResponse,
@@ -47,7 +50,7 @@ export function fetchAdminUsers(
   q: string,
   page = 1,
   pageSize = 20,
-  sortBy: 'email' | 'nickname' | 'created_at' | 'assessment_count' | 'chat_count' | 'board_post_count' = 'created_at',
+  sortBy: 'email' | 'nickname' | 'created_at' | 'assessment_count' | 'login_count' | 'login_days' | 'latest_login_ip' | 'board_post_count' = 'created_at',
   sortOrder: 'asc' | 'desc' = 'desc',
 ) {
   const params = new URLSearchParams({
@@ -119,6 +122,51 @@ export function fetchAdminChallengePolicyAudit(token: string, limit = 50) {
 
 export function removeAdminAccount(token: string, email: string) {
   return request<AdminAccountListResponse>(`/admin/accounts/${encodeURIComponent(email)}`, token, {
+    method: 'DELETE',
+  })
+}
+
+export function fetchAdminBoardRiskKeywords(token: string) {
+  return request<AdminBoardRiskKeywords>('/admin/board-risk-keywords', token)
+}
+
+export function updateAdminBoardRiskKeywords(token: string, keywords: string[]) {
+  return request<AdminBoardRiskKeywords>('/admin/board-risk-keywords', token, {
+    method: 'PUT',
+    body: JSON.stringify({ keywords }),
+  })
+}
+
+export function fetchAdminBlockedIps(token: string, activeOnly = false, limit = 200) {
+  return request<AdminBlockedIPListResponse>(`/admin/blocked-ips?active_only=${activeOnly}&limit=${limit}`, token)
+}
+
+export function addAdminBlockedIp(token: string, ipAddress: string, reason: string) {
+  return request<AdminBlockedIPListResponse>('/admin/blocked-ips', token, {
+    method: 'POST',
+    body: JSON.stringify({ ip_address: ipAddress, reason: reason || null }),
+  })
+}
+
+export function removeAdminBlockedIp(token: string, ipAddress: string) {
+  return request<AdminBlockedIPListResponse>(`/admin/blocked-ips/${encodeURIComponent(ipAddress)}`, token, {
+    method: 'DELETE',
+  })
+}
+
+export function fetchAdminBlockedEmails(token: string) {
+  return request<AdminBlockedEmailListResponse>('/admin/blocked-emails', token)
+}
+
+export function addAdminBlockedEmail(token: string, email: string, reason: string) {
+  return request<AdminBlockedEmailListResponse>('/admin/blocked-emails', token, {
+    method: 'POST',
+    body: JSON.stringify({ email, reason: reason || null }),
+  })
+}
+
+export function removeAdminBlockedEmail(token: string, email: string) {
+  return request<AdminBlockedEmailListResponse>(`/admin/blocked-emails/${encodeURIComponent(email)}`, token, {
     method: 'DELETE',
   })
 }

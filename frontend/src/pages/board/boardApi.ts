@@ -22,6 +22,7 @@ export type BoardPost = {
   content: string
   is_notice: boolean
   is_private: boolean
+  is_mental_health_post: boolean
   likes_count: number
   bookmarks_count: number
   comments_count: number
@@ -48,6 +49,7 @@ type CreatePayload = {
   content: string
   is_notice: boolean
   is_private: boolean
+  is_mental_health_post: boolean
 }
 
 type UpdatePayload = Partial<CreatePayload>
@@ -72,7 +74,7 @@ async function readError(response: Response): Promise<string> {
 }
 
 async function fetchBoardListWithCategory(
-  params: { page: number; pageSize: number; q?: string; token?: string },
+  params: { page: number; pageSize: number; q?: string; token?: string; mentalHealthOnly?: boolean },
   category?: string,
 ): Promise<Response> {
   const qs = new URLSearchParams()
@@ -80,6 +82,7 @@ async function fetchBoardListWithCategory(
   qs.set('page_size', String(params.pageSize))
   if (params.q && params.q.trim()) qs.set('q', params.q.trim())
   if (category) qs.set('category', category)
+  if (typeof params.mentalHealthOnly === 'boolean') qs.set('mental_health_only', String(params.mentalHealthOnly))
   return fetch(`${API_BASE}/board/posts?${qs.toString()}`, {
     headers: params.token ? { Authorization: `Bearer ${params.token}` } : undefined,
   })
@@ -91,10 +94,10 @@ export async function fetchBoardPosts(params: {
   q?: string
   category?: BoardCategory | ''
   token?: string
+  mentalHealthOnly?: boolean
 }): Promise<BoardPostListResponse> {
   let response = await fetchBoardListWithCategory(params, params.category || undefined)
   if (!response.ok && params.category === '문의') {
-    // 구버전 백엔드/DB(enum: 질문) 호환
     response = await fetchBoardListWithCategory(params, '질문')
   }
   if (!response.ok) throw new Error(await readError(response))
@@ -129,6 +132,13 @@ async function tryWriteWithFallbacks(
     return clone
   }
 
+  const withoutMentalFlag = (p: CreatePayload | UpdatePayload) => {
+    if (!Object.prototype.hasOwnProperty.call(p, 'is_mental_health_post')) return null
+    const clone = { ...p }
+    delete (clone as { is_mental_health_post?: boolean }).is_mental_health_post
+    return clone
+  }
+
   const v2 = withLegacyInquiry(payload)
   if (v2) variants.push(v2)
 
@@ -137,6 +147,12 @@ async function tryWriteWithFallbacks(
 
   const v4 = v3 ? withLegacyInquiry(v3) : null
   if (v4) variants.push(v4)
+
+  const v5 = withoutMentalFlag(payload)
+  if (v5) variants.push(v5)
+
+  const v6 = v5 ? withLegacyInquiry(v5) : null
+  if (v6) variants.push(v6)
 
   const deduped = new Map<string, CreatePayload | UpdatePayload>()
   for (const v of variants) deduped.set(JSON.stringify(v), v)
@@ -151,7 +167,6 @@ async function tryWriteWithFallbacks(
     if (response.ok) return response
     lastResponse = response
 
-    // 4xx(422/400) 및 5xx에서만 호환 시도 계속
     if (![400, 422, 500].includes(response.status)) break
   }
 
@@ -186,6 +201,23 @@ export async function createBoardComment(token: string, postId: string, content:
   })
   if (!response.ok) throw new Error(await readError(response))
   return (await response.json()) as BoardComment
+}
+
+export async function deleteBoardComment(token: string, commentId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/board/comments/${commentId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) throw new Error(await readError(response))
+}
+
+export async function reportBoardPost(token: string, postId: string, reason: string, detail?: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/board/posts/${postId}/report`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason, detail: detail ?? null }),
+  })
+  if (!response.ok) throw new Error(await readError(response))
 }
 
 export async function toggleBoardLike(token: string, postId: string): Promise<{ active: boolean; count: number }> {

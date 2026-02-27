@@ -217,3 +217,74 @@ async def test_pending_replies_only_unanswered_inquiry_feedback() -> None:
         assert feedback.json()["id"] in after_ids
         assert legacy.json()["id"] in after_ids
         assert free.json()["id"] not in after_ids
+
+
+@pytest.mark.anyio
+async def test_mental_post_admin_only_and_comment_delete_and_report() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/auth/signup", json={"email": "user3@example.com", "password": "StrongPass123", "nickname": "user3"})
+        await client.post("/auth/signup", json={"email": "user4@example.com", "password": "StrongPass123", "nickname": "user4"})
+        await client.post("/auth/signup", json={"email": "admin@example.com", "password": "StrongPass123", "nickname": "admin"})
+
+        login_user3 = await client.post("/auth/login", json={"email": "user3@example.com", "password": "StrongPass123"})
+        login_user4 = await client.post("/auth/login", json={"email": "user4@example.com", "password": "StrongPass123"})
+        login_admin = await client.post("/auth/login", json={"email": "admin@example.com", "password": "StrongPass123"})
+
+        h_user3 = {"Authorization": f"Bearer {login_user3.json()['access_token']}"}
+        h_user4 = {"Authorization": f"Bearer {login_user4.json()['access_token']}"}
+        h_admin = {"Authorization": f"Bearer {login_admin.json()['access_token']}"}
+
+        denied_mental = await client.post(
+            "/board/posts",
+            headers=h_user3,
+            json={
+                "category": "꿀팁",
+                "title": "일반 사용자의 정신건강 포스팅 시도",
+                "content": "내용",
+                "is_notice": False,
+                "is_mental_health_post": True,
+            },
+        )
+        assert denied_mental.status_code == 403
+
+        allowed_mental = await client.post(
+            "/board/posts",
+            headers=h_admin,
+            json={
+                "category": "꿀팁",
+                "title": "관리자 정신건강 포스팅",
+                "content": "정신건강 관련 안내",
+                "is_notice": False,
+                "is_mental_health_post": True,
+            },
+        )
+        assert allowed_mental.status_code == 201
+        assert allowed_mental.json()["is_mental_health_post"] is True
+
+        post_id = allowed_mental.json()["id"]
+
+        comment = await client.post(
+            f"/board/posts/{post_id}/comments",
+            headers=h_user3,
+            json={"content": "댓글 테스트"},
+        )
+        assert comment.status_code == 201
+        comment_id = comment.json()["id"]
+
+        denied_delete = await client.delete(f"/board/comments/{comment_id}", headers=h_user4)
+        assert denied_delete.status_code == 403
+
+        allowed_delete = await client.delete(f"/board/comments/{comment_id}", headers=h_admin)
+        assert allowed_delete.status_code == 200
+
+        report = await client.post(
+            f"/board/posts/{post_id}/report",
+            headers=h_user3,
+            json={"reason": "부적절", "detail": "신고 테스트"},
+        )
+        assert report.status_code == 200
+
+        notifications = await client.get("/admin/notifications?limit=20", headers=h_admin)
+        assert notifications.status_code == 200
+        assert notifications.json()["total"] >= 1

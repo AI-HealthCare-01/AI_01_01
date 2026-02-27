@@ -9,9 +9,11 @@ import {
   type BoardPostDetail,
   createBoardComment,
   createBoardPost,
+  deleteBoardComment,
   deleteBoardPost,
   fetchBoardPostDetail,
   fetchBoardPosts,
+  reportBoardPost,
   toggleBoardBookmark,
   toggleBoardLike,
   updateBoardPost,
@@ -25,18 +27,25 @@ type BoardPageProps = {
 }
 
 const PAGE_SIZE = 10
-type CategoryInput = '' | BoardCategory | '공지'
+type CategoryInput = '' | BoardCategory | '공지' | '정신건강포스팅'
+type CategoryFilterInput = '' | BoardCategory | '정신건강포스팅'
 type EditorMode = 'list' | 'create' | 'edit'
 
 function normalizeBoardCategory(value: BoardCategoryApi): BoardCategory {
   return value === '질문' ? '문의' : value
 }
 
+function getPostTypeLabel(post: Pick<BoardPost, 'is_notice' | 'is_mental_health_post' | 'category'>): string {
+  if (post.is_notice) return '공지'
+  if (post.is_mental_health_post) return '정신건강 포스팅'
+  return normalizeBoardCategory(post.category)
+}
+
 export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: BoardPageProps) {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [q, setQ] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState<BoardCategory | ''>('')
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilterInput>('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [posts, setPosts] = useState<BoardPost[]>([])
@@ -58,7 +67,16 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
   async function loadPosts(nextPage = page, preferredSelectedId: string | null = null) {
     setLoading(true)
     try {
-      const data = await fetchBoardPosts({ page: nextPage, pageSize: PAGE_SIZE, q, category: categoryFilter, token })
+      const mentalHealthOnly = categoryFilter === '정신건강포스팅' ? true : undefined
+      const serverCategory = categoryFilter === '정신건강포스팅' ? '' : categoryFilter
+      const data = await fetchBoardPosts({
+        page: nextPage,
+        pageSize: PAGE_SIZE,
+        q,
+        category: serverCategory as BoardCategory | '',
+        token,
+        mentalHealthOnly,
+      })
       setPosts(data.items)
       setTotal(data.total)
       setPage(data.page)
@@ -120,7 +138,13 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
     setEditId(post.id)
     setTitle(post.title)
     setContent(post.content)
-    setCategoryInput(post.is_notice ? '공지' : normalizeBoardCategory(post.category))
+    if (post.is_notice) {
+      setCategoryInput('공지')
+    } else if (post.is_mental_health_post) {
+      setCategoryInput('정신건강포스팅')
+    } else {
+      setCategoryInput(normalizeBoardCategory(post.category))
+    }
     setIsPrivateInput(post.is_private)
     setEditorMode('edit')
   }
@@ -140,18 +164,33 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
       return
     }
 
-    const category = categoryInput === '공지' ? '문의' : categoryInput
     const isNotice = categoryInput === '공지'
+    const isMental = categoryInput === '정신건강포스팅'
+    const category: BoardCategoryApi = isNotice ? '문의' : isMental ? '꿀팁' : categoryInput
 
     setLoading(true)
     try {
       let targetId = ''
       if (editId) {
-        const updated = await updateBoardPost(token, editId, { title: title.trim(), content: content.trim(), category, is_notice: isNotice, is_private: isPrivateInput })
+        const updated = await updateBoardPost(token, editId, {
+          title: title.trim(),
+          content: content.trim(),
+          category,
+          is_notice: isNotice,
+          is_private: isPrivateInput,
+          is_mental_health_post: isMental,
+        })
         setMessage('게시글이 수정되었습니다.')
         targetId = updated.id
       } else {
-        const created = await createBoardPost(token, { title: title.trim(), content: content.trim(), category, is_notice: isNotice, is_private: isPrivateInput })
+        const created = await createBoardPost(token, {
+          title: title.trim(),
+          content: content.trim(),
+          category,
+          is_notice: isNotice,
+          is_private: isPrivateInput,
+          is_mental_health_post: isMental,
+        })
         setMessage('게시글이 등록되었습니다.')
         targetId = created.id
       }
@@ -191,6 +230,41 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
       setMessage(`삭제 오류: ${(error as Error).message}`)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    if (!token) {
+      setMessage('로그인 후 댓글 삭제가 가능합니다.')
+      return
+    }
+    if (!window.confirm('댓글을 삭제할까요?')) return
+    try {
+      await deleteBoardComment(token, commentId)
+      if (selectedId) {
+        await loadDetail(selectedId)
+        await loadPosts(page, selectedId)
+      }
+      setMessage('댓글이 삭제되었습니다.')
+    } catch (error) {
+      setMessage(`댓글 삭제 오류: ${(error as Error).message}`)
+    }
+  }
+
+  async function handleReportPost() {
+    if (!token || !selectedId) {
+      setMessage('로그인 후 신고할 수 있습니다.')
+      return
+    }
+    const reason = window.prompt('신고 사유를 입력하세요 (예: 위협/협박/부적절)')
+    if (!reason || !reason.trim()) return
+    const detail = window.prompt('세부 설명(선택)을 입력하세요') ?? undefined
+
+    try {
+      await reportBoardPost(token, selectedId, reason.trim(), detail?.trim())
+      setMessage('신고가 접수되었습니다. 관리자가 확인 후 조치합니다.')
+    } catch (error) {
+      setMessage(`신고 오류: ${(error as Error).message}`)
     }
   }
 
@@ -275,6 +349,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
               <option value="">유형 선택</option>
               {BOARD_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
               {isAdmin && <option value="공지">공지</option>}
+              {isAdmin && <option value="정신건강포스팅">정신건강 포스팅</option>}
             </select>
           </label>
           {(categoryInput === '문의' || categoryInput === '피드백') && (
@@ -301,13 +376,14 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
   return (
     <section className="boardPage panel">
       <h2>게시판</h2>
-      <p className="small">공지/문의/자유/꿀팁/피드백을 한 곳에서 관리합니다.</p>
+      <p className="small">공지/문의/자유/꿀팁/피드백/정신건강 포스팅을 한 곳에서 관리합니다.</p>
 
       <div className="boardToolbar">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="제목/내용 검색" />
-        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as BoardCategory | '')}>
+        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as CategoryFilterInput)}>
           <option value="">전체 카테고리</option>
           {BOARD_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
+          <option value="정신건강포스팅">정신건강 포스팅</option>
         </select>
         <button type="button" disabled={loading} onClick={() => void loadPosts(1)}>검색</button>
         <button type="button" className="ghost" disabled={!token} onClick={openCreateScreen}>게시물 작성하기</button>
@@ -320,11 +396,12 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
             <button key={post.id} type="button" className={`boardRow ${selectedId === post.id ? 'active' : ''}`} onClick={() => setSelectedId(post.id)}>
               <span className="boardRowTop">
                 {post.is_notice && <em className="noticeTag">공지</em>}
+                {post.is_mental_health_post && <em className="noticeTag mentalTag">정신건강</em>}
                 {post.is_private && <em className="noticeTag">비공개</em>}
                 <strong>{post.title}</strong>
               </span>
               <span className="boardMeta">
-                {post.is_notice ? '공지' : normalizeBoardCategory(post.category)} · {post.author_nickname} · {new Date(post.created_at).toLocaleString('ko-KR')}
+                {getPostTypeLabel(post)} · {post.author_nickname} · {new Date(post.created_at).toLocaleString('ko-KR')}
               </span>
             </button>
           ))}
@@ -339,12 +416,13 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
           {selectedDetail ? (
             <>
               <h3>{selectedDetail.title}</h3>
-              <p className="small">{(selectedDetail.is_notice ? '공지' : normalizeBoardCategory(selectedDetail.category))} · {selectedDetail.author_nickname} · {new Date(selectedDetail.created_at).toLocaleString('ko-KR')}</p>
+              <p className="small">{getPostTypeLabel(selectedDetail)} · {selectedDetail.author_nickname} · {new Date(selectedDetail.created_at).toLocaleString('ko-KR')}</p>
               <pre className="boardContent">{selectedDetail.content}</pre>
 
               <div className="actions">
                 <button type="button" className="ghost" onClick={() => void handleLike()}>좋아요 {selectedDetail.likes_count}</button>
                 <button type="button" className="ghost" onClick={() => void handleBookmark()}>북마크 {selectedDetail.bookmarks_count}</button>
+                <button type="button" className="ghost" onClick={() => void handleReportPost()}>신고</button>
                 <button type="button" className="ghost" onClick={openCreateScreen}>게시물 작성하기</button>
                 {(myUserId === selectedDetail.author_id || isAdmin) && (
                   <>
@@ -361,6 +439,9 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
                   <li key={c.id}>
                     <span>{c.author_nickname}: {c.content}</span>
                     <strong>{new Date(c.created_at).toLocaleString('ko-KR')}</strong>
+                    {(myUserId === c.author_id || isAdmin) && (
+                      <button className="ghost" type="button" onClick={() => void handleDeleteComment(c.id)}>댓글 삭제</button>
+                    )}
                   </li>
                 ))}
               </ul>

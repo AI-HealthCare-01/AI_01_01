@@ -4,7 +4,7 @@ import asyncio
 import os
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import Select, inspect, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +22,7 @@ from app.schemas.board import (
     BoardPostListResponse,
     BoardPostOut,
     BoardPostUpdateRequest,
+    BoardReportCreateRequest,
     BoardToggleResponse,
 )
 
@@ -30,6 +31,19 @@ router = APIRouter(prefix="/board", tags=["board"])
 _BOARD_SCHEMA_READY = False
 _BOARD_SCHEMA_LOCK = asyncio.Lock()
 _ADMIN_REPLY_PREFIX = "[관리자답변]"
+_BOARD_RISK_KEYWORDS_KEY = "board_risk_keywords_v1"
+_DEFAULT_RISK_KEYWORDS = [
+    "죽이고",
+    "죽여",
+    "해치",
+    "협박",
+    "폭행",
+    "자해",
+    "자살",
+    "테러",
+    "살해",
+    "살인",
+]
 
 
 async def _ensure_board_schema(db: AsyncSession) -> None:
@@ -45,12 +59,12 @@ async def _ensure_board_schema(db: AsyncSession) -> None:
 
         try:
             conn = await db.connection()
-            has_is_private = await conn.run_sync(
-                lambda sync_conn: 'is_private' in {c['name'] for c in inspect(sync_conn).get_columns('board_post')}
-            )
-            if not has_is_private:
+            cols = await conn.run_sync(lambda sync_conn: {c['name'] for c in inspect(sync_conn).get_columns('board_post')})
+            if 'is_private' not in cols:
                 await db.execute(text('ALTER TABLE board_post ADD COLUMN is_private BOOLEAN NOT NULL DEFAULT FALSE'))
-                await db.commit()
+            if 'is_mental_health_post' not in cols:
+                await db.execute(text('ALTER TABLE board_post ADD COLUMN is_mental_health_post BOOLEAN NOT NULL DEFAULT FALSE'))
+            await db.commit()
         except SQLAlchemyError:
             await db.rollback()
             raise
@@ -64,8 +78,15 @@ def _get_admin_emails() -> set[str]:
     return {x.strip().lower() for x in raw.split(",") if x.strip()}
 
 
-def _is_admin(user: UserOut) -> bool:
-    return user.email.lower() in _get_admin_emails()
+
+async def _is_admin_user(db: AsyncSession, user: UserOut) -> bool:
+    env_set = _get_admin_emails()
+    cfg = await crud.get_app_config_json(db, "admin_emails_v1")
+    db_set: set[str] = set()
+    if isinstance(cfg, dict) and isinstance(cfg.get("emails"), list):
+        db_set = {str(x).strip().lower() for x in cfg.get("emails", []) if str(x).strip()}
+    return user.email.lower() in (env_set | db_set)
+
 
 
 def _canonical_category(value: BoardCategory | str) -> BoardCategory:
@@ -78,6 +99,7 @@ def _canonical_category(value: BoardCategory | str) -> BoardCategory:
         return BoardCategory.FREE
 
 
+
 def _is_inquiry_or_feedback(value: BoardCategory | str) -> bool:
     raw = value.value if hasattr(value, "value") else str(value)
     return raw in {
@@ -85,6 +107,67 @@ def _is_inquiry_or_feedback(value: BoardCategory | str) -> bool:
         BoardCategory.LEGACY_INQUIRY.value,
         BoardCategory.FEEDBACK.value,
     }
+
+
+
+def _normalize_keywords(raw: dict | None) -> list[str]:
+    if not isinstance(raw, dict):
+        return list(_DEFAULT_RISK_KEYWORDS)
+    arr = raw.get("keywords")
+    if not isinstance(arr, list):
+        return list(_DEFAULT_RISK_KEYWORDS)
+    cleaned: list[str] = []
+    for item in arr:
+        token = str(item).strip().lower()
+        if token and token not in cleaned:
+            cleaned.append(token)
+    return cleaned or list(_DEFAULT_RISK_KEYWORDS)
+
+
+async def _load_risk_keywords(db: AsyncSession) -> list[str]:
+    raw = await crud.get_app_config_json(db, _BOARD_RISK_KEYWORDS_KEY)
+    return _normalize_keywords(raw)
+
+
+
+def _find_risk_keywords(text_value: str, keywords: list[str]) -> list[str]:
+    text_lower = text_value.lower()
+    matched: list[str] = []
+    for kw in keywords:
+        if kw in text_lower and kw not in matched:
+            matched.append(kw)
+    return matched
+
+
+
+def _extract_client_ip(request: Request) -> str | None:
+    forwarded_for = request.headers.get("x-forwarded-for", "").strip()
+    if forwarded_for:
+        first = forwarded_for.split(",")[0].strip()
+        if first:
+            return first
+    if request.client and request.client.host:
+        return request.client.host
+    return None
+
+
+async def _notify_if_risky_post(db: AsyncSession, *, post, actor_nickname: str) -> None:
+    keywords = await _load_risk_keywords(db)
+    matched = _find_risk_keywords(f"{post.title}\n{post.content}", keywords)
+    if not matched:
+        return
+
+    try:
+        await crud.create_admin_notification(
+            db,
+            ntype=AdminNotificationType.BOARD_FEEDBACK,
+            title="위험 키워드 감지 게시글",
+            message=f"{actor_nickname}님의 게시글에서 위험 키워드({', '.join(matched)})가 감지되었습니다.",
+            ref_post_id=post.id,
+        )
+    except Exception:
+        pass
+
 
 async def _map_post(db: AsyncSession, row, viewer_id: UUID | None = None) -> BoardPostOut:
     author = await crud.get_user_by_id(db, row.author_id)
@@ -106,6 +189,7 @@ async def _map_post(db: AsyncSession, row, viewer_id: UUID | None = None) -> Boa
         content=row.content,
         is_notice=row.is_notice,
         is_private=row.is_private,
+        is_mental_health_post=bool(getattr(row, "is_mental_health_post", False)),
         likes_count=likes_count,
         bookmarks_count=bookmarks_count,
         comments_count=comments_count,
@@ -152,10 +236,18 @@ async def list_posts(
     page_size: int = Query(default=10, ge=1, le=100),
     q: str | None = Query(default=None, min_length=1, max_length=200),
     category: BoardCategory | None = Query(default=None),
+    mental_health_only: bool | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> BoardPostListResponse:
     await _ensure_board_schema(db)
-    rows, total = await crud.list_board_posts(db, q=q, category=category, page=page, page_size=page_size)
+    rows, total = await crud.list_board_posts(
+        db,
+        q=q,
+        category=category,
+        mental_health_only=mental_health_only,
+        page=page,
+        page_size=page_size,
+    )
     if not rows:
         return BoardPostListResponse(page=page, page_size=page_size, total=total, items=[])
     items = [await _map_post(db, row, viewer_id=None) for row in rows]
@@ -178,8 +270,11 @@ async def create_post(
     db: AsyncSession = Depends(get_db),
 ) -> BoardPostOut:
     await _ensure_board_schema(db)
-    if payload.is_notice and not _is_admin(current_user):
+    admin = await _is_admin_user(db, current_user)
+    if payload.is_notice and not admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="공지 작성은 관리자만 가능합니다.")
+    if payload.is_mental_health_post and not admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="정신건강 포스팅은 관리자만 작성할 수 있습니다.")
 
     try:
         created = await crud.create_board_post(
@@ -190,9 +285,9 @@ async def create_post(
             content=payload.content,
             is_notice=payload.is_notice,
             is_private=payload.is_private,
+            is_mental_health_post=payload.is_mental_health_post,
         )
     except SQLAlchemyError:
-        # 구버전 DB(enum: 질문) 호환을 위해 문의 저장 실패 시 질문으로 1회 재시도
         await db.rollback()
         if payload.category != BoardCategory.INQUIRY:
             raise
@@ -204,6 +299,7 @@ async def create_post(
             content=payload.content,
             is_notice=payload.is_notice,
             is_private=payload.is_private,
+            is_mental_health_post=payload.is_mental_health_post,
         )
 
     if payload.category in {BoardCategory.INQUIRY, BoardCategory.FEEDBACK}:
@@ -217,9 +313,9 @@ async def create_post(
                 ref_post_id=created.id,
             )
         except Exception:
-            # 알림 저장 실패가 게시글 저장 실패로 전파되지 않도록 방어
             pass
 
+    await _notify_if_risky_post(db, post=created, actor_nickname=current_user.nickname)
     return await _map_post(db, created, viewer_id=current_user.id)
 
 
@@ -235,11 +331,13 @@ async def update_post(
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="게시글을 찾을 수 없습니다.")
 
-    admin = _is_admin(current_user)
+    admin = await _is_admin_user(db, current_user)
     if row.author_id != current_user.id and not admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="수정 권한이 없습니다.")
     if payload.is_notice is not None and not admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="공지 수정은 관리자만 가능합니다.")
+    if payload.is_mental_health_post is not None and not admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="정신건강 포스팅 설정은 관리자만 가능합니다.")
 
     try:
         updated = await crud.update_board_post(
@@ -250,6 +348,7 @@ async def update_post(
             category=payload.category,
             is_notice=payload.is_notice,
             is_private=payload.is_private,
+            is_mental_health_post=payload.is_mental_health_post,
         )
     except SQLAlchemyError:
         await db.rollback()
@@ -263,7 +362,10 @@ async def update_post(
             category=BoardCategory.LEGACY_INQUIRY,
             is_notice=payload.is_notice,
             is_private=payload.is_private,
+            is_mental_health_post=payload.is_mental_health_post,
         )
+
+    await _notify_if_risky_post(db, post=updated, actor_nickname=current_user.nickname)
     return await _map_post(db, updated, viewer_id=current_user.id)
 
 
@@ -278,7 +380,7 @@ async def delete_post(
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="게시글을 찾을 수 없습니다.")
 
-    if row.author_id != current_user.id and not _is_admin(current_user):
+    if row.author_id != current_user.id and not await _is_admin_user(db, current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="삭제 권한이 없습니다.")
 
     await crud.delete_board_post(db, row)
@@ -299,7 +401,7 @@ async def create_comment(
 
     is_admin_reply = payload.content.strip().startswith(_ADMIN_REPLY_PREFIX)
     if is_admin_reply:
-        if not _is_admin(current_user):
+        if not await _is_admin_user(db, current_user):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="관리자 답변은 관리자만 등록할 수 있습니다.")
         if not _is_inquiry_or_feedback(row.category):
             raise HTTPException(
@@ -316,6 +418,61 @@ async def create_comment(
         content=comment.content,
         created_at=comment.created_at,
     )
+
+
+@router.delete("/comments/{comment_id}")
+async def delete_comment(
+    comment_id: UUID,
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    await _ensure_board_schema(db)
+    row = await crud.get_board_comment_by_id(db, comment_id)
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="댓글을 찾을 수 없습니다.")
+
+    if row.author_id != current_user.id and not await _is_admin_user(db, current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="댓글 삭제 권한이 없습니다.")
+
+    await crud.delete_board_comment(db, row)
+    return {"message": "삭제되었습니다."}
+
+
+@router.post("/posts/{post_id}/report")
+async def report_post(
+    post_id: UUID,
+    payload: BoardReportCreateRequest,
+    request: Request,
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    await _ensure_board_schema(db)
+    row = await crud.get_board_post_by_id(db, post_id)
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="게시글을 찾을 수 없습니다.")
+
+    ip = _extract_client_ip(request)
+    await crud.create_board_post_report(
+        db,
+        post_id=row.id,
+        reporter_id=current_user.id,
+        reason=payload.reason,
+        detail=payload.detail,
+        reporter_ip=ip,
+    )
+
+    try:
+        await crud.create_admin_notification(
+            db,
+            ntype=AdminNotificationType.BOARD_FEEDBACK,
+            title="게시글 신고 접수",
+            message=f"{current_user.nickname}님이 '{row.title}' 게시글을 신고했습니다. 사유: {payload.reason}",
+            ref_post_id=row.id,
+        )
+    except Exception:
+        pass
+
+    return {"message": "신고가 접수되었습니다."}
 
 
 @router.post("/posts/{post_id}/like", response_model=BoardToggleResponse)

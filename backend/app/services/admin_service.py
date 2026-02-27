@@ -8,18 +8,26 @@ from sqlalchemy import String, asc, cast, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import crud
-from app.db.models import Assessment, BoardCategory, BoardComment, BoardPost, ChatEvent, User
+from app.db.models import Assessment, BoardCategory, BoardComment, BoardPost, LoginEvent, User
 from app.schemas.admin import (
     AdminAccountItem,
     AdminAccountListResponse,
     AdminAccountSearchUserItem,
     AdminAccountSearchUserListResponse,
+    AdminBlockedEmailCreateRequest,
+    AdminBlockedEmailItem,
+    AdminBlockedEmailListResponse,
+    AdminBlockedIPCreateRequest,
+    AdminBlockedIPItem,
+    AdminBlockedIPListResponse,
     AdminAssessmentItem,
     AdminAssessmentListResponse,
     AdminChallengePolicyAuditItem,
     AdminChallengePolicyAuditListResponse,
     AdminChallengePolicyResponse,
     AdminChallengePolicyUpdateRequest,
+    AdminBoardRiskKeywordsResponse,
+    AdminBoardRiskKeywordsUpdateRequest,
     AdminGrantHistoryItem,
     AdminGrantHistoryResponse,
     AdminHighRiskItem,
@@ -39,6 +47,20 @@ from app.services.user_dashboard import build_user_weekly_dashboard
 HIGH_RISK_SEVERITIES = {"높은 수준", "다소 높은 수준", "severe", "moderately_severe"}
 CHALLENGE_POLICY_CONFIG_KEY = "challenge_policy_v1"
 ADMIN_EMAILS_CONFIG_KEY = "admin_emails_v1"
+BLOCKED_EMAILS_CONFIG_KEY = "blocked_emails_v1"
+BOARD_RISK_KEYWORDS_CONFIG_KEY = "board_risk_keywords_v1"
+DEFAULT_BOARD_RISK_KEYWORDS = [
+    "죽이고",
+    "죽여",
+    "해치",
+    "협박",
+    "폭행",
+    "자해",
+    "자살",
+    "테러",
+    "살해",
+    "살인",
+]
 
 
 def _is_high_risk_expr():
@@ -57,6 +79,39 @@ def _normalize_repeatable(items: list[str]) -> list[str]:
         t = x.strip()
         if t and t in ALL_TECHNIQUES and t not in out:
             out.append(t)
+    return out
+
+
+def _normalize_board_risk_keywords(items: list[str] | None) -> list[str]:
+    source = items if isinstance(items, list) else DEFAULT_BOARD_RISK_KEYWORDS
+    out: list[str] = []
+    for x in source:
+        t = str(x).strip().lower()
+        if t and t not in out:
+            out.append(t)
+    return out or list(DEFAULT_BOARD_RISK_KEYWORDS)
+
+
+def _normalize_blocked_emails(items: list[dict] | None) -> list[dict]:
+    source = items if isinstance(items, list) else []
+    out: list[dict] = []
+    seen: set[str] = set()
+    for item in source:
+        if not isinstance(item, dict):
+            continue
+        email = str(item.get("email", "")).strip().lower()
+        if not email or email in seen:
+            continue
+        seen.add(email)
+        reason_raw = item.get("reason")
+        blocked_at_raw = item.get("blocked_at")
+        out.append(
+            {
+                "email": email,
+                "reason": str(reason_raw).strip() if reason_raw else None,
+                "blocked_at": str(blocked_at_raw).strip() if blocked_at_raw else datetime.now(UTC).isoformat(),
+            }
+        )
     return out
 
 
@@ -141,9 +196,23 @@ async def list_admin_users(
         .correlate(User)
         .scalar_subquery()
     )
-    chat_count_sq = (
-        select(func.count(ChatEvent.id))
-        .where(ChatEvent.user_id == User.id)
+    login_count_sq = (
+        select(func.count(LoginEvent.id))
+        .where(LoginEvent.user_id == User.id)
+        .correlate(User)
+        .scalar_subquery()
+    )
+    login_days_sq = (
+        select(func.count(func.distinct(func.date(LoginEvent.logged_in_at))))
+        .where(LoginEvent.user_id == User.id)
+        .correlate(User)
+        .scalar_subquery()
+    )
+    latest_login_ip_sq = (
+        select(LoginEvent.login_ip)
+        .where(LoginEvent.user_id == User.id, LoginEvent.login_ip.is_not(None))
+        .order_by(LoginEvent.logged_in_at.desc())
+        .limit(1)
         .correlate(User)
         .scalar_subquery()
     )
@@ -161,45 +230,107 @@ async def list_admin_users(
         User.created_at,
         assessment_count_sq.label("assessment_count"),
         latest_assessment_at_sq.label("latest_assessment_at"),
-        chat_count_sq.label("chat_count"),
+        login_count_sq.label("login_count"),
+        login_days_sq.label("login_days"),
+        latest_login_ip_sq.label("latest_login_ip"),
         board_post_count_sq.label("board_post_count"),
     ).select_from(User)
 
     if q:
         pattern = f"%{q.strip()}%"
-        base = base.where(or_(User.email.ilike(pattern), User.nickname.ilike(pattern)))
-
-    total = int((await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one())
-
-    sort_map = {
-        "email": User.email,
-        "nickname": User.nickname,
-        "created_at": User.created_at,
-        "assessment_count": assessment_count_sq,
-        "chat_count": chat_count_sq,
-        "board_post_count": board_post_count_sq,
-    }
-    sort_expr = sort_map.get(sort_by, User.created_at)
-    order_expr = asc(sort_expr) if sort_order == "asc" else desc(sort_expr)
-
-    offset = (page - 1) * page_size
-    rows = (await db.execute(base.order_by(order_expr, User.created_at.desc()).offset(offset).limit(page_size))).all()
-
-    items = [
-        AdminUserItem(
-            id=str(r.id),
-            email=r.email,
-            nickname=r.nickname,
-            created_at=_iso(r.created_at) or "",
-            assessment_count=int(r.assessment_count or 0),
-            chat_count=int(r.chat_count or 0),
-            board_post_count=int(r.board_post_count or 0),
-            latest_assessment_at=_iso(r.latest_assessment_at),
+        base = base.where(
+            or_(
+                User.email.ilike(pattern),
+                User.nickname.ilike(pattern),
+                cast(latest_login_ip_sq, String).ilike(pattern),
+            )
         )
-        for r in rows
-    ]
 
-    return AdminUserListResponse(page=page, page_size=page_size, total=total, items=items)
+    try:
+        total = int((await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one())
+
+        sort_map = {
+            "email": User.email,
+            "nickname": User.nickname,
+            "created_at": User.created_at,
+            "assessment_count": assessment_count_sq,
+            "login_count": login_count_sq,
+            "login_days": login_days_sq,
+            "latest_login_ip": latest_login_ip_sq,
+            "board_post_count": board_post_count_sq,
+        }
+        sort_expr = sort_map.get(sort_by, User.created_at)
+        order_expr = asc(sort_expr) if sort_order == "asc" else desc(sort_expr)
+
+        offset = (page - 1) * page_size
+        rows = (await db.execute(base.order_by(order_expr, User.created_at.desc()).offset(offset).limit(page_size))).all()
+
+        items = [
+            AdminUserItem(
+                id=str(r.id),
+                email=r.email,
+                nickname=r.nickname,
+                created_at=_iso(r.created_at) or "",
+                assessment_count=int(r.assessment_count or 0),
+                login_count=int(r.login_count or 0),
+                login_days=int(r.login_days or 0),
+                latest_login_ip=(str(r.latest_login_ip).strip() if r.latest_login_ip else None),
+                board_post_count=int(r.board_post_count or 0),
+                latest_assessment_at=_iso(r.latest_assessment_at),
+            )
+            for r in rows
+        ]
+
+        return AdminUserListResponse(page=page, page_size=page_size, total=total, items=items)
+    except Exception:
+        # 운영 DB 스키마가 부분적으로 오래된 경우(login_event/login_ip 미반영)에도 사용자 목록은 조회 가능해야 함
+        await db.rollback()
+
+        fallback = select(
+            User.id,
+            User.email,
+            User.nickname,
+            User.created_at,
+            assessment_count_sq.label("assessment_count"),
+            latest_assessment_at_sq.label("latest_assessment_at"),
+            board_post_count_sq.label("board_post_count"),
+        ).select_from(User)
+
+        if q:
+            pattern = f"%{q.strip()}%"
+            fallback = fallback.where(or_(User.email.ilike(pattern), User.nickname.ilike(pattern)))
+
+        total = int((await db.execute(select(func.count()).select_from(fallback.subquery()))).scalar_one())
+        fallback_sort_map = {
+            "email": User.email,
+            "nickname": User.nickname,
+            "created_at": User.created_at,
+            "assessment_count": assessment_count_sq,
+            "board_post_count": board_post_count_sq,
+        }
+        sort_expr = fallback_sort_map.get(sort_by, User.created_at)
+        order_expr = asc(sort_expr) if sort_order == "asc" else desc(sort_expr)
+
+        offset = (page - 1) * page_size
+        rows = (await db.execute(fallback.order_by(order_expr, User.created_at.desc()).offset(offset).limit(page_size))).all()
+
+        items = [
+            AdminUserItem(
+                id=str(r.id),
+                email=r.email,
+                nickname=r.nickname,
+                created_at=_iso(r.created_at) or "",
+                assessment_count=int(r.assessment_count or 0),
+                login_count=0,
+                login_days=0,
+                latest_login_ip=None,
+                board_post_count=int(r.board_post_count or 0),
+                latest_assessment_at=_iso(r.latest_assessment_at),
+            )
+            for r in rows
+        ]
+
+        return AdminUserListResponse(page=page, page_size=page_size, total=total, items=items)
 
 
 async def search_registered_users_for_admin_add(db: AsyncSession, *, q: str, limit: int = 10) -> AdminAccountSearchUserListResponse:
@@ -596,3 +727,133 @@ async def list_admin_grant_history(db: AsyncSession, *, limit: int = 100) -> Adm
                 )
             )
     return AdminGrantHistoryResponse(total=len(items), items=items[:limit])
+
+
+async def get_admin_board_risk_keywords(db: AsyncSession) -> AdminBoardRiskKeywordsResponse:
+    raw = await crud.get_app_config_json(db, BOARD_RISK_KEYWORDS_CONFIG_KEY)
+    keywords = _normalize_board_risk_keywords(raw.get("keywords") if isinstance(raw, dict) else None)
+    return AdminBoardRiskKeywordsResponse(keywords=keywords)
+
+
+async def update_admin_board_risk_keywords(
+    db: AsyncSession,
+    payload: AdminBoardRiskKeywordsUpdateRequest,
+    *,
+    actor_user_id: UUID,
+    actor_email: str,
+    actor_nickname: str | None,
+) -> AdminBoardRiskKeywordsResponse:
+    before_raw = await crud.get_app_config_json(db, BOARD_RISK_KEYWORDS_CONFIG_KEY)
+    before = {
+        "keywords": _normalize_board_risk_keywords(before_raw.get("keywords") if isinstance(before_raw, dict) else None),
+    }
+
+    after = {"keywords": _normalize_board_risk_keywords(list(payload.keywords))}
+    await crud.upsert_app_config_json(db, BOARD_RISK_KEYWORDS_CONFIG_KEY, after)
+
+    diff = _policy_diff(before, after)
+    if diff:
+        await crud.create_app_config_audit(
+            db=db,
+            config_key=BOARD_RISK_KEYWORDS_CONFIG_KEY,
+            actor_user_id=actor_user_id,
+            actor_email=actor_email,
+            actor_nickname=actor_nickname,
+            before_json=before,
+            after_json=after,
+            diff_json=diff,
+        )
+
+    return AdminBoardRiskKeywordsResponse(keywords=after["keywords"])
+
+
+async def list_admin_blocked_ips(db: AsyncSession, *, active_only: bool = False, limit: int = 200) -> AdminBlockedIPListResponse:
+    rows = await crud.list_blocked_ips(db, active_only=active_only, limit=limit)
+    items = [
+        AdminBlockedIPItem(
+            id=str(r.id),
+            ip_address=r.ip_address,
+            reason=r.reason,
+            is_active=bool(r.is_active),
+            created_at=_iso(r.created_at) or "",
+        )
+        for r in rows
+    ]
+    return AdminBlockedIPListResponse(total=len(items), items=items)
+
+
+async def add_admin_blocked_ip(
+    db: AsyncSession,
+    payload: AdminBlockedIPCreateRequest,
+    *,
+    actor_user_id: UUID,
+) -> AdminBlockedIPListResponse:
+    await crud.upsert_blocked_ip(
+        db,
+        ip_address=payload.ip_address,
+        reason=payload.reason,
+        created_by_user_id=actor_user_id,
+        is_active=True,
+    )
+    return await list_admin_blocked_ips(db, active_only=False, limit=200)
+
+
+async def remove_admin_blocked_ip(db: AsyncSession, *, ip_address: str) -> AdminBlockedIPListResponse:
+    await crud.deactivate_blocked_ip(db, ip_address)
+    return await list_admin_blocked_ips(db, active_only=False, limit=200)
+
+
+def _blocked_email_set_from_items(items: list[dict]) -> set[str]:
+    return {str(x.get("email", "")).strip().lower() for x in items if isinstance(x, dict) and str(x.get("email", "")).strip()}
+
+
+async def is_email_blocked(db: AsyncSession, email: str) -> bool:
+    target = email.strip().lower()
+    if not target:
+        return False
+    raw = await crud.get_app_config_json(db, BLOCKED_EMAILS_CONFIG_KEY)
+    items = _normalize_blocked_emails(raw.get("items") if isinstance(raw, dict) else None)
+    return target in _blocked_email_set_from_items(items)
+
+
+async def list_admin_blocked_emails(db: AsyncSession) -> AdminBlockedEmailListResponse:
+    raw = await crud.get_app_config_json(db, BLOCKED_EMAILS_CONFIG_KEY)
+    items = _normalize_blocked_emails(raw.get("items") if isinstance(raw, dict) else None)
+    out = [
+        AdminBlockedEmailItem(
+            email=i["email"],
+            reason=i.get("reason"),
+            blocked_at=str(i.get("blocked_at") or datetime.now(UTC).isoformat()),
+        )
+        for i in items
+    ]
+    return AdminBlockedEmailListResponse(total=len(out), items=out)
+
+
+async def add_admin_blocked_email(db: AsyncSession, payload: AdminBlockedEmailCreateRequest) -> AdminBlockedEmailListResponse:
+    current = await crud.get_app_config_json(db, BLOCKED_EMAILS_CONFIG_KEY)
+    items = _normalize_blocked_emails(current.get("items") if isinstance(current, dict) else None)
+
+    target = payload.email.strip().lower()
+    existing = _blocked_email_set_from_items(items)
+    if target not in existing:
+        items.append(
+            {
+                "email": target,
+                "reason": payload.reason.strip() if isinstance(payload.reason, str) and payload.reason.strip() else None,
+                "blocked_at": datetime.now(UTC).isoformat(),
+            }
+        )
+
+    items = _normalize_blocked_emails(items)
+    await crud.upsert_app_config_json(db, BLOCKED_EMAILS_CONFIG_KEY, {"items": items})
+    return await list_admin_blocked_emails(db)
+
+
+async def remove_admin_blocked_email(db: AsyncSession, *, email: str) -> AdminBlockedEmailListResponse:
+    current = await crud.get_app_config_json(db, BLOCKED_EMAILS_CONFIG_KEY)
+    items = _normalize_blocked_emails(current.get("items") if isinstance(current, dict) else None)
+    target = email.strip().lower()
+    next_items = [i for i in items if i.get("email") != target]
+    await crud.upsert_app_config_json(db, BLOCKED_EMAILS_CONFIG_KEY, {"items": next_items})
+    return await list_admin_blocked_emails(db)

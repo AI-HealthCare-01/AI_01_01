@@ -5,6 +5,17 @@ from pydantic import BaseModel, ConfigDict, Field, conint, constr
 
 MessageStr = constr(min_length=1, max_length=1200)
 ChallengeStr = constr(min_length=1, max_length=160)
+CbtPhase = Literal["EMOTION", "SITUATION", "THOUGHT", "DISTORTION", "REFRAME", "ACTION"]
+DistortionName = Literal[
+    "overgeneralization",
+    "mind_reading",
+    "all_or_nothing",
+    "catastrophizing",
+    "should_statements",
+    "personalization_overresponsibility",
+    "emotional_reasoning",
+    "labeling_negative_identity",
+]
 
 
 class DistortionMetrics(BaseModel):
@@ -26,10 +37,12 @@ class ExtractedIndicators(BaseModel):
     avoidance_0_10: conint(ge=0, le=10)
     sleep_difficulty_0_10: conint(ge=0, le=10)
     distortion: DistortionMetrics
+    distortions: list[DistortionName] = Field(default_factory=list)
 
 
 class ChatTurn(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    # 프론트 임시 필드(예: loading)를 허용하고 무시해 대화 턴 파싱 실패를 방지한다.
+    model_config = ConfigDict(extra="ignore", strict=True)
 
     role: Literal["user", "assistant"]
     content: MessageStr
@@ -41,6 +54,8 @@ class ChatRequest(BaseModel):
     message: MessageStr = Field(description="사용자 입력 메시지")
     active_challenge: ChallengeStr | None = None
     challenge_phase: Literal["start", "continue", "reflect"] | None = None
+    cbt_phase: CbtPhase | None = None
+    challenge_candidates: list[ChallengeStr] | None = None
     conversation_history: list[ChatTurn] = Field(default_factory=list)
 
 
@@ -67,7 +82,11 @@ class ChatResponse(BaseModel):
     challenge_completed: bool = False
     completed_challenge: str | None = None
     completion_message: str | None = None
+    challenge_rationale: str | None = None
+    phase: CbtPhase | None = None
+    next_phase: CbtPhase | None = None
     summary_card: SummaryCard
+    cbt_phase: CbtPhase | None = None
 
 
 class ChallengeRecommendResponse(BaseModel):

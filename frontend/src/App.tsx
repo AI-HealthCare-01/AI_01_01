@@ -715,6 +715,7 @@ function App() {
 
   const chatMessagesRef = useRef<HTMLDivElement | null>(null)
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const chatSubmitLockRef = useRef(false)
 
   const [dashboard, setDashboard] = useState<WeeklyDashboardResponse | null>(null)
   const [checkinHistory, setCheckinHistory] = useState<CheckinHistoryItem[]>([])
@@ -1367,6 +1368,7 @@ function App() {
 
   async function handleChatSubmit(event: FormEvent) {
     event.preventDefault()
+    if (chatSubmitLockRef.current) return
     if (!token) {
       setMessage('로그인 후 인지행동치료 대화를 사용할 수 있습니다.')
       return
@@ -1378,8 +1380,13 @@ function App() {
       return
     }
 
-    const history = toChatHistoryPayload(chatHistory)
-    setChatHistory((prev) => [...prev, { role: 'user', content: text }, { role: 'assistant', content: '', loading: true }])
+    chatSubmitLockRef.current = true
+    const history = toChatHistoryPayload(chatHistory.filter((turn) => !turn.loading))
+    setChatHistory((prev) => [
+      ...prev.filter((turn) => !turn.loading),
+      { role: 'user', content: text },
+      { role: 'assistant', content: '', loading: true },
+    ])
     setChatMessage('')
     setLoading(true)
     setChatGenerating(true)
@@ -1443,6 +1450,7 @@ function App() {
     } finally {
       setLoading(false)
       setChatGenerating(false)
+      chatSubmitLockRef.current = false
     }
   }
 

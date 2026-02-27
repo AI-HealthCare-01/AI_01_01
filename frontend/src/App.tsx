@@ -663,6 +663,7 @@ function App() {
   const [message, setMessage] = useState('')
   const [noticeOpen, setNoticeOpen] = useState(false)
   const [noticeText, setNoticeText] = useState('')
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
 
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
@@ -1170,6 +1171,7 @@ function App() {
   function logout() {
     localStorage.removeItem('access_token')
     setToken('')
+    setLogoutConfirmOpen(false)
     setMessage('로그아웃되었습니다.')
   }
 
@@ -1862,7 +1864,7 @@ function App() {
               <button className={page === 'assessment' ? '' : 'ghost'} onClick={() => setPage('assessment')}>종합심리검사</button>
               <button className={page === 'board' ? '' : 'ghost'} onClick={() => setPage('board')}>게시판</button>
               {isAdmin && <button className={page === 'admin' ? '' : 'ghost'} onClick={() => setPage('admin')}>관리자</button>}
-              <button className="ghost" onClick={logout}>로그아웃</button>
+              <button className="ghost" type="button" onClick={() => setLogoutConfirmOpen(true)}>로그아웃</button>
             </div>
           </div>
         </section>
@@ -2638,6 +2640,18 @@ function App() {
               >
                 확인
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {logoutConfirmOpen && (
+        <div className="noticeOverlay" role="dialog" aria-modal="true">
+          <div className="noticeCard">
+            <p>로그아웃 하시겠습니까?</p>
+            <div className="actions">
+              <button type="button" onClick={logout}>예</button>
+              <button type="button" className="ghost" onClick={() => setLogoutConfirmOpen(false)}>아니요</button>
             </div>
           </div>
         </div>

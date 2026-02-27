@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import os
+import uuid
+from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy import Select, inspect, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes_auth import get_current_user
+from app.core.config import settings
 from app.db import crud
 from app.db.models import AdminNotificationType, BoardCategory, User
 from app.db.session import get_db, init_db
@@ -44,6 +47,8 @@ _DEFAULT_RISK_KEYWORDS = [
     "살해",
     "살인",
 ]
+_ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+_MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
 async def _ensure_board_schema(db: AsyncSession) -> None:
@@ -64,12 +69,31 @@ async def _ensure_board_schema(db: AsyncSession) -> None:
                 await db.execute(text('ALTER TABLE board_post ADD COLUMN is_private BOOLEAN NOT NULL DEFAULT FALSE'))
             if 'is_mental_health_post' not in cols:
                 await db.execute(text('ALTER TABLE board_post ADD COLUMN is_mental_health_post BOOLEAN NOT NULL DEFAULT FALSE'))
+            if 'image_url' not in cols:
+                await db.execute(text('ALTER TABLE board_post ADD COLUMN image_url VARCHAR(1000) NULL'))
             await db.commit()
         except SQLAlchemyError:
             await db.rollback()
             raise
 
         _BOARD_SCHEMA_READY = True
+
+
+def _resolve_file_extension(upload: UploadFile) -> str:
+    suffix = Path(upload.filename or "").suffix.lower()
+    if suffix in _ALLOWED_IMAGE_EXTENSIONS:
+        return suffix
+    if upload.content_type:
+        by_type = {
+            "image/jpeg": ".jpg",
+            "image/png": ".png",
+            "image/webp": ".webp",
+            "image/gif": ".gif",
+        }
+        mapped = by_type.get(upload.content_type.lower())
+        if mapped:
+            return mapped
+    return ""
 
 
 
@@ -187,6 +211,7 @@ async def _map_post(db: AsyncSession, row, viewer_id: UUID | None = None) -> Boa
         category=_canonical_category(row.category),
         title=row.title,
         content=row.content,
+        image_url=getattr(row, "image_url", None),
         is_notice=row.is_notice,
         is_private=row.is_private,
         is_mental_health_post=bool(getattr(row, "is_mental_health_post", False)),
@@ -283,6 +308,7 @@ async def create_post(
             category=payload.category,
             title=payload.title,
             content=payload.content,
+            image_url=payload.image_url,
             is_notice=payload.is_notice,
             is_private=payload.is_private,
             is_mental_health_post=payload.is_mental_health_post,
@@ -297,6 +323,7 @@ async def create_post(
             category=BoardCategory.LEGACY_INQUIRY,
             title=payload.title,
             content=payload.content,
+            image_url=payload.image_url,
             is_notice=payload.is_notice,
             is_private=payload.is_private,
             is_mental_health_post=payload.is_mental_health_post,
@@ -317,6 +344,31 @@ async def create_post(
 
     await _notify_if_risky_post(db, post=created, actor_nickname=current_user.nickname)
     return await _map_post(db, created, viewer_id=current_user.id)
+
+
+@router.post("/uploads/image")
+async def upload_board_image(
+    file: UploadFile = File(...),
+    current_user: UserOut = Depends(get_current_user),
+) -> dict[str, str]:
+    _ = current_user
+    ext = _resolve_file_extension(file)
+    if not ext:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="지원되지 않는 이미지 형식입니다. (jpg/jpeg/png/webp/gif)")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="빈 파일은 업로드할 수 없습니다.")
+    if len(data) > _MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="이미지는 최대 5MB까지 업로드할 수 있습니다.")
+
+    upload_dir = Path(settings.board_upload_dir)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}{ext}"
+    target = upload_dir / filename
+    target.write_bytes(data)
+    image_url = f"{settings.board_upload_public_prefix.rstrip('/')}/{filename}"
+    return {"image_url": image_url}
 
 
 @router.patch("/posts/{post_id}", response_model=BoardPostOut)
@@ -343,10 +395,11 @@ async def update_post(
         updated = await crud.update_board_post(
             db,
             row,
-            title=payload.title,
-            content=payload.content,
-            category=payload.category,
-            is_notice=payload.is_notice,
+        title=payload.title,
+        content=payload.content,
+        image_url=payload.image_url if "image_url" in payload.model_fields_set else ...,
+        category=payload.category,
+        is_notice=payload.is_notice,
             is_private=payload.is_private,
             is_mental_health_post=payload.is_mental_health_post,
         )

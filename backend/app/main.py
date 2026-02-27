@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
 from app.api.routes_ai import router as ai_router
@@ -24,6 +26,8 @@ async def lifespan(_: FastAPI):
     yield
 
 
+Path(settings.board_upload_dir).mkdir(parents=True, exist_ok=True)
+
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
@@ -43,6 +47,7 @@ app.include_router(board_router)
 app.include_router(report_router)
 app.include_router(journal_router)
 app.include_router(content_challenge_router)
+app.mount(settings.board_upload_public_prefix, StaticFiles(directory=settings.board_upload_dir), name="board_uploads")
 
 
 class RootResponse(BaseModel):

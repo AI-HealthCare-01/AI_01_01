@@ -8,6 +8,7 @@ from app.db.models import BoardCategory
 TitleStr = constr(min_length=1, max_length=200)
 ContentStr = constr(min_length=1, max_length=5000)
 CommentStr = constr(min_length=1, max_length=2000)
+ImageUrlStr = constr(min_length=1, max_length=1000)
 
 
 class BoardPostCreateRequest(BaseModel):
@@ -16,6 +17,7 @@ class BoardPostCreateRequest(BaseModel):
     category: BoardCategory
     title: TitleStr
     content: ContentStr
+    image_url: ImageUrlStr | None = None
     is_notice: bool = False
     is_private: bool = False
     is_mental_health_post: bool = False
@@ -27,6 +29,7 @@ class BoardPostUpdateRequest(BaseModel):
     category: BoardCategory | None = None
     title: TitleStr | None = None
     content: ContentStr | None = None
+    image_url: ImageUrlStr | None = None
     is_notice: bool | None = None
     is_private: bool | None = None
     is_mental_health_post: bool | None = None
@@ -65,6 +68,7 @@ class BoardPostOut(BaseModel):
     category: BoardCategory
     title: str
     content: str
+    image_url: str | None = None
     is_notice: bool
     is_private: bool = False
     is_mental_health_post: bool = False

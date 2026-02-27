@@ -267,6 +267,7 @@ class BoardPost(Base):
     category: Mapped[BoardCategory] = mapped_column(SQLEnum(BoardCategory, name="board_category"), nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     is_notice: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_private: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_mental_health_post: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

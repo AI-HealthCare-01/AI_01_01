@@ -14,8 +14,10 @@ import {
   fetchBoardPostDetail,
   fetchBoardPosts,
   reportBoardPost,
+  resolveBoardImageUrl,
   toggleBoardBookmark,
   toggleBoardLike,
+  uploadBoardImage,
   updateBoardPost,
 } from './boardApi'
 
@@ -41,6 +43,12 @@ function getPostTypeLabel(post: Pick<BoardPost, 'is_notice' | 'is_mental_health_
   return normalizeBoardCategory(post.category)
 }
 
+function getPreviewText(content: string, maxLength = 180): string {
+  const flat = content.replace(/\s+/g, ' ').trim()
+  if (flat.length <= maxLength) return flat
+  return `${flat.slice(0, maxLength)}...`
+}
+
 export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: BoardPageProps) {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
@@ -56,13 +64,21 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
   const [editId, setEditId] = useState<string | null>(null)
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
+  const [imageUrlInput, setImageUrlInput] = useState('')
   const [categoryInput, setCategoryInput] = useState<CategoryInput>('')
   const [isPrivateInput, setIsPrivateInput] = useState(false)
+  const [imageUploading, setImageUploading] = useState(false)
 
   const [commentInput, setCommentInput] = useState('')
   const [adminReplyInput, setAdminReplyInput] = useState('')
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const pageNumbers = (() => {
+    const spread = 2
+    const start = Math.max(1, page - spread)
+    const end = Math.min(totalPages, page + spread)
+    return Array.from({ length: end - start + 1 }, (_, i) => start + i)
+  })()
 
   async function loadPosts(nextPage = page, preferredSelectedId: string | null = null) {
     setLoading(true)
@@ -125,6 +141,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
     setEditId(null)
     setTitle('')
     setContent('')
+    setImageUrlInput('')
     setCategoryInput('')
     setIsPrivateInput(false)
   }
@@ -138,6 +155,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
     setEditId(post.id)
     setTitle(post.title)
     setContent(post.content)
+    setImageUrlInput(post.image_url ?? '')
     if (post.is_notice) {
       setCategoryInput('공지')
     } else if (post.is_mental_health_post) {
@@ -163,6 +181,11 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
       setMessage('제목과 내용을 입력하세요.')
       return
     }
+    const normalizedImageUrl = imageUrlInput.trim()
+    if (normalizedImageUrl && !/^(https?:\/\/\S+|\/uploads\/\S+)$/i.test(normalizedImageUrl)) {
+      setMessage('이미지 URL은 http://, https:// 또는 /uploads/... 형식으로 입력하세요.')
+      return
+    }
 
     const isNotice = categoryInput === '공지'
     const isMental = categoryInput === '정신건강포스팅'
@@ -175,6 +198,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
         const updated = await updateBoardPost(token, editId, {
           title: title.trim(),
           content: content.trim(),
+          image_url: normalizedImageUrl || null,
           category,
           is_notice: isNotice,
           is_private: isPrivateInput,
@@ -186,6 +210,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
         const created = await createBoardPost(token, {
           title: title.trim(),
           content: content.trim(),
+          image_url: normalizedImageUrl || null,
           category,
           is_notice: isNotice,
           is_private: isPrivateInput,
@@ -206,6 +231,23 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
       setMessage(`저장 오류: ${(error as Error).message}`)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleUploadImageFile(file: File) {
+    if (!token) {
+      setMessage('로그인 후 이미지 업로드가 가능합니다.')
+      return
+    }
+    setImageUploading(true)
+    try {
+      const result = await uploadBoardImage(token, file)
+      setImageUrlInput(result.image_url)
+      setMessage('이미지가 업로드되었습니다.')
+    } catch (error) {
+      setMessage(`이미지 업로드 오류: ${(error as Error).message}`)
+    } finally {
+      setImageUploading(false)
     }
   }
 
@@ -362,6 +404,25 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
             </label>
           )}
           <label>제목 입력<input value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
+          <label>
+            이미지 업로드 (선택)
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) void handleUploadImageFile(file)
+                e.currentTarget.value = ''
+              }}
+            />
+          </label>
+          <label>이미지 URL (자동 입력/수동 가능)<input value={imageUrlInput} onChange={(e) => setImageUrlInput(e.target.value)} placeholder="https://... 또는 /uploads/..." /></label>
+          {imageUploading && <p className="small">이미지 업로드 중...</p>}
+          {imageUrlInput && (
+            <figure className="boardEditorPreview">
+              <img src={resolveBoardImageUrl(imageUrlInput)} alt="업로드 미리보기" />
+            </figure>
+          )}
           <label>내용 입력<textarea value={content} onChange={(e) => setContent(e.target.value)} rows={10} required /></label>
           <div className="actions">
             <button type="submit" disabled={loading || !token}>{editorMode === 'edit' ? '수정 저장' : '게시하기'}</button>
@@ -393,21 +454,53 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
         <article className="boardList">
           {posts.length === 0 && <p className="small">게시글이 없습니다.</p>}
           {posts.map((post) => (
-            <button key={post.id} type="button" className={`boardRow ${selectedId === post.id ? 'active' : ''}`} onClick={() => setSelectedId(post.id)}>
-              <span className="boardRowTop">
+            <article
+              key={post.id}
+              className={`boardThreadCard ${selectedId === post.id ? 'active' : ''}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedId(post.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setSelectedId(post.id)
+                }
+              }}
+            >
+              <div className="boardRowTop">
                 {post.is_notice && <em className="noticeTag">공지</em>}
                 {post.is_mental_health_post && <em className="noticeTag mentalTag">정신건강</em>}
                 {post.is_private && <em className="noticeTag">비공개</em>}
-                <strong>{post.title}</strong>
-              </span>
+              </div>
+              <strong className="boardThreadTitle">{post.title}</strong>
+              {post.image_url && (
+                <div className="boardThumbWrap">
+                  <span className="noticeTag imageTag">IMG</span>
+                  <img className="boardThumb" src={resolveBoardImageUrl(post.image_url)} alt={`${post.title} 이미지`} loading="lazy" />
+                </div>
+              )}
+              <p className="boardThreadPreview">{getPreviewText(post.content)}</p>
               <span className="boardMeta">
                 {getPostTypeLabel(post)} · {post.author_nickname} · {new Date(post.created_at).toLocaleString('ko-KR')}
               </span>
-            </button>
+              <div className="boardThreadFooter">
+                <span>좋아요 {post.likes_count} · 댓글 {post.comments_count} · 북마크 {post.bookmarks_count}</span>
+              </div>
+            </article>
           ))}
           <div className="boardPager">
             <button type="button" className="ghost" disabled={loading || page <= 1} onClick={() => void loadPosts(page - 1)}>이전</button>
-            <span>{page} / {totalPages}</span>
+            {pageNumbers.map((n) => (
+              <button
+                key={`page-${n}`}
+                type="button"
+                className={n === page ? 'boardPageNum active' : 'boardPageNum ghost'}
+                disabled={loading}
+                onClick={() => void loadPosts(n)}
+              >
+                {n}
+              </button>
+            ))}
             <button type="button" className="ghost" disabled={loading || page >= totalPages} onClick={() => void loadPosts(page + 1)}>다음</button>
           </div>
         </article>
@@ -417,6 +510,11 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
             <>
               <h3>{selectedDetail.title}</h3>
               <p className="small">{getPostTypeLabel(selectedDetail)} · {selectedDetail.author_nickname} · {new Date(selectedDetail.created_at).toLocaleString('ko-KR')}</p>
+              {selectedDetail.image_url && (
+                <figure className="boardDetailImageWrap">
+                  <img className="boardDetailImage" src={resolveBoardImageUrl(selectedDetail.image_url)} alt={`${selectedDetail.title} 이미지`} loading="lazy" />
+                </figure>
+              )}
               <pre className="boardContent">{selectedDetail.content}</pre>
 
               <div className="actions">

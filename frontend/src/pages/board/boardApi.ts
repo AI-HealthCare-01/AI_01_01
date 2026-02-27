@@ -20,6 +20,7 @@ export type BoardPost = {
   category: BoardCategoryApi
   title: string
   content: string
+  image_url: string | null
   is_notice: boolean
   is_private: boolean
   is_mental_health_post: boolean
@@ -47,6 +48,7 @@ type CreatePayload = {
   category: BoardCategoryApi
   title: string
   content: string
+  image_url?: string | null
   is_notice: boolean
   is_private: boolean
   is_mental_health_post: boolean
@@ -56,6 +58,13 @@ type UpdatePayload = Partial<CreatePayload>
 
 type BoardErrorPayload = {
   detail?: string | Array<{ msg?: string }> | Record<string, unknown>
+}
+
+export function resolveBoardImageUrl(raw: string | null | undefined): string {
+  if (!raw) return ''
+  if (/^https?:\/\//i.test(raw)) return raw
+  if (raw.startsWith('/')) return `${API_BASE}${raw}`
+  return `${API_BASE}/${raw}`
 }
 
 async function readError(response: Response): Promise<string> {
@@ -236,4 +245,16 @@ export async function toggleBoardBookmark(token: string, postId: string): Promis
   })
   if (!response.ok) throw new Error(await readError(response))
   return (await response.json()) as { active: boolean; count: number }
+}
+
+export async function uploadBoardImage(token: string, file: File): Promise<{ image_url: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  const response = await fetch(`${API_BASE}/board/uploads/image`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  })
+  if (!response.ok) throw new Error(await readError(response))
+  return (await response.json()) as { image_url: string }
 }

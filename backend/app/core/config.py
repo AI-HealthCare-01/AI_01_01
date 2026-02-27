@@ -53,6 +53,8 @@ class Settings:
 
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+    board_upload_dir: str = os.getenv("BOARD_UPLOAD_DIR", "/tmp/board_uploads")
+    board_upload_public_prefix: str = os.getenv("BOARD_UPLOAD_PUBLIC_PREFIX", "/uploads")
 
     check_model_path: str = _resolve_path(
         os.getenv("CHECK_MODEL_PATH", ""),

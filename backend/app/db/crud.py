@@ -259,6 +259,7 @@ async def create_board_post(
     category: BoardCategory,
     title: str,
     content: str,
+    image_url: str | None,
     is_notice: bool,
     is_private: bool,
     is_mental_health_post: bool = False,
@@ -268,6 +269,7 @@ async def create_board_post(
         category=category,
         title=title,
         content=content,
+        image_url=image_url,
         is_notice=is_notice,
         is_private=is_private,
         is_mental_health_post=is_mental_health_post,
@@ -327,6 +329,7 @@ async def update_board_post(
     *,
     title: str | None = None,
     content: str | None = None,
+    image_url: str | None | object = ...,
     category: BoardCategory | None = None,
     is_notice: bool | None = None,
     is_private: bool | None = None,
@@ -336,6 +339,8 @@ async def update_board_post(
         row.title = title
     if content is not None:
         row.content = content
+    if image_url is not ...:
+        row.image_url = image_url
     if category is not None:
         row.category = category
     if is_notice is not None:

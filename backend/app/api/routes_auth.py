@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import create_access_token, decode_access_token, oauth2_scheme, verify_password
+from app.core.security import create_access_token, decode_access_token, oauth2_scheme, oauth2_scheme_optional, verify_password
 from app.db import crud
 from app.db.session import get_db
 from app.schemas.auth import (
@@ -129,6 +129,19 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="차단된 계정입니다. 관리자에게 문의하세요.")
 
     return UserOut.model_validate(user)
+
+
+async def get_current_user_optional(
+    request: Request,
+    token: str | None = Depends(oauth2_scheme_optional),
+    db: AsyncSession = Depends(get_db),
+) -> UserOut | None:
+    if not token:
+        return None
+    try:
+        return await get_current_user(request=request, token=token, db=db)
+    except HTTPException:
+        return None
 
 
 @router.post("/email/request-code", response_model=EmailVerificationResponse)

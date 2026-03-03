@@ -190,11 +190,13 @@ async def create_chat_event(
     assistant_reply: str,
     extracted: dict,
     suggested_challenges: list[str],
+    session_id: str | None = None,
 ) -> ChatEvent:
     row = ChatEvent(
         user_id=user_id,
         user_message=user_message,
         assistant_reply=assistant_reply,
+        session_id=session_id,
         extracted=extracted,
         suggested_challenges=suggested_challenges,
     )
@@ -208,6 +210,16 @@ async def get_latest_chat_event(db: AsyncSession, user_id: uuid.UUID) -> ChatEve
     stmt: Select[tuple[ChatEvent]] = (
         select(ChatEvent)
         .where(ChatEvent.user_id == user_id)
+        .order_by(desc(ChatEvent.created_at))
+        .limit(1)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def get_latest_chat_event_by_session(db: AsyncSession, user_id: uuid.UUID, session_id: str) -> ChatEvent | None:
+    stmt: Select[tuple[ChatEvent]] = (
+        select(ChatEvent)
+        .where(ChatEvent.user_id == user_id, ChatEvent.session_id == session_id)
         .order_by(desc(ChatEvent.created_at))
         .limit(1)
     )
@@ -303,6 +315,8 @@ async def list_board_posts(
     mental_health_only: bool | None = None,
     page: int = 1,
     page_size: int = 20,
+    viewer_id: uuid.UUID | None = None,
+    viewer_is_admin: bool = False,
 ) -> tuple[list[BoardPost], int]:
     stmt = select(BoardPost)
     count_stmt = select(func.count(BoardPost.id))
@@ -320,6 +334,14 @@ async def list_board_posts(
     if mental_health_only is not None:
         stmt = stmt.where(BoardPost.is_mental_health_post.is_(mental_health_only))
         count_stmt = count_stmt.where(BoardPost.is_mental_health_post.is_(mental_health_only))
+
+    if not viewer_is_admin:
+        if viewer_id is None:
+            visibility_cond = BoardPost.is_private.is_(False)
+        else:
+            visibility_cond = or_(BoardPost.is_private.is_(False), BoardPost.author_id == viewer_id)
+        stmt = stmt.where(visibility_cond)
+        count_stmt = count_stmt.where(visibility_cond)
 
     if q:
         keyword = f"%{q}%"

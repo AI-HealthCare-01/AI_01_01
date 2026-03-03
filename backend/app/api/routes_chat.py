@@ -1,8 +1,10 @@
+import asyncio
 from datetime import datetime, timezone
 import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -93,6 +95,8 @@ FINISH_SAVE_CONFIRM_KEYWORDS = ["저장", "저장할게", "저장해", "확정",
 FINISH_EDIT_KEYWORDS = ["수정", "고칠게", "다시", "아니", "변경"]
 SAFETY_RELEASE_KEYWORDS = ["안전해", "괜찮아졌", "연락했", "도움받고", "지금은 괜찮", "병원 왔", "옆에 사람 있어"]
 CRISIS_LOCK_TURNS = 5
+_CHAT_SCHEMA_READY = False
+_CHAT_SCHEMA_LOCK = asyncio.Lock()
 CRISIS_STAGE_A_TRIGGER_KEYWORDS = [
     "죽고", "죽는 게", "자살", "마무리", "준비중", "오늘 죽", "살기 싫", "없어지고 싶", "잠들고 싶어", "끝내",
 ]
@@ -550,7 +554,9 @@ def _build_finish_reply(summary_card: dict[str, str], challenge_name: str | None
     situation = (summary_card.get("situation") or "오늘 힘들었던 사건이 있었습니다.").strip()
     reframe = (summary_card.get("reframe") or "상황을 전부 내 잘못으로 단정하지 않기로 했습니다.").strip()
     next_action = (summary_card.get("next_action") or "호흡 2분 + 사실 1문장 기록").strip()
-    challenge_line = challenge_name or "SENSORY_MEDITATION"
+    fallback = ["SENSORY_MEDITATION", "WALK_10MIN_3D", "JOURNAL_STREAK"]
+    fallback_idx = sum(ord(ch) for ch in situation) % len(fallback)
+    challenge_line = challenge_name or fallback[fallback_idx]
     return (
         "오늘 대화를 마무리할게요.\n"
         f"1) 오늘 요약: {situation}\n"
@@ -609,12 +615,37 @@ async def _load_challenge_policy(db: AsyncSession) -> dict[str, object]:
     return normalize_challenge_policy(raw or default_challenge_policy())
 
 
+async def _ensure_chat_schema(db: AsyncSession) -> None:
+    global _CHAT_SCHEMA_READY
+    if _CHAT_SCHEMA_READY:
+        return
+
+    async with _CHAT_SCHEMA_LOCK:
+        if _CHAT_SCHEMA_READY:
+            return
+        try:
+            dialect = db.bind.dialect.name if db.bind is not None else ""
+            if dialect.startswith("sqlite"):
+                rows = (await db.execute(text("PRAGMA table_info(chat_event)"))).all()
+                columns = {str(r[1]) for r in rows if len(r) > 1}
+                if "session_id" not in columns:
+                    await db.execute(text("ALTER TABLE chat_event ADD COLUMN session_id VARCHAR(36)"))
+                    await db.commit()
+            elif dialect.startswith("postgres"):
+                await db.execute(text("ALTER TABLE chat_event ADD COLUMN IF NOT EXISTS session_id VARCHAR(36)"))
+                await db.commit()
+            _CHAT_SCHEMA_READY = True
+        except Exception:
+            await db.rollback()
+
+
 @router.get("/challenges/recommend", response_model=ChallengeRecommendResponse)
 async def recommend_challenges(
     window_days: int | None = Query(default=None, ge=1, le=60),
     current_user: UserOut = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ChallengeRecommendResponse:
+    await _ensure_chat_schema(db)
     policy = await _load_challenge_policy(db)
     days = int(window_days if window_days is not None else policy["window_days"])
     recent = await crud.list_recent_challenge_histories(db=db, user_id=current_user.id, days=days)
@@ -635,11 +666,18 @@ async def chat_cbt(
     current_user: UserOut = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ChatResponse:
+    await _ensure_chat_schema(db)
     policy = await _load_challenge_policy(db)
     risk_level = _classify_risk_level(payload.message)
     history_user_texts = [str(turn.content).strip() for turn in payload.conversation_history[-8:] if turn.role == "user"]
     recent_user_text = " ".join(history_user_texts[-4:])
-    latest_event = await crud.get_latest_chat_event(db=db, user_id=current_user.id)
+    latest_event = await crud.get_latest_chat_event_by_session(
+        db=db,
+        user_id=current_user.id,
+        session_id=payload.session_id,
+    )
+    if latest_event is None:
+        latest_event = await crud.get_latest_chat_event(db=db, user_id=current_user.id)
     latest_extracted = latest_event.extracted if latest_event and isinstance(latest_event.extracted, dict) else {}
     last_assistant_reply = str(latest_event.assistant_reply or "") if latest_event else ""
     finish_intent = _is_finish_intent(payload.message)
@@ -678,9 +716,11 @@ async def chat_cbt(
             assistant_reply=done_reply,
             extracted=extracted,
             suggested_challenges=[],
+            session_id=payload.session_id,
         )
         return ChatResponse(
             reply=done_reply,
+            session_id=payload.session_id,
             extracted=extracted,
             suggested_challenges=[],
             summary_card=summary_card,
@@ -735,9 +775,11 @@ async def chat_cbt(
             assistant_reply=edit_reply,
             extracted=extracted,
             suggested_challenges=[],
+            session_id=payload.session_id,
         )
         return ChatResponse(
             reply=edit_reply,
+            session_id=payload.session_id,
             extracted=extracted,
             suggested_challenges=[],
             summary_card=summary_card,
@@ -837,6 +879,7 @@ async def chat_cbt(
             assistant_reply=safe_reply,
             extracted=extracted,
             suggested_challenges=[],
+            session_id=payload.session_id,
         )
         crisis_actions = _crisis_actions(
             crisis_level,
@@ -853,6 +896,7 @@ async def chat_cbt(
         )
         return ChatResponse(
             reply=safe_reply,
+            session_id=payload.session_id,
             extracted=extracted,
             suggested_challenges=[],
             summary_card=summary_card,
@@ -936,9 +980,11 @@ async def chat_cbt(
             assistant_reply=safe_reply,
             extracted=extracted,
             suggested_challenges=[],
+            session_id=payload.session_id,
         )
         return ChatResponse(
             reply=safe_reply,
+            session_id=payload.session_id,
             extracted=extracted,
             suggested_challenges=[],
             summary_card=summary_card,
@@ -1060,6 +1106,7 @@ async def chat_cbt(
         assistant_reply=result.reply,
         extracted=result.extracted,
         suggested_challenges=filtered_suggestions,
+        session_id=payload.session_id,
     )
 
     logger.warning(
@@ -1068,6 +1115,7 @@ async def chat_cbt(
     )
     return ChatResponse(
         reply=result.reply,
+        session_id=payload.session_id,
         extracted=result.extracted,
         suggested_challenges=filtered_suggestions,
         summary_card=summary_card,

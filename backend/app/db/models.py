@@ -178,6 +178,7 @@ class ChatEvent(Base):
     )
     user_message: Mapped[str] = mapped_column(Text, nullable=False)
     assistant_reply: Mapped[str] = mapped_column(Text, nullable=False)
+    session_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
     extracted: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=False)
     suggested_challenges: Mapped[list[str]] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

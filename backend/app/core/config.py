@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -16,6 +16,14 @@ def _to_bool(value: str, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _to_csv_list(value: str, default: list[str]) -> list[str]:
+    if value is None:
+        return list(default)
+    items = [x.strip() for x in value.split(",")]
+    cleaned = [x for x in items if x]
+    return cleaned or list(default)
 
 
 def _resolve_path(value: str, default_path: Path) -> str:
@@ -55,6 +63,12 @@ class Settings:
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
     board_upload_dir: str = os.getenv("BOARD_UPLOAD_DIR", "/tmp/board_uploads")
     board_upload_public_prefix: str = os.getenv("BOARD_UPLOAD_PUBLIC_PREFIX", "/uploads")
+    cors_allow_origins: list[str] = field(
+        default_factory=lambda: _to_csv_list(
+            os.getenv("CORS_ALLOW_ORIGINS", ""),
+            ["http://localhost:5173", "http://127.0.0.1:5173"],
+        )
+    )
 
     check_model_path: str = _resolve_path(
         os.getenv("CHECK_MODEL_PATH", ""),

@@ -288,3 +288,46 @@ async def test_mental_post_admin_only_and_comment_delete_and_report() -> None:
         notifications = await client.get("/admin/notifications?limit=20", headers=h_admin)
         assert notifications.status_code == 200
         assert notifications.json()["total"] >= 1
+
+
+@pytest.mark.anyio
+async def test_private_post_visibility_owner_and_admin_only() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/auth/signup", json={"email": "owner@example.com", "password": "StrongPass123", "nickname": "owner"})
+        await client.post("/auth/signup", json={"email": "other@example.com", "password": "StrongPass123", "nickname": "other"})
+        await client.post("/auth/signup", json={"email": "admin@example.com", "password": "StrongPass123", "nickname": "admin"})
+
+        owner_login = await client.post("/auth/login", json={"email": "owner@example.com", "password": "StrongPass123"})
+        other_login = await client.post("/auth/login", json={"email": "other@example.com", "password": "StrongPass123"})
+        admin_login = await client.post("/auth/login", json={"email": "admin@example.com", "password": "StrongPass123"})
+
+        owner_headers = {"Authorization": f"Bearer {owner_login.json()['access_token']}"}
+        other_headers = {"Authorization": f"Bearer {other_login.json()['access_token']}"}
+        admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+
+        created = await client.post(
+            "/board/posts",
+            headers=owner_headers,
+            json={"category": "자유", "title": "비공개 글", "content": "owner only", "is_notice": False, "is_private": True},
+        )
+        assert created.status_code == 201
+        post_id = created.json()["id"]
+
+        anonymous_list = await client.get("/board/posts?page=1&page_size=20")
+        assert anonymous_list.status_code == 200
+        assert post_id not in {x["id"] for x in anonymous_list.json()["items"]}
+
+        anonymous_detail = await client.get(f"/board/posts/{post_id}")
+        assert anonymous_detail.status_code == 403
+
+        other_detail = await client.get(f"/board/posts/{post_id}", headers=other_headers)
+        assert other_detail.status_code == 403
+
+        owner_detail = await client.get(f"/board/posts/{post_id}", headers=owner_headers)
+        assert owner_detail.status_code == 200
+        assert owner_detail.json()["id"] == post_id
+
+        admin_detail = await client.get(f"/board/posts/{post_id}", headers=admin_headers)
+        assert admin_detail.status_code == 200
+        assert admin_detail.json()["id"] == post_id

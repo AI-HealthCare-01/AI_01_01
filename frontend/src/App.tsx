@@ -66,6 +66,7 @@ type ChatHistoryPayloadTurn = { role: ChatRole; content: string }
 
 type ChatResponse = {
   reply: string
+  session_id: string
   disclaimer: string
   timestamp: string
   cbt_phase?: 'EMOTION' | 'SITUATION' | 'THOUGHT' | 'DISTORTION' | 'REFRAME' | 'ACTION' | null
@@ -323,6 +324,16 @@ const defaultCheckin: LifestyleCheckinState = {
   sleep_onset_latency_min_today: '',
   awakenings_count_today: '',
   sleep_quality_0_10_today: '',
+}
+
+const CHAT_SESSION_STORAGE_KEY = 'mh_chat_session_id'
+
+function createChatSessionId(): string {
+  if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.randomUUID === 'function') {
+    return window.crypto.randomUUID()
+  }
+  const rand = Math.random().toString(16).slice(2).padEnd(12, '0')
+  return `00000000-0000-4000-8000-${rand.slice(0, 12)}`
 }
 
 function calculateRiskLevel(phq: number, gad: number, isi: number): RiskLevel {
@@ -1054,6 +1065,11 @@ function App() {
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([])
   const [chatSearchQuery, setChatSearchQuery] = useState('')
   const [chatResult, setChatResult] = useState<ChatResponse | null>(null)
+  const [chatSessionId, setChatSessionId] = useState<string>(() => {
+    const saved = typeof window !== 'undefined' ? window.sessionStorage.getItem(CHAT_SESSION_STORAGE_KEY) : ''
+    if (saved && /^[0-9a-fA-F-]{36}$/.test(saved)) return saved
+    return createChatSessionId()
+  })
   const [activeChallenge, setActiveChallenge] = useState('')
   const [challengePhase, setChallengePhase] = useState<'start' | 'continue' | 'reflect'>('continue')
   const [challengeStatus, setChallengeStatus] = useState<Record<string, boolean>>({})
@@ -1075,6 +1091,10 @@ function App() {
   const [journalTitle, setJournalTitle] = useState('오늘의 일기')
   const [journalContent, setJournalContent] = useState('')
   const [journalLibraryOpen, setJournalLibraryOpen] = useState(false)
+  const [selectedJournalEntry, setSelectedJournalEntry] = useState<JournalEntry | null>(null)
+  const [selectedJournalEditing, setSelectedJournalEditing] = useState(false)
+  const [selectedJournalTitleDraft, setSelectedJournalTitleDraft] = useState('')
+  const [selectedJournalContentDraft, setSelectedJournalContentDraft] = useState('')
 
   const chatMessagesRef = useRef<HTMLDivElement | null>(null)
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
@@ -1108,6 +1128,10 @@ function App() {
   )
 
   useEffect(() => {
+    window.sessionStorage.setItem(CHAT_SESSION_STORAGE_KEY, chatSessionId)
+  }, [chatSessionId])
+
+  useEffect(() => {
     setCrisisActionChecked({})
   }, [crisisActionKey])
 
@@ -1120,6 +1144,7 @@ function App() {
       setCheckinSummaryText('')
       setAutoCbtStarted(false)
       setRecommendedPosts([])
+      setChatSessionId(createChatSessionId())
       setPage('account')
       return
     }
@@ -1442,9 +1467,70 @@ function App() {
       const response = await fetch(`${API_BASE}/journals?limit=180`, { headers: authHeaders })
       if (!response.ok) throw new Error(await extractApiError(response))
       const data = (await response.json()) as { items: JournalEntry[] }
-      setJournalEntries(data.items ?? [])
+      const items = data.items ?? []
+      setJournalEntries(items)
+      if (selectedJournalEntry && !items.some((x) => x.id === selectedJournalEntry.id)) {
+        setSelectedJournalEntry(null)
+      }
     } catch (error) {
       setMessage(`일기 도서관 조회 오류: ${(error as Error).message}`)
+    }
+  }
+
+  async function handleOpenJournalEntry(entryId: string) {
+    if (!token) return
+    try {
+      const response = await fetch(`${API_BASE}/journals/${entryId}`, { headers: authHeaders })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      const data = (await response.json()) as JournalEntry
+      setSelectedJournalEntry(data)
+      setSelectedJournalEditing(false)
+      setSelectedJournalTitleDraft(data.title)
+      setSelectedJournalContentDraft(data.content)
+      setMessage('')
+    } catch (error) {
+      setMessage(`일기 조회 오류: ${(error as Error).message}`)
+    }
+  }
+
+  async function handleToggleSelectedJournalEdit() {
+    if (!token || !selectedJournalEntry) return
+    if (!selectedJournalEditing) {
+      setSelectedJournalTitleDraft(selectedJournalEntry.title)
+      setSelectedJournalContentDraft(selectedJournalEntry.content)
+      setSelectedJournalEditing(true)
+      return
+    }
+
+    if (!selectedJournalContentDraft.trim()) {
+      setMessage('일기 내용을 입력해주세요.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_BASE}/journals`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          entry_date: selectedJournalEntry.entry_date,
+          title: selectedJournalTitleDraft.trim() || '오늘의 일기',
+          content: selectedJournalContentDraft.trim(),
+          checkin_snapshot: selectedJournalEntry.checkin_snapshot ?? {},
+          cbt_summary: selectedJournalEntry.cbt_summary ?? {},
+          activity_challenges: selectedJournalEntry.activity_challenges ?? [],
+        }),
+      })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      const updated = (await response.json()) as JournalEntry
+      setSelectedJournalEntry(updated)
+      setJournalEntries((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
+      setSelectedJournalEditing(false)
+      setMessage('수정된 일기를 저장했습니다.')
+    } catch (error) {
+      setMessage(`일기 수정 오류: ${(error as Error).message}`)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -1875,11 +1961,13 @@ function App() {
         headers: authHeaders,
         body: JSON.stringify({
           message: `오늘 체크인 상태 요약: ${summary}. 이 상태를 반영해서 먼저 대화를 시작해줘.`,
+          session_id: chatSessionId,
           conversation_history: [],
         }),
       })
       if (!response.ok) throw new Error(await extractApiError(response))
       const data = (await response.json()) as ChatResponse
+      if (data.session_id) setChatSessionId(data.session_id)
       setChatResult(data)
       setChatHistory([{ role: 'assistant', content: data.reply, createdAt: Date.now() }])
       setChallengeHintText(data.challenge_step_prompt ?? '')
@@ -1944,6 +2032,7 @@ function App() {
     try {
       const payload: Record<string, unknown> = {
         message: text,
+        session_id: chatSessionId,
         conversation_history: history,
       }
       const cbtPhase = chatResult?.next_phase ?? chatResult?.cbt_phase
@@ -1960,6 +2049,7 @@ function App() {
       })
       if (!response.ok) throw new Error(await extractApiError(response))
       const data = (await response.json()) as ChatResponse
+      if (data.session_id) setChatSessionId(data.session_id)
 
       setChatResult(data)
 
@@ -2125,9 +2215,9 @@ function App() {
       return
     }
 
-    const today = todayDateString()
+    const targetDate = todayDateString()
     const todayLogs = contentLogs
-      .filter((x) => x.performed_date === today)
+      .filter((x) => x.performed_date === targetDate)
       .map((x) => ({
         challenge_name: x.challenge_name,
         category: x.category,
@@ -2159,7 +2249,7 @@ function App() {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({
-          entry_date: today,
+          entry_date: targetDate,
           title: journalTitle.trim() || '오늘의 일기',
           content: journalContent.trim(),
           checkin_snapshot: checkinSnapshot,
@@ -2691,75 +2781,8 @@ function App() {
 
       {page === 'account' && token && (
         <section className="panel accountPanel">
-          <div className="accountModeTabs actions">
-            <button className={accountMode === 'login' ? '' : 'ghost'} type="button" onClick={() => setAccountMode('login')}>로그인</button>
-            <button className={accountMode === 'signup' ? '' : 'ghost'} type="button" onClick={() => setAccountMode('signup')}>회원가입</button>
-          </div>
-
-          {accountMode === 'login' && (
-            <form onSubmit={handleLogin} className="form">
-              <h2>로그인</h2>
-              <label>이메일<input value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required /></label>
-              <label>비밀번호<input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required /></label>
-              <div className="actions">
-                <button disabled={loading}>로그인</button>
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={() => {
-                    setShowRecoveryInline((v) => !v)
-                    setRecoveryQuestion('')
-                    setRecoveryAnswer('')
-                  }}
-                >
-                  비밀번호 찾기
-                </button>
-              </div>
-
-              {showRecoveryInline && (
-                <div className="panel" style={{ marginTop: 8 }}>
-                  <h3>비밀번호 찾기</h3>
-                  <label>이메일<input value={recoveryEmail} onChange={(e) => setRecoveryEmail(e.target.value)} required /></label>
-                  {!recoveryQuestion ? (
-                    <button type="button" disabled={loading} onClick={() => void handleRequestRecoveryQuestion()}>보안질문 보기</button>
-                  ) : (
-                    <>
-                      <label>보안질문<input value={recoveryQuestion} readOnly /></label>
-                      <label>답변 입력<input value={recoveryAnswer} onChange={(e) => setRecoveryAnswer(e.target.value)} required /></label>
-                      <button type="button" disabled={loading} onClick={() => void handleVerifyRecoveryAnswer()}>답변 확인</button>
-                    </>
-                  )}
-                </div>
-              )}
-            </form>
-          )}
-
-          {accountMode === 'signup' && (
-            <form onSubmit={handleSignup} className="form">
-              <h2>회원가입</h2>
-              <label>이메일<input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} required /></label>
-              <label>비밀번호<input type="password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} required minLength={8} /></label>
-              <label>비밀번호 확인<input type="password" value={signupPasswordConfirm} onChange={(e) => setSignupPasswordConfirm(e.target.value)} required minLength={8} /></label>
-              <label>닉네임<input value={signupNickname} onChange={(e) => setSignupNickname(e.target.value)} required /></label>
-              <label>보안 질문 선택
-                <select value={signupSecurityQuestion} onChange={(e) => setSignupSecurityQuestion(e.target.value)}>
-                  {SECURITY_QUESTIONS.map((q) => <option key={q} value={q}>{q}</option>)}
-                </select>
-              </label>
-              <label>보안 질문 답<input value={signupSecurityAnswer} onChange={(e) => setSignupSecurityAnswer(e.target.value)} required /></label>
-              <p className="small">회원가입 후 첫 로그인 시 종합심리검사를 반드시 1회 진행해야 합니다.</p>
-              <button disabled={loading}>계정 생성</button>
-            </form>
-          )}
-
-          {accountMode === 'reset' && (
-            <form onSubmit={handleResetPassword} className="form">
-              <h2>비밀번호 변경</h2>
-              <label>새 비밀번호<input type="password" value={resetNewPassword} onChange={(e) => setResetNewPassword(e.target.value)} required minLength={8} /></label>
-              <label>새 비밀번호 확인<input type="password" value={resetNewPasswordConfirm} onChange={(e) => setResetNewPasswordConfirm(e.target.value)} required minLength={8} /></label>
-              <button disabled={loading}>비밀번호 변경</button>
-            </form>
-          )}
+          <h2>계정</h2>
+          <p>이미 로그인된 상태입니다. 상단 메뉴에서 체크인, 대화, 마이페이지 기능을 이용하세요.</p>
         </section>
       )}
 
@@ -3127,12 +3150,47 @@ function App() {
                 <ul className="probList">
                   {journalEntries.map((entry) => (
                     <li key={entry.id}>
-                      <span>{entry.entry_date} | {entry.title}</span>
+                      <span>
+                        {entry.entry_date} | {entry.title}
+                        {selectedJournalEntry?.id === entry.id ? ' (현재 조회 중)' : ''}
+                      </span>
                       <strong>{entry.content.slice(0, 80)}{entry.content.length > 80 ? '…' : ''}</strong>
+                      <div className="actions">
+                        <button
+                          type="button"
+                          className=""
+                          onClick={() => void handleOpenJournalEntry(entry.id)}
+                        >
+                          조회
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
               )}
+            </article>
+          )}
+
+          {selectedJournalEntry && (
+            <article className="panel" style={{ gridColumn: '1 / -1' }}>
+              <h3>선택한 일기 조회</h3>
+              <p><strong>{selectedJournalEntry.entry_date}</strong></p>
+              {selectedJournalEditing ? (
+                <>
+                  <label>제목<input value={selectedJournalTitleDraft} onChange={(e) => setSelectedJournalTitleDraft(e.target.value)} /></label>
+                  <label>내용<textarea rows={8} value={selectedJournalContentDraft} onChange={(e) => setSelectedJournalContentDraft(e.target.value)} /></label>
+                </>
+              ) : (
+                <>
+                  <p><strong>{selectedJournalEntry.title}</strong></p>
+                  <p>{selectedJournalEntry.content}</p>
+                </>
+              )}
+              <div className="actions">
+                <button type="button" onClick={() => void handleToggleSelectedJournalEdit()} disabled={loading}>
+                  {selectedJournalEditing ? '수정 완료' : '수정'}
+                </button>
+              </div>
             </article>
           )}
 

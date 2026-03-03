@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes_auth import get_current_user
+from app.services.admin_service import get_admin_email_set
 from app.core.config import settings
 from app.db.session import get_db
 from app.schemas.ai import (
@@ -37,7 +38,7 @@ async def predict_check_level(payload: CheckPredictRequest) -> CheckPredictRespo
     return CheckPredictResponse(
         prediction=pred,
         probabilities=probabilities,
-        model_path=settings.nowcast_model_dir,
+        model_path=settings.check_model_path,
     )
 
 
@@ -115,7 +116,15 @@ async def get_my_nowcast_dashboard(
 
  
 @router.get("/nowcast/dashboard/{user_id}", response_model=WeeklyDashboardResponse)
-async def get_nowcast_dashboard(user_id: str) -> WeeklyDashboardResponse:
+async def get_nowcast_dashboard(
+    user_id: str,
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> WeeklyDashboardResponse:
+    admin_emails = await get_admin_email_set(db)
+    is_admin = current_user.email.lower() in admin_emails
+    if str(current_user.id) != user_id and not is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="조회 권한이 없습니다.")
     try:
         rows = get_weekly_dashboard_rows(user_id=user_id)
     except FileNotFoundError as exc:

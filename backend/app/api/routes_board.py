@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import os
 import uuid
 from pathlib import Path
@@ -11,7 +12,7 @@ from sqlalchemy import Select, inspect, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes_auth import get_current_user
+from app.api.routes_auth import get_current_user, get_current_user_optional
 from app.core.config import settings
 from app.db import crud
 from app.db.models import AdminNotificationType, BoardCategory, User
@@ -49,6 +50,7 @@ _DEFAULT_RISK_KEYWORDS = [
 ]
 _ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 _MAX_IMAGE_BYTES = 5 * 1024 * 1024
+_MULTIPART_AVAILABLE = importlib.util.find_spec("multipart") is not None
 
 
 async def _ensure_board_schema(db: AsyncSession) -> None:
@@ -255,6 +257,18 @@ async def _map_detail(db: AsyncSession, post_id: UUID, viewer_id: UUID | None = 
     return BoardPostDetailOut(**base.model_dump(), comments=comment_out)
 
 
+async def _ensure_post_visible_for_viewer(db: AsyncSession, *, row, viewer: UserOut | None) -> None:
+    if not bool(getattr(row, "is_private", False)):
+        return
+    if viewer is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="비공개 게시글입니다.")
+    if row.author_id == viewer.id:
+        return
+    if await _is_admin_user(db, viewer):
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="비공개 게시글입니다.")
+
+
 @router.get("/posts", response_model=BoardPostListResponse)
 async def list_posts(
     page: int = Query(default=1, ge=1, le=2000),
@@ -262,9 +276,11 @@ async def list_posts(
     q: str | None = Query(default=None, min_length=1, max_length=200),
     category: BoardCategory | None = Query(default=None),
     mental_health_only: bool | None = Query(default=None),
+    current_user: UserOut | None = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db),
 ) -> BoardPostListResponse:
     await _ensure_board_schema(db)
+    viewer_is_admin = bool(current_user and await _is_admin_user(db, current_user))
     rows, total = await crud.list_board_posts(
         db,
         q=q,
@@ -272,6 +288,8 @@ async def list_posts(
         mental_health_only=mental_health_only,
         page=page,
         page_size=page_size,
+        viewer_id=(current_user.id if current_user else None),
+        viewer_is_admin=viewer_is_admin,
     )
     if not rows:
         return BoardPostListResponse(page=page, page_size=page_size, total=total, items=[])
@@ -282,10 +300,15 @@ async def list_posts(
 @router.get("/posts/{post_id}", response_model=BoardPostDetailOut)
 async def get_post(
     post_id: UUID,
+    current_user: UserOut | None = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db),
 ) -> BoardPostDetailOut:
     await _ensure_board_schema(db)
-    return await _map_detail(db, post_id, viewer_id=None)
+    row = await crud.get_board_post_by_id(db, post_id)
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="게시글을 찾을 수 없습니다.")
+    await _ensure_post_visible_for_viewer(db, row=row, viewer=current_user)
+    return await _map_detail(db, post_id, viewer_id=(current_user.id if current_user else None))
 
 
 @router.post("/posts", response_model=BoardPostOut, status_code=status.HTTP_201_CREATED)
@@ -346,29 +369,40 @@ async def create_post(
     return await _map_post(db, created, viewer_id=current_user.id)
 
 
-@router.post("/uploads/image")
-async def upload_board_image(
-    file: UploadFile = File(...),
-    current_user: UserOut = Depends(get_current_user),
-) -> dict[str, str]:
-    _ = current_user
-    ext = _resolve_file_extension(file)
-    if not ext:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="지원되지 않는 이미지 형식입니다. (jpg/jpeg/png/webp/gif)")
+if _MULTIPART_AVAILABLE:
+    @router.post("/uploads/image")
+    async def upload_board_image(
+        file: UploadFile = File(...),
+        current_user: UserOut = Depends(get_current_user),
+    ) -> dict[str, str]:
+        _ = current_user
+        ext = _resolve_file_extension(file)
+        if not ext:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="지원되지 않는 이미지 형식입니다. (jpg/jpeg/png/webp/gif)")
 
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="빈 파일은 업로드할 수 없습니다.")
-    if len(data) > _MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="이미지는 최대 5MB까지 업로드할 수 있습니다.")
+        data = await file.read()
+        if not data:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="빈 파일은 업로드할 수 없습니다.")
+        if len(data) > _MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="이미지는 최대 5MB까지 업로드할 수 있습니다.")
 
-    upload_dir = Path(settings.board_upload_dir)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{uuid.uuid4().hex}{ext}"
-    target = upload_dir / filename
-    target.write_bytes(data)
-    image_url = f"{settings.board_upload_public_prefix.rstrip('/')}/{filename}"
-    return {"image_url": image_url}
+        upload_dir = Path(settings.board_upload_dir)
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"{uuid.uuid4().hex}{ext}"
+        target = upload_dir / filename
+        target.write_bytes(data)
+        image_url = f"{settings.board_upload_public_prefix.rstrip('/')}/{filename}"
+        return {"image_url": image_url}
+else:
+    @router.post("/uploads/image")
+    async def upload_board_image_unavailable(
+        current_user: UserOut = Depends(get_current_user),
+    ) -> dict[str, str]:
+        _ = current_user
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="이미지 업로드 기능을 사용하려면 python-multipart 설치가 필요합니다.",
+        )
 
 
 @router.patch("/posts/{post_id}", response_model=BoardPostOut)
@@ -412,6 +446,7 @@ async def update_post(
             row,
             title=payload.title,
             content=payload.content,
+            image_url=payload.image_url if "image_url" in payload.model_fields_set else ...,
             category=BoardCategory.LEGACY_INQUIRY,
             is_notice=payload.is_notice,
             is_private=payload.is_private,

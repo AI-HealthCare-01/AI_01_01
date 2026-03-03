@@ -40,6 +40,7 @@ SECRET_KEY=change-this-to-a-long-random-secret
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/mental_health
+CORS_ALLOW_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 
 ADMIN_EMAILS=mongle@gmail.com
 
@@ -82,12 +83,25 @@ docker compose up -d --build
 - `POST /ai/check/predict`
 - `POST /ai/monitor/predict`
 - `POST /ai/nowcast/predict`
-- `GET /ai/nowcast/dashboard/{user_id}`
+- `GET /ai/nowcast/dashboard/me` (JWT 필요)
+- `GET /ai/nowcast/dashboard/{user_id}` (본인/관리자만)
 
 ## Notes
 - `POST /chat/cbt`는 답변 + 지표 추출(`distortion` 포함) 결과를 저장합니다.
-- `GET /ai/nowcast/dashboard/{user_id}`는 현재 synthetic user 기준(`U000001` 등)입니다.
+- `POST /chat/cbt` 요청은 `session_id(UUID)`를 포함해야 하며, 같은 세션 단위로 대화 상태를 추적합니다.
 - nowcast 모델은 `model/models/*.joblib`를 그대로 로드합니다.
+
+## Test (재현 가능한 로컬 경로)
+```bash
+# 권장: Docker 기반
+make test-docker
+
+# 로컬 venv 기반
+make test
+```
+
+- `python-multipart`가 설치되지 않으면 FastAPI 파일 업로드 라우트 때문에 pytest 수집 단계에서 실패합니다.
+- 로컬 실행 시 `pip install -r backend/requirements.txt`를 먼저 수행하세요.
 
 ## Disclaimer
 본 서비스는 자기 점검을 위한 참고 도구입니다. 의료 진단/치료 판단에 사용하지 마세요.

@@ -55,6 +55,11 @@ CHALLENGE_CATALOG_IDS = {
     "WALK_10MIN_3D",
     "WEEKLY_MINI_CHALLENGE",
 }
+FALLBACK_CHALLENGE_ROTATION = [
+    "SENSORY_MEDITATION",
+    "WALK_10MIN_3D",
+    "JOURNAL_STREAK",
+]
 COGNITIVE_STYLES = {
     "past_regret",
     "future_worry",
@@ -504,9 +509,15 @@ def _fallback_heuristic(
             cbt_phase=cbt_phase,
         )
 
-    default_challenges = ["WEEKLY_MINI_CHALLENGE"]
     candidate_ids = [c.strip() for c in (challenge_candidates or []) if c and c.strip() and c.strip() in CHALLENGE_CATALOG_IDS]
-    challenges = candidate_ids[:2] if candidate_ids else default_challenges
+    if candidate_ids:
+        challenges = candidate_ids[:2]
+    else:
+        start = sum(ord(c) for c in text) % len(FALLBACK_CHALLENGE_ROTATION)
+        challenges = [
+            FALLBACK_CHALLENGE_ROTATION[start],
+            FALLBACK_CHALLENGE_ROTATION[(start + 1) % len(FALLBACK_CHALLENGE_ROTATION)],
+        ]
 
     challenge_completed = bool(active_challenge and any(hint in text for hint in COMPLETION_HINTS))
     completion_message = "챌린지 수행을 완료하였습니다." if challenge_completed else None

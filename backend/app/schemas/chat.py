@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, conint, constr
 
 MessageStr = constr(min_length=1, max_length=1200)
 ChallengeStr = constr(min_length=1, max_length=160)
+SessionIdStr = constr(pattern=r"^[0-9a-fA-F-]{36}$")
 CbtPhase = Literal["EMOTION", "SITUATION", "THOUGHT", "DISTORTION", "REFRAME", "ACTION"]
 IntentLevel = Literal["none", "passive", "active"]
 CrisisLevel = Literal["none", "moderate", "high"]
@@ -92,6 +93,7 @@ class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     message: MessageStr = Field(description="사용자 입력 메시지")
+    session_id: SessionIdStr
     active_challenge: ChallengeStr | None = None
     challenge_phase: Literal["start", "continue", "reflect"] | None = None
     cbt_phase: CbtPhase | None = None
@@ -113,6 +115,7 @@ class ChatResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     reply: str
+    session_id: SessionIdStr
     disclaimer: str
     timestamp: datetime
     extracted: ExtractedIndicators

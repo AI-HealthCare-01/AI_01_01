@@ -7,7 +7,7 @@ import CbtCrisisBanner from './components/CbtCrisisBanner'
 
 type PageKey = 'landing' | 'account' | 'checkin' | 'dashboard' | 'diary' | 'journal' | 'challenge' | 'assessment' | 'board' | 'mypage' | 'admin'
 type AccountMode = 'login' | 'signup' | 'reset'
-type MyPageTab = 'profile' | 'report'
+type MyPageTab = 'profile' | 'report' | 'bookmarks'
 type DashboardTab = 'today' | 'risk' | 'weekly' | 'monthly'
 type TestKey = 'PHQ' | 'GAD' | 'ISI'
 
@@ -218,6 +218,18 @@ type RecommendedPost = {
   title: string
   likes_count: number
   comments_count: number
+}
+
+type BookmarkedBoardPost = {
+  id: string
+  title: string
+  category: string
+  author_nickname: string
+  image_url: string | null
+  likes_count: number
+  comments_count: number
+  bookmarks_count: number
+  created_at: string
 }
 
 type TestProgress = {
@@ -1076,6 +1088,7 @@ function App() {
   const [contentCatalog, setContentCatalog] = useState<ContentChallengeCatalogItem[]>([])
   const [contentLogs, setContentLogs] = useState<ContentChallengeLogItem[]>([])
   const [recommendedPosts, setRecommendedPosts] = useState<RecommendedPost[]>([])
+  const [bookmarkedPosts, setBookmarkedPosts] = useState<BookmarkedBoardPost[]>([])
   const [selectedContentTitle, setSelectedContentTitle] = useState('')
   const [contentDuration, setContentDuration] = useState('')
   const [contentDetail, setContentDetail] = useState('')
@@ -1137,6 +1150,7 @@ function App() {
       setCheckinSummaryText('')
       setAutoCbtStarted(false)
       setRecommendedPosts([])
+      setBookmarkedPosts([])
       setChatSessionId(createChatSessionId())
       setPage('account')
       return
@@ -1150,6 +1164,7 @@ function App() {
     void loadContentCatalog()
     void loadContentLogs()
     void loadRecommendedPosts()
+    void loadMyBookmarkedPosts()
     void loadJournalEntries()
     setPage('checkin')
   }, [token])
@@ -1451,6 +1466,18 @@ function App() {
       setRecommendedPosts(items)
     } catch (error) {
       setMessage(`추천 게시물 조회 오류: ${(error as Error).message}`)
+    }
+  }
+
+  async function loadMyBookmarkedPosts() {
+    if (!token) return
+    try {
+      const response = await fetch(`${API_BASE}/board/me/bookmarks?limit=60`, { headers: authHeaders })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      const data = (await response.json()) as { items?: BookmarkedBoardPost[] }
+      setBookmarkedPosts(data.items ?? [])
+    } catch (error) {
+      setMessage(`북마크 게시물 조회 오류: ${(error as Error).message}`)
     }
   }
 
@@ -3424,6 +3451,7 @@ function App() {
             <div className="sideMenu">
               <button className={myTab === 'profile' ? '' : 'ghost'} onClick={() => setMyTab('profile')}>회원정보 수정</button>
               <button className={myTab === 'report' ? '' : 'ghost'} onClick={() => setMyTab('report')}>요약리포트</button>
+              <button className={myTab === 'bookmarks' ? '' : 'ghost'} onClick={() => setMyTab('bookmarks')}>북마크 게시물</button>
             </div>
           </aside>
 
@@ -3520,6 +3548,39 @@ function App() {
 
                   <p className="small" style={{ marginTop: 10 }}>{clinicalReport.clinician_note}</p>
                 </div>
+              )}
+            </article>
+          )}
+
+          {myTab === 'bookmarks' && (
+            <article className="panel myMainPanel">
+              <h2>북마크한 게시물</h2>
+              <p className="small">저장해둔 게시물을 다시 확인할 수 있습니다.</p>
+              <div className="actions">
+                <button type="button" className="ghost" onClick={() => void loadMyBookmarkedPosts()} disabled={loading}>새로고침</button>
+              </div>
+              {bookmarkedPosts.length === 0 ? (
+                <p className="small">북마크한 게시물이 없습니다.</p>
+              ) : (
+                <ul className="probList">
+                  {bookmarkedPosts.map((post) => (
+                    <li key={`bookmark-post-${post.id}`}>
+                      <span>{post.title}</span>
+                      <strong>{post.category} · {post.author_nickname} · {new Date(post.created_at).toLocaleString('ko-KR')}</strong>
+                      <strong>좋아요 {post.likes_count} · 댓글 {post.comments_count} · 북마크 {post.bookmarks_count}</strong>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => {
+                          setBoardFocusPostId(post.id)
+                          setPage('board')
+                        }}
+                      >
+                        게시글 열기
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
             </article>
           )}

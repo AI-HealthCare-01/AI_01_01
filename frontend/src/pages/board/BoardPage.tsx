@@ -15,6 +15,7 @@ import {
   fetchBoardPosts,
   reportBoardPost,
   resolveBoardImageUrl,
+  serializeBoardImageUrls,
   toggleBoardBookmark,
   toggleBoardLike,
   uploadBoardImage,
@@ -29,6 +30,7 @@ type BoardPageProps = {
 }
 
 const PAGE_SIZE = 10
+const MAX_IMAGES_PER_POST = 5
 type CategoryInput = '' | BoardCategory | '공지' | '정신건강포스팅'
 type CategoryFilterInput = '' | BoardCategory | '정신건강포스팅'
 type EditorMode = 'list' | 'create' | 'edit'
@@ -47,6 +49,80 @@ function getPreviewText(content: string, maxLength = 180): string {
   const flat = content.replace(/\s+/g, ' ').trim()
   if (flat.length <= maxLength) return flat
   return `${flat.slice(0, maxLength)}...`
+}
+
+function parseEditorImageUrls(raw: string): string[] {
+  return raw
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function isValidBoardImageUrl(url: string): boolean {
+  return /^(https?:\/\/\S+|\/uploads\/\S+)$/i.test(url)
+}
+
+function FallbackImage({
+  urls,
+  alt,
+  className,
+  loading = 'lazy',
+}: {
+  urls: string[]
+  alt: string
+  className?: string
+  loading?: 'lazy' | 'eager'
+}) {
+  const normalized = urls.map((item) => item.trim()).filter(Boolean)
+  const [index, setIndex] = useState(0)
+
+  useEffect(() => {
+    setIndex(0)
+  }, [normalized.join('|')])
+
+  if (!normalized.length || index >= normalized.length) return null
+
+  return (
+    <img
+      className={className}
+      src={resolveBoardImageUrl(normalized[index])}
+      alt={alt}
+      loading={loading}
+      onError={() => setIndex((prev) => prev + 1)}
+    />
+  )
+}
+
+function SafeImageFigure({
+  figureClassName,
+  imageClassName,
+  url,
+  alt,
+}: {
+  figureClassName: string
+  imageClassName?: string
+  url: string
+  alt: string
+}) {
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    setFailed(false)
+  }, [url])
+
+  if (failed || !url.trim()) return null
+
+  return (
+    <figure className={figureClassName}>
+      <img
+        className={imageClassName}
+        src={resolveBoardImageUrl(url)}
+        alt={alt}
+        loading="lazy"
+        onError={() => setFailed(true)}
+      />
+    </figure>
+  )
 }
 
 export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: BoardPageProps) {
@@ -71,6 +147,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
 
   const [commentInput, setCommentInput] = useState('')
   const [adminReplyInput, setAdminReplyInput] = useState('')
+  const editorImageUrls = parseEditorImageUrls(imageUrlInput)
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const pageNumbers = (() => {
@@ -100,7 +177,12 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
       if (data.items.length > 0) {
         const keepId = preferredSelectedId ?? selectedId
         const exists = keepId ? data.items.some((item) => item.id === keepId) : false
-        setSelectedId(exists ? keepId : data.items[0].id)
+        if (exists) {
+          setSelectedId(keepId)
+        } else {
+          setSelectedId(null)
+          setSelectedDetail(null)
+        }
       } else {
         setSelectedId(preferredSelectedId)
         if (!preferredSelectedId) setSelectedDetail(null)
@@ -155,7 +237,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
     setEditId(post.id)
     setTitle(post.title)
     setContent(post.content)
-    setImageUrlInput(post.image_url ?? '')
+    setImageUrlInput(post.image_urls.join(', '))
     if (post.is_notice) {
       setCategoryInput('공지')
     } else if (post.is_mental_health_post) {
@@ -181,11 +263,16 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
       setMessage('제목과 내용을 입력하세요.')
       return
     }
-    const normalizedImageUrl = imageUrlInput.trim()
-    if (normalizedImageUrl && !/^(https?:\/\/\S+|\/uploads\/\S+)$/i.test(normalizedImageUrl)) {
-      setMessage('이미지 URL은 http://, https:// 또는 /uploads/... 형식으로 입력하세요.')
+    const normalizedImageUrls = parseEditorImageUrls(imageUrlInput)
+    if (normalizedImageUrls.length > MAX_IMAGES_PER_POST) {
+      setMessage(`이미지는 최대 ${MAX_IMAGES_PER_POST}장까지 등록할 수 있습니다.`)
       return
     }
+    if (normalizedImageUrls.some((url) => !isValidBoardImageUrl(url))) {
+      setMessage('이미지 URL은 http://, https:// 또는 /uploads/... 형식으로 입력하세요. 여러 장은 쉼표(,)로 구분합니다.')
+      return
+    }
+    const serializedImageUrl = serializeBoardImageUrls(normalizedImageUrls)
 
     const isNotice = categoryInput === '공지'
     const isMental = categoryInput === '정신건강포스팅'
@@ -198,7 +285,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
         const updated = await updateBoardPost(token, editId, {
           title: title.trim(),
           content: content.trim(),
-          image_url: normalizedImageUrl || null,
+          image_url: serializedImageUrl,
           category,
           is_notice: isNotice,
           is_private: isPrivateInput,
@@ -210,7 +297,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
         const created = await createBoardPost(token, {
           title: title.trim(),
           content: content.trim(),
-          image_url: normalizedImageUrl || null,
+          image_url: serializedImageUrl,
           category,
           is_notice: isNotice,
           is_private: isPrivateInput,
@@ -234,16 +321,31 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
     }
   }
 
-  async function handleUploadImageFile(file: File) {
+  async function handleUploadImageFileList(files: FileList) {
     if (!token) {
       setMessage('로그인 후 이미지 업로드가 가능합니다.')
       return
     }
+    if (!files.length) return
+
+    const currentImages = parseEditorImageUrls(imageUrlInput)
+    const availableSlots = MAX_IMAGES_PER_POST - currentImages.length
+    if (availableSlots <= 0) {
+      setMessage(`이미지는 최대 ${MAX_IMAGES_PER_POST}장까지 등록할 수 있습니다.`)
+      return
+    }
+
+    const targets = Array.from(files).slice(0, availableSlots)
+    const uploaded: string[] = []
     setImageUploading(true)
     try {
-      const result = await uploadBoardImage(token, file)
-      setImageUrlInput(result.image_url)
-      setMessage('이미지가 업로드되었습니다.')
+      for (const file of targets) {
+        const result = await uploadBoardImage(token, file)
+        uploaded.push(result.image_url)
+      }
+      const next = [...currentImages, ...uploaded]
+      setImageUrlInput(next.join(', '))
+      setMessage(`${uploaded.length}개 이미지가 업로드되었습니다.`)
     } catch (error) {
       setMessage(`이미지 업로드 오류: ${(error as Error).message}`)
     } finally {
@@ -405,23 +507,26 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
           )}
           <label>제목 입력<input value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
           <label>
-            이미지 업로드 (선택)
+            이미지 업로드 (선택, 최대 5장)
             <input
               type="file"
               accept="image/*"
+              multiple
               onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) void handleUploadImageFile(file)
+                const files = e.target.files
+                if (files?.length) void handleUploadImageFileList(files)
                 e.currentTarget.value = ''
               }}
             />
           </label>
-          <label>이미지 URL (자동 입력/수동 가능)<input value={imageUrlInput} onChange={(e) => setImageUrlInput(e.target.value)} placeholder="https://... 또는 /uploads/..." /></label>
+          <label>이미지 URL (자동 입력/수동 가능, 여러 장은 쉼표로 구분)<input value={imageUrlInput} onChange={(e) => setImageUrlInput(e.target.value)} placeholder="https://... , /uploads/..." /></label>
           {imageUploading && <p className="small">이미지 업로드 중...</p>}
-          {imageUrlInput && (
-            <figure className="boardEditorPreview">
-              <img src={resolveBoardImageUrl(imageUrlInput)} alt="업로드 미리보기" />
-            </figure>
+          {editorImageUrls.length > 0 && (
+            <div className="boardEditorPreviewGrid">
+              {editorImageUrls.map((url, idx) => (
+                <SafeImageFigure key={`editor-image-${idx}`} figureClassName="boardEditorPreview" url={url} alt={`업로드 미리보기 ${idx + 1}`} />
+              ))}
+            </div>
           )}
           <label>내용 입력<textarea value={content} onChange={(e) => setContent(e.target.value)} rows={10} required /></label>
           <div className="actions">
@@ -473,10 +578,10 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
                 {post.is_private && <em className="noticeTag">비공개</em>}
               </div>
               <strong className="boardThreadTitle">{post.title}</strong>
-              {post.image_url && (
+              {post.image_urls.length > 0 && (
                 <div className="boardThumbWrap">
-                  <span className="noticeTag imageTag">IMG</span>
-                  <img className="boardThumb" src={resolveBoardImageUrl(post.image_url)} alt={`${post.title} 이미지`} loading="lazy" />
+                  <span className="noticeTag imageTag">IMG {post.image_urls.length}</span>
+                  <FallbackImage className="boardThumb" urls={post.image_urls} alt={`${post.title} 이미지`} />
                 </div>
               )}
               <p className="boardThreadPreview">{getPreviewText(post.content)}</p>
@@ -510,10 +615,18 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
             <>
               <h3>{selectedDetail.title}</h3>
               <p className="small">{getPostTypeLabel(selectedDetail)} · {selectedDetail.author_nickname} · {new Date(selectedDetail.created_at).toLocaleString('ko-KR')}</p>
-              {selectedDetail.image_url && (
-                <figure className="boardDetailImageWrap">
-                  <img className="boardDetailImage" src={resolveBoardImageUrl(selectedDetail.image_url)} alt={`${selectedDetail.title} 이미지`} loading="lazy" />
-                </figure>
+              {selectedDetail.image_urls.length > 0 && (
+                <div className="boardDetailImageGrid">
+                  {selectedDetail.image_urls.map((url, idx) => (
+                    <SafeImageFigure
+                      key={`detail-image-${idx}`}
+                      figureClassName="boardDetailImageWrap"
+                      imageClassName="boardDetailImage"
+                      url={url}
+                      alt={`${selectedDetail.title} 이미지 ${idx + 1}`}
+                    />
+                  ))}
+                </div>
               )}
               <pre className="boardContent">{selectedDetail.content}</pre>
 

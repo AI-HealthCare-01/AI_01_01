@@ -151,13 +151,26 @@
   margin: 0.45rem 0 0.2rem;
 }
 
+.boardDetailImageGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.45rem;
+}
+
 .boardDetailImage {
   width: 100%;
-  max-height: 420px;
-  object-fit: contain;
+  height: 220px;
+  object-fit: cover;
   border: 1px solid #dbe3e8;
   border-radius: 14px;
   background: #f8fafc;
+}
+
+.boardEditorPreviewGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
 }
 
 .boardEditorPreview {
@@ -166,7 +179,7 @@
 
 .boardEditorPreview img {
   width: 100%;
-  max-height: 260px;
+  height: 140px;
   object-fit: cover;
   border: 1px solid #dbe3e8;
   border-radius: 12px;
@@ -240,5 +253,13 @@
   .boardList,
   .boardDetail {
     border-radius: 18px;
+  }
+
+  .boardDetailImageGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .boardEditorPreviewGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -21,6 +21,7 @@ export type BoardPost = {
   title: string
   content: string
   image_url: string | null
+  image_urls: string[]
   is_notice: boolean
   is_private: boolean
   is_mental_health_post: boolean
@@ -42,6 +43,38 @@ export type BoardPostListResponse = {
   page_size: number
   total: number
   items: BoardPost[]
+}
+
+const IMAGE_URL_SEPARATOR = ','
+
+export function splitBoardImageUrls(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  return raw
+    .split(IMAGE_URL_SEPARATOR)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+export function serializeBoardImageUrls(urls: string[]): string | null {
+  const cleaned = urls.map((item) => item.trim()).filter(Boolean)
+  if (!cleaned.length) return null
+  return cleaned.join(IMAGE_URL_SEPARATOR)
+}
+
+function normalizeBoardPost(post: Omit<BoardPost, 'image_urls'> & Partial<Pick<BoardPost, 'image_urls'>>): BoardPost {
+  const imageUrls = splitBoardImageUrls(post.image_url)
+  return {
+    ...post,
+    image_url: imageUrls[0] ?? null,
+    image_urls: imageUrls,
+  }
+}
+
+function normalizeBoardListResponse(data: BoardPostListResponse): BoardPostListResponse {
+  return {
+    ...data,
+    items: data.items.map((item) => normalizeBoardPost(item)),
+  }
 }
 
 type CreatePayload = {
@@ -110,7 +143,8 @@ export async function fetchBoardPosts(params: {
     response = await fetchBoardListWithCategory(params, '질문')
   }
   if (!response.ok) throw new Error(await readError(response))
-  return (await response.json()) as BoardPostListResponse
+  const data = (await response.json()) as BoardPostListResponse
+  return normalizeBoardListResponse(data)
 }
 
 export async function fetchBoardPostDetail(postId: string, token?: string): Promise<BoardPostDetail> {
@@ -118,7 +152,8 @@ export async function fetchBoardPostDetail(postId: string, token?: string): Prom
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   })
   if (!response.ok) throw new Error(await readError(response))
-  return (await response.json()) as BoardPostDetail
+  const data = (await response.json()) as BoardPostDetail
+  return normalizeBoardPost(data) as BoardPostDetail
 }
 
 async function tryWriteWithFallbacks(
@@ -185,13 +220,15 @@ async function tryWriteWithFallbacks(
 export async function createBoardPost(token: string, payload: CreatePayload): Promise<BoardPost> {
   const response = await tryWriteWithFallbacks('POST', `${API_BASE}/board/posts`, token, payload)
   if (!response.ok) throw new Error(await readError(response))
-  return (await response.json()) as BoardPost
+  const data = (await response.json()) as BoardPost
+  return normalizeBoardPost(data)
 }
 
 export async function updateBoardPost(token: string, postId: string, payload: UpdatePayload): Promise<BoardPost> {
   const response = await tryWriteWithFallbacks('PATCH', `${API_BASE}/board/posts/${postId}`, token, payload)
   if (!response.ok) throw new Error(await readError(response))
-  return (await response.json()) as BoardPost
+  const data = (await response.json()) as BoardPost
+  return normalizeBoardPost(data)
 }
 
 export async function deleteBoardPost(token: string, postId: string): Promise<void> {
@@ -245,6 +282,17 @@ export async function toggleBoardBookmark(token: string, postId: string): Promis
   })
   if (!response.ok) throw new Error(await readError(response))
   return (await response.json()) as { active: boolean; count: number }
+}
+
+export async function fetchMyBookmarkedPosts(token: string, limit = 50): Promise<BoardPostListResponse> {
+  const qs = new URLSearchParams()
+  qs.set('limit', String(limit))
+  const response = await fetch(`${API_BASE}/board/me/bookmarks?${qs.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) throw new Error(await readError(response))
+  const data = (await response.json()) as BoardPostListResponse
+  return normalizeBoardListResponse(data)
 }
 
 export async function uploadBoardImage(token: string, file: File): Promise<{ image_url: string }> {

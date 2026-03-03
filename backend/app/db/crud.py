@@ -355,6 +355,24 @@ async def list_board_posts(
     return rows, total
 
 
+async def list_bookmarked_board_posts_for_user(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    limit: int = 50,
+) -> list[BoardPost]:
+    visibility_cond = or_(BoardPost.is_private.is_(False), BoardPost.author_id == user_id)
+    stmt: Select[tuple[BoardPost]] = (
+        select(BoardPost)
+        .join(BoardPostBookmark, BoardPostBookmark.post_id == BoardPost.id)
+        .where(BoardPostBookmark.user_id == user_id)
+        .where(visibility_cond)
+        .order_by(desc(BoardPostBookmark.created_at))
+        .limit(limit)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def update_board_post(
     db: AsyncSession,
     row: BoardPost,

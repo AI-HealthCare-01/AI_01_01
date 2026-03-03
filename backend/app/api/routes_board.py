@@ -297,6 +297,18 @@ async def list_posts(
     return BoardPostListResponse(page=page, page_size=page_size, total=total, items=items)
 
 
+@router.get("/me/bookmarks", response_model=BoardPostListResponse)
+async def list_my_bookmarks(
+    limit: int = Query(default=30, ge=1, le=100),
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> BoardPostListResponse:
+    await _ensure_board_schema(db)
+    rows = await crud.list_bookmarked_board_posts_for_user(db, user_id=current_user.id, limit=limit)
+    items = [await _map_post(db, row, viewer_id=current_user.id) for row in rows]
+    return BoardPostListResponse(page=1, page_size=limit, total=len(items), items=items)
+
+
 @router.get("/posts/{post_id}", response_model=BoardPostDetailOut)
 async def get_post(
     post_id: UUID,

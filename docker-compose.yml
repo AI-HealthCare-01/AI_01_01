@@ -29,6 +29,9 @@ services:
     volumes:
       - ./AI:/AI:ro
       - ./model:/model:ro
+      - board_uploads_data:/var/lib/board_uploads
+    environment:
+      BOARD_UPLOAD_DIR: /var/lib/board_uploads
     ports:
       - "${API_PORT:-8001}:8000"
 
@@ -59,3 +62,4 @@ services:
 
 volumes:
   postgres_data:
+  board_uploads_data:

@@ -2583,7 +2583,7 @@ function App() {
     }
     setMenuPinnedByClick(false)
     if (item.action.type === 'logout') {
-      logout()
+      setLogoutConfirmOpen(true)
       setTopMenuOpen(false)
       return
     }

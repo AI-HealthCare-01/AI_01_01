@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, KeyboardEvent, RefObject } from 'react'
 import './App.css'
 import AdminPage from './pages/admin/AdminPage'
 import BoardPage from './pages/board/BoardPage'
@@ -8,7 +8,7 @@ type PageKey = 'landing' | 'account' | 'checkin' | 'dashboard' | 'diary' | 'jour
 type AccountMode = 'login' | 'signup' | 'reset'
 type MyPageTab = 'profile' | 'report'
 type DashboardTab = 'today' | 'risk' | 'weekly' | 'monthly'
-type LikertValue = '' | '0' | '1' | '2' | '3'
+type TestKey = 'PHQ' | 'GAD' | 'ISI'
 
 type UserOut = {
   id: string
@@ -41,6 +41,13 @@ type CheckPredictResponse = {
   probabilities: Record<string, number>
   model_path: string
 }
+type RiskLevel = 'low' | 'moderate' | 'high'
+type AssessmentReportInput = {
+  phq_score: number
+  gad_score: number
+  isi_score: number
+  risk_level: RiskLevel
+}
 
 type ProfileOut = {
   email: string
@@ -53,7 +60,7 @@ type RecoveryQuestionResponse = { question: string }
 type RecoveryVerifyResponse = { matched: boolean }
 
 type ChatRole = 'user' | 'assistant'
-type ChatTurn = { role: ChatRole; content: string; loading?: boolean }
+type ChatTurn = { role: ChatRole; content: string; loading?: boolean; createdAt?: number }
 type ChatHistoryPayloadTurn = { role: ChatRole; content: string }
 
 type ChatResponse = {
@@ -66,6 +73,25 @@ type ChatResponse = {
     avoidance_0_10: number
     sleep_difficulty_0_10: number
     distortion: Record<string, number>
+    thought_web?: {
+      situation: string
+      thought: string
+      emotion: Array<{ label: string; intensity_0_10: number }>
+      sensation: string[]
+      intermediate_belief: string
+      core_belief: string
+      core_experience_hint?: string | null
+      cognitive_style: 'past_regret' | 'future_worry' | 'self_critical' | 'control_fixation' | 'over_responsibility'
+      practice_point: string
+    } | null
+    suicide_risk_flag?: boolean
+    intent_level?: 'none' | 'passive' | 'active'
+    plan_means_flag?: boolean
+    crisis_lock_remaining?: number
+    crisis_stage?: 'A' | 'B' | 'C' | null
+    crisis_hotline_count?: number
+    crisis_template_index?: number
+    violent_risk_flag?: boolean
   }
   suggested_challenges: string[]
   active_challenge?: string | null
@@ -80,6 +106,10 @@ type ChatResponse = {
     next_action: string
     encouragement: string
   }
+  crisis_mode?: boolean
+  crisis_level?: 'none' | 'moderate' | 'high'
+  crisis_stage?: 'A' | 'B' | 'C' | null
+  crisis_actions?: string[]
 }
 
 type WeeklyDashboardRow = {
@@ -186,18 +216,12 @@ type RecommendedPost = {
   comments_count: number
 }
 
-type AssessmentState = {
-  phq9: LikertValue[]
-  gad7: LikertValue[]
-  sleep: LikertValue[]
-  context: {
-    daily_functioning: LikertValue
-    stressful_event: LikertValue
-    social_support: LikertValue
-    coping_skill: LikertValue
-    motivation_for_change: LikertValue
-  }
+type TestProgress = {
+  index: number
+  answers: Array<number | null>
 }
+
+type AssessmentFlowState = Record<TestKey, TestProgress>
 
 type LifestyleCheckinState = {
   mood_score: string
@@ -214,15 +238,20 @@ type LifestyleCheckinState = {
   sleep_quality_0_10_today: string
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8001'
+type MenuNavAction =
+  | { type: 'page'; page: PageKey }
+  | { type: 'account'; mode: AccountMode }
+  | { type: 'logout' }
 
-const LIKERT_OPTIONS: Array<{ value: LikertValue; label: string }> = [
-  { value: '', label: '선택해주세요' },
-  { value: '0', label: '전혀 그렇지 않았어요' },
-  { value: '1', label: '가끔 그랬어요' },
-  { value: '2', label: '자주 그랬어요' },
-  { value: '3', label: '거의 대부분 그랬어요' },
-]
+type MenuItem = {
+  key: string
+  label: string
+  icon: string
+  active: boolean
+  action: MenuNavAction
+}
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8001'
 
 const SECURITY_QUESTIONS = [
   '가장 기억에 남는 어린 시절 별명은?',
@@ -259,21 +288,23 @@ const SLEEP_QUESTIONS = [
   '수면 문제 때문에 낮 시간의 컨디션이 떨어졌나요?',
 ]
 
-function initLikertArray(length: number): LikertValue[] {
-  return Array.from({ length }, () => '') as LikertValue[]
+const SLIDER_LABELS = ['전혀 없음', '며칠 동안', '일주일 이상', '거의 매일']
+
+function initScoreArray(length: number): Array<number | null> {
+  return Array.from({ length }, () => null)
 }
 
-const defaultAssessment: AssessmentState = {
-  phq9: initLikertArray(9),
-  gad7: initLikertArray(7),
-  sleep: initLikertArray(3),
-  context: {
-    daily_functioning: '',
-    stressful_event: '',
-    social_support: '',
-    coping_skill: '',
-    motivation_for_change: '',
-  },
+const defaultAssessmentFlow: AssessmentFlowState = {
+  PHQ: { index: 0, answers: initScoreArray(PHQ9_QUESTIONS.length) },
+  GAD: { index: 0, answers: initScoreArray(GAD7_QUESTIONS.length) },
+  ISI: { index: 0, answers: initScoreArray(SLEEP_QUESTIONS.length) },
+}
+
+const DUMMY_REPORT_DATA: AssessmentReportInput = {
+  phq_score: 12,
+  gad_score: 10,
+  isi_score: 8,
+  risk_level: 'moderate',
 }
 
 const defaultCheckin: LifestyleCheckinState = {
@@ -291,16 +322,337 @@ const defaultCheckin: LifestyleCheckinState = {
   sleep_quality_0_10_today: '',
 }
 
-function sumLikert(values: LikertValue[]): number {
-  return values.reduce((acc, v) => acc + Number(v || 0), 0)
+function calculateRiskLevel(phq: number, gad: number, isi: number): RiskLevel {
+  if (phq >= 15 || gad >= 15 || isi >= 15) return 'high'
+  if (phq >= 8 || gad >= 8 || isi >= 8) return 'moderate'
+  return 'low'
 }
 
-function severityToKorean(level: number): string {
-  if (level <= 0) return '낮은 수준'
-  if (level === 1) return '경미한 수준'
-  if (level === 2) return '비교적 높은 수준'
-  if (level === 3) return '높은 수준'
-  return '매우 높은 수준'
+function riskSummaryText(risk: RiskLevel): string {
+  if (risk === 'high') return '전문적인 관리가 필요합니다.'
+  if (risk === 'moderate') return '주의 깊은 관리가 필요합니다.'
+  return '전반적으로 안정적인 상태입니다.'
+}
+
+function metricInterpretation(metric: 'PHQ-9' | 'GAD-7' | 'ISI', score: number): string {
+  if (metric === 'PHQ-9') {
+    if (score >= 15) return '우울 증상이 뚜렷하게 관찰됩니다. 에너지 저하와 자기비난이 반복될 수 있어요.'
+    if (score >= 8) return '기분 저하가 누적되는 구간입니다. 수면·활동 리듬 관리가 중요합니다.'
+    return '현재 우울 지표는 비교적 안정 범위입니다. 일상 루틴을 유지해 주세요.'
+  }
+  if (metric === 'GAD-7') {
+    if (score >= 15) return '불안 긴장이 높은 상태입니다. 예측성 걱정과 신체 긴장이 동반될 수 있어요.'
+    if (score >= 8) return '스트레스 반응이 증가한 상태입니다. 과호흡·반추 관리가 필요합니다.'
+    return '불안 지표는 안정 범위에 가깝습니다. 과부하 신호만 주기적으로 점검해 주세요.'
+  }
+  if (score >= 15) return '수면 유지/입면 어려움이 심한 구간입니다. 수면 위생 루틴 강화가 필요합니다.'
+  if (score >= 8) return '수면 회복력이 다소 떨어진 상태입니다. 취침 전 루틴을 일정하게 유지해 보세요.'
+  return '수면 지표는 비교적 안정적입니다. 기상/취침 시간을 일정하게 가져가면 좋습니다.'
+}
+
+function ReportHeader({ riskLevel, reportDate }: { riskLevel: RiskLevel; reportDate: string }) {
+  return (
+    <header className="reportHeader">
+      <div>
+        <h3>검사 결과 분석 리포트</h3>
+        <p className={`reportRiskBadge reportSummaryBadge ${riskLevel}`}>
+          예측 결과: {riskLevel === 'high' ? '매우 높은 수준의 관리와 관심이 필요합니다.' : riskSummaryText(riskLevel)}
+        </p>
+      </div>
+      <div className="reportHeaderRight">
+        <span>{reportDate}</span>
+        <button type="button" className="ghost">share</button>
+      </div>
+    </header>
+  )
+}
+
+function ScoreGauge({
+  label,
+  value,
+  max,
+  accent = '#0f172a',
+}: {
+  label: string
+  value: number
+  max: number
+  accent?: string
+}) {
+  const radius = 45
+  const circumference = 2 * Math.PI * radius
+  const pct = clampPercent((value / max) * 100)
+  const dashOffset = circumference * (1 - pct / 100)
+  return (
+    <div className="reportGaugeItem">
+      <div className="reportGaugeWrap">
+        <svg viewBox="0 0 100 100" className="reportGaugeSvg" aria-hidden="true">
+          <circle cx="50" cy="50" r={radius} fill="none" stroke="#E5E7EB" strokeWidth="8" />
+          <circle
+            cx="50"
+            cy="50"
+            r={radius}
+            fill="none"
+            stroke={accent}
+            strokeWidth="8"
+            strokeDasharray={circumference}
+            strokeDashoffset={dashOffset}
+            className="reportGaugeRing"
+          />
+        </svg>
+        <div className="reportGaugeCenter">
+          <span>{value}</span>
+          <small>{label}</small>
+        </div>
+      </div>
+      <p>{label === 'PHQ-9' ? '우울' : label === 'GAD-7' ? '불안' : '불면'}</p>
+    </div>
+  )
+}
+
+function TripleGaugeSection({ phqScore, gadScore, isiScore }: { phqScore: number; gadScore: number; isiScore: number }) {
+  return (
+    <div className="reportGaugeGroup">
+      <ScoreGauge label="PHQ-9" value={phqScore} max={27} />
+      <ScoreGauge label="GAD-7" value={gadScore} max={21} />
+      <ScoreGauge label="ISI" value={isiScore} max={21} accent="#B8FFA9" />
+    </div>
+  )
+}
+
+function OverallAnalysisCard({ riskLevel, phqScore, gadScore, isiScore }: { riskLevel: RiskLevel; phqScore: number; gadScore: number; isiScore: number }) {
+  const normalizedAverage = ((phqScore / 27) + (gadScore / 21) + (isiScore / 21)) / 3
+  const mentalEnergy = Math.max(0, Math.round((1 - normalizedAverage) * 100))
+  const riskLabel = riskLevel === 'high' ? '고위험군' : riskLevel === 'moderate' ? '중등도 위험' : '안정군'
+  return (
+    <section className="reportOverallCard">
+      <div>
+        <h4>종합 멘탈 밸런스</h4>
+        <p className="reportOverallText">
+          현재 우울, 불안, 불면 지표를 종합하면 지속적인 관리가 필요합니다.
+          특히 수면 회복을 먼저 개선하면 정서 안정에 도움됩니다.
+        </p>
+      </div>
+      <div className="reportOverallBottom">
+        <div className="reportRiskBlock">
+          <p>종합 위험도</p>
+          <strong>{riskLabel}</strong>
+        </div>
+        <div className="reportEnergyCard">
+          <span>심리 에너지</span>
+          <strong>{mentalEnergy}%</strong>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function MetricCard({ title, score, maxScore }: { title: 'PHQ-9' | 'GAD-7' | 'ISI'; score: number; maxScore: number }) {
+  const risk = calculateRiskLevel(title === 'PHQ-9' ? score : 0, title === 'GAD-7' ? score : 0, title === 'ISI' ? score : 0)
+  const label = risk === 'high' ? '고위험군' : risk === 'moderate' ? '중등도 위험' : '안정군'
+  return (
+    <article className="reportMetricCard">
+      <div className="reportMetricHead">
+        <div>
+          <h5>{title}</h5>
+          <p>{title === 'PHQ-9' ? '우울 지표' : title === 'GAD-7' ? '불안 지표' : '불면 지표'}</p>
+        </div>
+        <div className="reportMetricValue">{score}</div>
+      </div>
+      <span className={`reportRiskBadge ${risk}`}>{label}</span>
+      <p className="reportMetricText">{metricInterpretation(title, score)}</p>
+      <small className="reportMetricScale">최대 점수 {maxScore}</small>
+    </article>
+  )
+}
+
+function ConsultationCTA({ riskLevel, onClick }: { riskLevel: RiskLevel; onClick: () => void }) {
+  return (
+    <div className="reportCtaWrap">
+      <button
+        type="button"
+        className={riskLevel === 'high' ? 'reportCtaBtn high' : 'reportCtaBtn'}
+        onClick={onClick}
+      >
+        전문가와 상담하기
+      </button>
+      <p className="reportCtaCaption">
+        본 리포트는 인공지능 분석 결과이며, 정확한 진단은 전문의 상담이 필요합니다.
+      </p>
+    </div>
+  )
+}
+
+function AssessmentReportPage({
+  data,
+  reportDate,
+  onConsult,
+}: {
+  data: AssessmentReportInput
+  reportDate: string
+  onConsult: () => void
+}) {
+  return (
+    <section className="reportPage">
+      <ReportHeader riskLevel={data.risk_level} reportDate={reportDate} />
+      <div className="reportTopIntro">
+        <div className="assessmentHelperBubble">
+          <div className="assessmentHelperAvatar">M</div>
+          <p>분석 결과가 나왔어요. 함께 차근차근 살펴볼까요?</p>
+        </div>
+      </div>
+      <div className="reportTopPanel">
+        <TripleGaugeSection phqScore={data.phq_score} gadScore={data.gad_score} isiScore={data.isi_score} />
+        <OverallAnalysisCard
+          riskLevel={data.risk_level}
+          phqScore={data.phq_score}
+          gadScore={data.gad_score}
+          isiScore={data.isi_score}
+        />
+      </div>
+      <div className="reportMetricGrid">
+        <MetricCard title="PHQ-9" score={data.phq_score} maxScore={27} />
+        <MetricCard title="GAD-7" score={data.gad_score} maxScore={21} />
+        <MetricCard title="ISI" score={data.isi_score} maxScore={21} />
+      </div>
+      <ConsultationCTA riskLevel={data.risk_level} onClick={onConsult} />
+    </section>
+  )
+}
+
+function clampPercent(value: number): number {
+  if (Number.isNaN(value) || !Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(100, value))
+}
+
+function AppHeader({
+  menuOpen,
+  isDesktop,
+  menuItems,
+  onMenuItemSelect,
+  menuContainerRef,
+  onWrapperEnter,
+  onWrapperLeave,
+  onTriggerClick,
+  onDropdownEnter,
+  onDropdownLeave,
+}: {
+  menuOpen: boolean
+  isDesktop: boolean
+  menuItems: MenuItem[]
+  onMenuItemSelect: (item: MenuItem) => void
+  menuContainerRef: RefObject<HTMLDivElement | null>
+  onWrapperEnter: () => void
+  onWrapperLeave: () => void
+  onTriggerClick: () => void
+  onDropdownEnter: () => void
+  onDropdownLeave: () => void
+}) {
+  return (
+    <header className="appHeader" aria-label="앱 헤더">
+      <div
+        ref={menuContainerRef}
+        className="topRightMenu"
+        onMouseEnter={onWrapperEnter}
+        onMouseLeave={onWrapperLeave}
+      >
+        <button
+          type="button"
+          className={`menuTrigger ${menuOpen ? 'open' : ''}`}
+          aria-label="메뉴 열기"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={onTriggerClick}
+        >
+          ☰
+        </button>
+        {menuOpen && (
+          <>
+            {isDesktop && <div className="menuHoverBridge" aria-hidden />}
+            <div
+              className="topRightDropdown"
+              role="menu"
+              aria-label="주요 메뉴"
+              onMouseEnter={onDropdownEnter}
+              onMouseLeave={onDropdownLeave}
+            >
+              {menuItems.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  role="menuitem"
+                  aria-label={item.label}
+                  className={`menuItem ${item.active ? 'active' : ''}`}
+                  onClick={() => onMenuItemSelect(item)}
+                >
+                  <span className="menuItemIcon" aria-hidden>{item.icon}</span>
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </header>
+  )
+}
+
+function pickCheckinHeadlineByMood(moodScore: number): string {
+  const high = [
+    '오늘 하루도 활기차게 시작해볼까요?',
+    '좋은 흐름이에요. 이 에너지를 잘 이어가봐요.',
+    '컨디션이 괜찮아 보여요. 리듬을 유지해볼까요?',
+  ]
+  const mid = [
+    '오늘 페이스를 천천히 맞춰가볼까요?',
+    '지금 상태면 작은 루틴 하나가 큰 도움이 돼요.',
+    '무리하지 않고, 할 수 있는 것부터 시작해봐요.',
+  ]
+  const low = [
+    '지금은 속도를 늦추고 호흡부터 맞춰봐요.',
+    '오늘은 버티는 것만으로도 충분히 잘하고 있어요.',
+    '작은 행동 하나만 해도 흐름이 바뀔 수 있어요.',
+  ]
+  const pool = moodScore >= 8 ? high : moodScore >= 5 ? mid : low
+  return pool[Math.floor(Math.random() * pool.length)] ?? '오늘 하루도 활기차게 시작해볼까요?'
+}
+
+function CheckinRing({
+  label,
+  valueText,
+  percent,
+  color,
+}: {
+  label: string
+  valueText: string
+  percent: number
+  color: string
+}) {
+  const radius = 28
+  const circumference = 2 * Math.PI * radius
+  const normalized = clampPercent(percent)
+  const offset = circumference * (1 - normalized / 100)
+  return (
+    <div className="checkinRingCard">
+      <svg viewBox="0 0 72 72" className="checkinRingSvg" aria-hidden="true">
+        <circle cx="36" cy="36" r={radius} className="checkinRingTrack" />
+        <circle
+          cx="36"
+          cy="36"
+          r={radius}
+          className="checkinRingProgress"
+          style={{
+            stroke: color,
+            strokeDasharray: `${circumference} ${circumference}`,
+            strokeDashoffset: offset,
+          }}
+        />
+      </svg>
+      <div className="checkinRingCenter">
+        <strong>{valueText}</strong>
+      </div>
+      <p>{label}</p>
+    </div>
+  )
 }
 
 
@@ -593,25 +945,23 @@ function BarKDETrendChart({
   )
 }
 
-function buildPayload(assessment: AssessmentState): CheckPredictRequest {
-  const phqTotal = sumLikert(assessment.phq9)
-  const gadTotal = sumLikert(assessment.gad7)
-  const sleepTotal = sumLikert(assessment.sleep)
-
-  const daily = Number(assessment.context.daily_functioning)
-  const stressful = Number(assessment.context.stressful_event)
-  const social = Number(assessment.context.social_support)
-  const coping = Number(assessment.context.coping_skill)
-  const motivation = Number(assessment.context.motivation_for_change)
-
-  const contextRisk = daily + stressful + social + coping + motivation
+function buildPayloadFromFlow(flow: AssessmentFlowState): CheckPredictRequest {
+  const phqTotal = flow.PHQ.answers.reduce<number>((acc, v) => acc + Number(v ?? 0), 0)
+  const gadTotal = flow.GAD.answers.reduce<number>((acc, v) => acc + Number(v ?? 0), 0)
+  const sleepTotal = flow.ISI.answers.reduce<number>((acc, v) => acc + Number(v ?? 0), 0)
+  const daily = 0
+  const stressful = 0
+  const social = 0
+  const coping = 0
+  const motivation = 0
+  const contextRisk = 0
 
   return {
     phq_total: phqTotal,
     gad_total: gadTotal,
     sleep_total: sleepTotal,
     context_risk_total: contextRisk,
-    phq9_suicidal_ideation: Number(assessment.phq9[8] || 0),
+    phq9_suicidal_ideation: Number(flow.PHQ.answers[8] ?? 0),
     daily_functioning: daily,
     stressful_event: stressful,
     social_support: social,
@@ -650,7 +1000,7 @@ function normalizeNoticeMessage(raw: string): string | null {
 }
 
 function App() {
-  const [page, setPage] = useState<PageKey>('landing')
+  const [page, setPage] = useState<PageKey>('account')
   const [accountMode, setAccountMode] = useState<AccountMode>('login')
   const [myTab, setMyTab] = useState<MyPageTab>('profile')
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>('today')
@@ -683,12 +1033,18 @@ function App() {
   const [resetNewPassword, setResetNewPassword] = useState('')
   const [resetNewPasswordConfirm, setResetNewPasswordConfirm] = useState('')
 
-  const [assessment, setAssessment] = useState<AssessmentState>(defaultAssessment)
+  const [assessmentFlow, setAssessmentFlow] = useState<AssessmentFlowState>(defaultAssessmentFlow)
+  const [assessmentErrors, setAssessmentErrors] = useState<Record<TestKey, boolean>>({
+    PHQ: false,
+    GAD: false,
+    ISI: false,
+  })
   const [checkPrediction, setCheckPrediction] = useState<CheckPredictResponse | null>(null)
 
   const [checkin, setCheckin] = useState<LifestyleCheckinState>(defaultCheckin)
   const [checkinCompletedToday, setCheckinCompletedToday] = useState(false)
   const [checkinSummaryText, setCheckinSummaryText] = useState('')
+  const [checkinDoneHeadline, setCheckinDoneHeadline] = useState('오늘 하루도 활기차게 시작해볼까요?')
   const [autoCbtStarted, setAutoCbtStarted] = useState(false)
 
   const [chatMessage, setChatMessage] = useState('')
@@ -699,7 +1055,9 @@ function App() {
   const [challengeStatus, setChallengeStatus] = useState<Record<string, boolean>>({})
   const [chatGenerating, setChatGenerating] = useState(false)
   const [challengeHintText, setChallengeHintText] = useState('')
+  const [chatChallengeCtaDismissed, setChatChallengeCtaDismissed] = useState(false)
   const [dialogueFinishedOpen, setDialogueFinishedOpen] = useState(false)
+  const [crisisActionChecked, setCrisisActionChecked] = useState<Record<string, boolean>>({})
   const [boardFocusPostId, setBoardFocusPostId] = useState<string | null>(null)
 
   const [contentCatalog, setContentCatalog] = useState<ContentChallengeCatalogItem[]>([])
@@ -717,6 +1075,13 @@ function App() {
   const chatMessagesRef = useRef<HTMLDivElement | null>(null)
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
   const chatSubmitLockRef = useRef(false)
+  const pageHistorySyncReadyRef = useRef(false)
+  const isPopNavigatingRef = useRef(false)
+  const topRightMenuRef = useRef<HTMLDivElement | null>(null)
+  const closeMenuTimerRef = useRef<number | null>(null)
+  const [topMenuOpen, setTopMenuOpen] = useState(false)
+  const [menuPinnedByClick, setMenuPinnedByClick] = useState(false)
+  const [isDesktopMenu, setIsDesktopMenu] = useState<boolean>(() => window.innerWidth >= 768)
 
   const [dashboard, setDashboard] = useState<WeeklyDashboardResponse | null>(null)
   const [checkinHistory, setCheckinHistory] = useState<CheckinHistoryItem[]>([])
@@ -733,6 +1098,14 @@ function App() {
   const [passwordVerified, setPasswordVerified] = useState(false)
 
   const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }), [token])
+  const crisisActionKey = useMemo(
+    () => `${chatResult?.timestamp ?? ''}:${chatResult?.crisis_stage ?? ''}:${(chatResult?.crisis_actions ?? []).join('|')}`,
+    [chatResult?.timestamp, chatResult?.crisis_stage, chatResult?.crisis_actions],
+  )
+
+  useEffect(() => {
+    setCrisisActionChecked({})
+  }, [crisisActionKey])
 
   useEffect(() => {
     if (!token) {
@@ -743,7 +1116,7 @@ function App() {
       setCheckinSummaryText('')
       setAutoCbtStarted(false)
       setRecommendedPosts([])
-      setPage('landing')
+      setPage('account')
       return
     }
     void loadProfile()
@@ -767,7 +1140,85 @@ function App() {
   }, [message])
 
   useEffect(() => {
+    window.history.replaceState({ appPage: page, accountMode }, '')
+    pageHistorySyncReadyRef.current = true
+  }, [])
+
+  useEffect(() => {
+    if (!pageHistorySyncReadyRef.current) return
+    if (isPopNavigatingRef.current) {
+      isPopNavigatingRef.current = false
+      return
+    }
+    const current = window.history.state as { appPage?: PageKey; accountMode?: AccountMode } | null
+    if (current?.appPage === page && current?.accountMode === accountMode) return
+    window.history.pushState({ appPage: page, accountMode }, '')
+  }, [page, accountMode])
+
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const next = event.state as { appPage?: PageKey; accountMode?: AccountMode } | null
+      if (!next?.appPage) return
+      isPopNavigatingRef.current = true
+      setPage(next.appPage)
+      if (next.accountMode) setAccountMode(next.accountMode)
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  useEffect(() => {
+    const handleResize = () => setIsDesktopMenu(window.innerWidth >= 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent | TouchEvent) => {
+      if (!topRightMenuRef.current) return
+      const target = event.target as Node | null
+      if (target && !topRightMenuRef.current.contains(target)) {
+        if (closeMenuTimerRef.current != null) {
+          window.clearTimeout(closeMenuTimerRef.current)
+          closeMenuTimerRef.current = null
+        }
+        setMenuPinnedByClick(false)
+        setTopMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('touchstart', handleOutsideClick)
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+      document.removeEventListener('touchstart', handleOutsideClick)
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleEsc = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (closeMenuTimerRef.current != null) {
+          window.clearTimeout(closeMenuTimerRef.current)
+          closeMenuTimerRef.current = null
+        }
+        setMenuPinnedByClick(false)
+        setTopMenuOpen(false)
+      }
+    }
+    document.addEventListener('keydown', handleEsc)
+    return () => document.removeEventListener('keydown', handleEsc)
+  }, [])
+
+  useEffect(() => () => {
+    if (closeMenuTimerRef.current != null) {
+      window.clearTimeout(closeMenuTimerRef.current)
+      closeMenuTimerRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
     if (!chatResult) return
+    setChatChallengeCtaDismissed(false)
     setChallengeStatus((prev) => {
       const next = { ...prev }
       for (const c of chatResult.suggested_challenges) {
@@ -794,6 +1245,50 @@ function App() {
       .map((turn) => ({ role: turn.role, content: turn.content.trim() }))
       .filter((turn) => turn.content.length > 0)
       .slice(-12)
+  }
+
+  function exportRecentChatHistory() {
+    const now = Date.now()
+    const oneHourAgo = now - (60 * 60 * 1000)
+    const rows = chatHistory.filter((turn) => {
+      if (turn.loading) return false
+      if (!turn.content.trim()) return false
+      const t = turn.createdAt ?? 0
+      return t >= oneHourAgo
+    })
+
+    if (!rows.length) {
+      setMessage('최근 1시간 내 추출할 대화가 없습니다.')
+      return
+    }
+
+    const lines = rows.map((turn) => {
+      const stamp = new Date(turn.createdAt ?? now).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+      const speaker = turn.role === 'user' ? '사용자' : '모치AI'
+      return `[${stamp}] ${speaker}: ${turn.content.replace(/\n/g, ' ').trim()}`
+    })
+
+    const header = `MochiAI CBT 대화 추출 (최근 1시간)\n생성시각: ${new Date(now).toLocaleString('ko-KR')}\n\n`
+    const blob = new Blob([header + lines.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const dt = new Date(now)
+    const filename = `cbt_history_${dt.getFullYear()}${String(dt.getMonth() + 1).padStart(2, '0')}${String(dt.getDate()).padStart(2, '0')}_${String(dt.getHours()).padStart(2, '0')}${String(dt.getMinutes()).padStart(2, '0')}.txt`
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+    setMessage('최근 1시간 대화를 텍스트로 추출했습니다.')
+  }
+
+  async function sendSupporterCrisisMessage() {
+    const text = "지금 위험해서 도움이 필요해. 가능하면 지금 바로 연락해줘."
+    try {
+      await navigator.clipboard.writeText(text)
+      setMessage('지지자에게 보낼 문구를 복사했습니다.')
+    } catch {
+      setMessage('복사에 실패했습니다. 직접 전송해 주세요: 지금 위험해서 도움이 필요해.')
+    }
   }
 
 
@@ -876,6 +1371,20 @@ function App() {
       const today = todayDateString()
       const todayRecord = data.find((x) => x.timestamp.slice(0, 10) === today)
       setCheckinCompletedToday(Boolean(todayRecord))
+      if (todayRecord) {
+        const summary = [
+          `기분 ${todayRecord.mood_score}/10`,
+          todayRecord.sleep_hours != null ? `수면 ${todayRecord.sleep_hours}시간` : null,
+          todayRecord.exercise_minutes_today != null ? `운동 ${todayRecord.exercise_minutes_today}분` : null,
+          todayRecord.daylight_minutes_today != null ? `햇빛 ${todayRecord.daylight_minutes_today}분` : null,
+          todayRecord.screen_time_min_today != null ? `스크린 ${todayRecord.screen_time_min_today}분` : null,
+        ].filter(Boolean).join(', ')
+        setCheckinSummaryText(summary)
+        setCheckinDoneHeadline(pickCheckinHeadlineByMood(Number(todayRecord.mood_score || 0)))
+      } else {
+        setCheckinSummaryText('')
+        setCheckinDoneHeadline('오늘 하루도 활기차게 시작해볼까요?')
+      }
     } catch (error) {
       setMessage(`체크인 이력 조회 오류: ${(error as Error).message}`)
     }
@@ -1175,45 +1684,72 @@ function App() {
     setMessage('로그아웃되었습니다.')
   }
 
-  function setPhqAnswer(index: number, value: LikertValue) {
-    setAssessment((prev) => {
-      const next = [...prev.phq9]
-      next[index] = value
-      return { ...prev, phq9: next }
+  function getTestMeta(key: TestKey) {
+    if (key === 'PHQ') return { title: 'PHQ-9', questions: PHQ9_QUESTIONS }
+    if (key === 'GAD') return { title: 'GAD-7', questions: GAD7_QUESTIONS }
+    return { title: 'ISI', questions: SLEEP_QUESTIONS }
+  }
+
+  function setTestAnswer(key: TestKey, value: number) {
+    setAssessmentFlow((prev) => {
+      const current = prev[key]
+      const nextAnswers = [...current.answers]
+      nextAnswers[current.index] = value
+      return { ...prev, [key]: { ...current, answers: nextAnswers } }
+    })
+    setAssessmentErrors((prev) => ({ ...prev, [key]: false }))
+  }
+
+  function moveTestIndex(key: TestKey, dir: -1 | 1) {
+    setAssessmentFlow((prev) => {
+      const current = prev[key]
+      const max = current.answers.length - 1
+      const nextIndex = Math.max(0, Math.min(max, current.index + dir))
+      return { ...prev, [key]: { ...current, index: nextIndex } }
     })
   }
 
-  function setGadAnswer(index: number, value: LikertValue) {
-    setAssessment((prev) => {
-      const next = [...prev.gad7]
-      next[index] = value
-      return { ...prev, gad7: next }
+  function setTestIndex(key: TestKey, index: number) {
+    setAssessmentFlow((prev) => {
+      const current = prev[key]
+      const max = current.answers.length - 1
+      const nextIndex = Math.max(0, Math.min(max, index))
+      return { ...prev, [key]: { ...current, index: nextIndex } }
     })
   }
 
-  function setSleepAnswer(index: number, value: LikertValue) {
-    setAssessment((prev) => {
-      const next = [...prev.sleep]
-      next[index] = value
-      return { ...prev, sleep: next }
+  function handleNextQuestion(key: TestKey) {
+    const current = assessmentFlow[key]
+    if (current.answers[current.index] == null) {
+      setAssessmentErrors((prev) => ({ ...prev, [key]: true }))
+      setMessage(`${getTestMeta(key).title} 현재 문항 점수를 먼저 선택해주세요.`)
+      return
+    }
+    moveTestIndex(key, 1)
+  }
+
+  function isTestCompleted(key: TestKey): boolean {
+    return assessmentFlow[key].answers.every((v) => v != null)
+  }
+
+  function validateAssessmentFlow(): string | null {
+    const testOrder: TestKey[] = ['PHQ', 'GAD', 'ISI']
+    const missing: TestKey[] = testOrder.filter((key) => !isTestCompleted(key))
+    if (missing.length === 0) return null
+    setAssessmentErrors({
+      PHQ: missing.includes('PHQ'),
+      GAD: missing.includes('GAD'),
+      ISI: missing.includes('ISI'),
     })
-  }
-
-  function setContextAnswer(key: keyof AssessmentState['context'], value: LikertValue) {
-    setAssessment((prev) => ({ ...prev, context: { ...prev.context, [key]: value } }))
-  }
-
-  function validateAssessment(): string | null {
-    if (assessment.phq9.some((v) => v === '')) return '우울 문항을 모두 선택해주세요.'
-    if (assessment.gad7.some((v) => v === '')) return '불안 문항을 모두 선택해주세요.'
-    if (assessment.sleep.some((v) => v === '')) return '수면 문항을 모두 선택해주세요.'
-    if (Object.values(assessment.context).some((v) => v === '')) return '생활 맥락 문항을 모두 선택해주세요.'
-    return null
+    const first = missing[0]
+    if (first === 'PHQ') return 'PHQ를 먼저 완료해주세요.'
+    if (first === 'GAD') return 'GAD를 먼저 완료해주세요.'
+    return 'ISI를 먼저 완료해주세요.'
   }
 
   async function handleSurveySubmit(event: FormEvent) {
     event.preventDefault()
-    const err = validateAssessment()
+    const err = validateAssessmentFlow()
     if (err) {
       setMessage(err)
       return
@@ -1224,14 +1760,14 @@ function App() {
       const response = await fetch(`${API_BASE}/ai/check/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildPayload(assessment)),
+        body: JSON.stringify(buildPayloadFromFlow(assessmentFlow)),
       })
       if (!response.ok) throw new Error(await extractApiError(response))
       const data = (await response.json()) as CheckPredictResponse
       setCheckPrediction(data)
 
       if (token) {
-        const answers = Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`q${i + 1}`, Number(assessment.phq9[i])]))
+        const answers = Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`q${i + 1}`, Number(assessmentFlow.PHQ.answers[i] ?? 0)]))
         const saveRes = await fetch(`${API_BASE}/assessments/phq9`, {
           method: 'POST',
           headers: authHeaders,
@@ -1304,6 +1840,7 @@ function App() {
       ].filter(Boolean).join(', ')
 
       setCheckinSummaryText(summary)
+      setCheckinDoneHeadline(pickCheckinHeadlineByMood(mood))
       setCheckinCompletedToday(true)
       setAutoCbtStarted(false)
       await loadMyDashboard()
@@ -1340,7 +1877,7 @@ function App() {
       if (!response.ok) throw new Error(await extractApiError(response))
       const data = (await response.json()) as ChatResponse
       setChatResult(data)
-      setChatHistory([{ role: 'assistant', content: data.reply }])
+      setChatHistory([{ role: 'assistant', content: data.reply, createdAt: Date.now() }])
       setChallengeHintText(data.challenge_step_prompt ?? '')
       setAutoCbtStarted(true)
       setMessage('인지행동치료 대화를 시작했습니다.')
@@ -1357,19 +1894,25 @@ function App() {
       const next = [...prev]
       for (let i = next.length - 1; i >= 0; i -= 1) {
         if (next[i].role === 'assistant' && next[i].loading) {
+          const createdAt = next[i].createdAt ?? Date.now()
           next[i] = isDraft
-            ? { role: 'assistant', content, loading: true }
-            : { role: 'assistant', content }
+            ? { role: 'assistant', content, loading: true, createdAt }
+            : { role: 'assistant', content, createdAt }
           return next
         }
       }
-      const appended: ChatTurn[] = [...prev, isDraft ? { role: 'assistant', content, loading: true } : { role: 'assistant', content }]
+      const createdAt = Date.now()
+      const appended: ChatTurn[] = [...prev, isDraft ? { role: 'assistant', content, loading: true, createdAt } : { role: 'assistant', content, createdAt }]
       return appended
     })
   }
 
   async function handleChatSubmit(event: FormEvent) {
     event.preventDefault()
+    await submitChatMessage()
+  }
+
+  async function submitChatMessage() {
     if (chatSubmitLockRef.current) return
     if (!token) {
       setMessage('로그인 후 인지행동치료 대화를 사용할 수 있습니다.')
@@ -1384,10 +1927,11 @@ function App() {
 
     chatSubmitLockRef.current = true
     const history = toChatHistoryPayload(chatHistory.filter((turn) => !turn.loading))
+    const userTurnTime = Date.now()
     setChatHistory((prev) => [
       ...prev.filter((turn) => !turn.loading),
-      { role: 'user', content: text },
-      { role: 'assistant', content: '', loading: true },
+      { role: 'user', content: text, createdAt: userTurnTime },
+      { role: 'assistant', content: '', loading: true, createdAt: userTurnTime },
     ])
     setChatMessage('')
     setLoading(true)
@@ -1456,12 +2000,32 @@ function App() {
     }
   }
 
+  function handleChatTextareaKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Enter') return
+    if (event.shiftKey) return
+    if (event.nativeEvent.isComposing) return
+    event.preventDefault()
+    void submitChatMessage()
+  }
+
   function startChallenge(challenge: string) {
     setActiveChallenge(challenge)
     setChallengePhase('start')
     setChallengeStatus((prev) => ({ ...prev, [challenge]: prev[challenge] ?? false }))
     setChallengeHintText('선택한 생각 정리 도구를 단계별로 진행합니다. 사실-감정-생각 순서로 적어주세요.')
-    setChatHistory((prev) => [...prev, { role: 'assistant', content: `좋아요. '${challenge}'를 함께 진행해볼게요. 먼저 상황에서 확인 가능한 사실 1가지를 적어주세요. 그 다음 감정과 생각을 함께 정리해볼게요.` }])
+    setChatHistory((prev) => [...prev, { role: 'assistant', content: `좋아요. '${challenge}'를 함께 진행해볼게요. 먼저 상황에서 확인 가능한 사실 1가지를 적어주세요. 그 다음 감정과 생각을 함께 정리해볼게요.`, createdAt: Date.now() }])
+  }
+
+  function startSuggestedChallengeNow() {
+    const first = (chatResult?.suggested_challenges ?? [])[0]
+    if (!first) return
+    startChallenge(first)
+    setChatChallengeCtaDismissed(true)
+  }
+
+  function dismissSuggestedChallengeCta() {
+    setChatChallengeCtaDismissed(true)
+    setMessage('지금은 보류하고, 원할 때 챌린지를 시작할 수 있어요.')
   }
 
   async function handleFinishDialogue() {
@@ -1676,10 +2240,25 @@ function App() {
     }
   }
 
-  const phqTotal = sumLikert(assessment.phq9)
-  const gadTotal = sumLikert(assessment.gad7)
-  const sleepTotal = sumLikert(assessment.sleep)
-  const contextTotal = Number(assessment.context.daily_functioning || 0) + Number(assessment.context.stressful_event || 0) + Number(assessment.context.social_support || 0) + Number(assessment.context.coping_skill || 0) + Number(assessment.context.motivation_for_change || 0)
+  const phqTotal = assessmentFlow.PHQ.answers.reduce<number>((acc, v) => acc + Number(v ?? 0), 0)
+  const gadTotal = assessmentFlow.GAD.answers.reduce<number>((acc, v) => acc + Number(v ?? 0), 0)
+  const sleepTotal = assessmentFlow.ISI.answers.reduce<number>((acc, v) => acc + Number(v ?? 0), 0)
+  const assessmentTotalQuestions = PHQ9_QUESTIONS.length + GAD7_QUESTIONS.length + SLEEP_QUESTIONS.length
+  const assessmentAnswered = [...assessmentFlow.PHQ.answers, ...assessmentFlow.GAD.answers, ...assessmentFlow.ISI.answers].filter((v) => v != null).length
+  const assessmentProgress = Math.round((assessmentAnswered / Math.max(1, assessmentTotalQuestions)) * 100)
+  const assessmentAllCompleted = isTestCompleted('PHQ') && isTestCompleted('GAD') && isTestCompleted('ISI')
+  const assessmentGuideText = !isTestCompleted('PHQ')
+    ? 'PHQ를 먼저 완료해주세요.'
+    : !isTestCompleted('GAD')
+      ? 'GAD를 먼저 완료해주세요.'
+      : !isTestCompleted('ISI')
+        ? 'ISI를 먼저 완료해주세요.'
+        : '세 가지 검사가 모두 완료되었습니다.'
+  const reportRiskLevel = calculateRiskLevel(phqTotal, gadTotal, sleepTotal)
+  const reportData: AssessmentReportInput = checkPrediction
+    ? { phq_score: phqTotal, gad_score: gadTotal, isi_score: sleepTotal, risk_level: reportRiskLevel }
+    : DUMMY_REPORT_DATA
+  const reportDate = new Date().toLocaleDateString('ko-KR')
 
   const latestWeekly = dashboard?.rows?.length ? dashboard.rows[dashboard.rows.length - 1] : null
 
@@ -1747,6 +2326,25 @@ function App() {
   }, [chatResult])
 
   const challenges = (chatResult?.suggested_challenges ?? [])
+  const thoughtWeb = chatResult?.extracted?.thought_web ?? null
+  const todayCheckinRecord = useMemo(() => {
+    const today = todayDateString()
+    return checkinHistory.find((x) => x.timestamp.slice(0, 10) === today) ?? null
+  }, [checkinHistory])
+  const checkinVisualMetrics = useMemo(() => {
+    const mood = Number(todayCheckinRecord?.mood_score ?? checkin.mood_score ?? 0)
+    const sleep = Number(todayCheckinRecord?.sleep_hours ?? checkin.sleep_hours ?? 0)
+    const exercise = Number(todayCheckinRecord?.exercise_minutes_today ?? checkin.exercise_minutes_today ?? 0)
+    const daylight = Number(todayCheckinRecord?.daylight_minutes_today ?? checkin.daylight_minutes_today ?? 0)
+    const screen = Number(todayCheckinRecord?.screen_time_min_today ?? checkin.screen_time_min_today ?? 0)
+    return [
+      { key: 'mood', label: '기분 점수', valueText: `${Number.isFinite(mood) ? mood : 0}/10`, percent: clampPercent(((Number.isFinite(mood) ? mood : 0) / 10) * 100), color: '#76d46f' },
+      { key: 'sleep', label: '수면 시간', valueText: `${Number.isFinite(sleep) ? sleep : 0}h`, percent: clampPercent(((Number.isFinite(sleep) ? sleep : 0) / 8) * 100), color: '#9d8cf5' },
+      { key: 'exercise', label: '운동', valueText: `${Number.isFinite(exercise) ? exercise : 0}m`, percent: clampPercent(((Number.isFinite(exercise) ? exercise : 0) / 60) * 100), color: '#63b3ff' },
+      { key: 'daylight', label: '햇빛', valueText: `${Number.isFinite(daylight) ? daylight : 0}m`, percent: clampPercent(((Number.isFinite(daylight) ? daylight : 0) / 60) * 100), color: '#f3b44f' },
+      { key: 'screen', label: '스크린 균형', valueText: `${Number.isFinite(screen) ? screen : 0}m`, percent: clampPercent(100 - (((Number.isFinite(screen) ? screen : 0) / 240) * 100)), color: '#4b5563' },
+    ]
+  }, [todayCheckinRecord, checkin])
   const completedChallenges = challenges.filter((c) => challengeStatus[c]).length
   const activeChallengeInProgress = Boolean(activeChallenge) && !Boolean(challengeStatus[activeChallenge])
   const liveEmotionSummary = useMemo(() => {
@@ -1761,7 +2359,6 @@ function App() {
       nextAction: chatResult?.summary_card?.next_action ?? '-',
     }
   }, [chatHistory, chatMessage, chatResult])
-  const highRiskProbability = checkPrediction == null ? 0 : (checkPrediction.probabilities['3'] ?? 0) + (checkPrediction.probabilities['4'] ?? 0)
 
   const weeklyProgress = useMemo(() => {
     const byDate = new Map<string, { checked: boolean; contentCount: number }>()
@@ -1832,45 +2429,249 @@ function App() {
 
   const todayLogs = useMemo(() => contentLogs.filter((x) => x.performed_date === todayDateString()), [contentLogs])
   const todayJournalEntry = useMemo(() => journalEntries.find((x) => x.entry_date === todayDateString()) ?? null, [journalEntries])
+  const diaryDep = Math.round(latestWeekly?.dep_week_pred_0_100 ?? 55)
+  const diaryAnx = Math.round(latestWeekly?.anx_week_pred_0_100 ?? 55)
+  const diaryIns = Math.round(latestWeekly?.ins_week_pred_0_100 ?? 55)
+  const diaryRiskLabel = (latestWeekly?.alert_level ?? 'low') === 'high' ? 'HIGH RISK' : (latestWeekly?.alert_level ?? 'low') === 'medium' ? 'MEDIUM RISK' : 'LOW RISK'
+
+  const topMenuItems = useMemo<MenuItem[]>(() => {
+    if (!token) {
+      return [
+        { key: 'menu-login', label: '로그인', icon: '🔐', active: page === 'account' && accountMode === 'login', action: { type: 'account', mode: 'login' } },
+        { key: 'menu-signup', label: '회원가입', icon: '📝', active: page === 'account' && accountMode === 'signup', action: { type: 'account', mode: 'signup' } },
+      ]
+    }
+
+    const items: MenuItem[] = [
+      { key: 'menu-checkin', label: '체크인', icon: '🏠', active: page === 'checkin', action: { type: 'page', page: 'checkin' } },
+      { key: 'menu-mypage', label: '마이페이지', icon: '👤', active: page === 'mypage', action: { type: 'page', page: 'mypage' } },
+      { key: 'menu-diary', label: '마음일기', icon: '💬', active: page === 'diary', action: { type: 'page', page: 'diary' } },
+      { key: 'menu-journal', label: '일기', icon: '📓', active: page === 'journal', action: { type: 'page', page: 'journal' } },
+      { key: 'menu-challenge', label: '챌린지', icon: '🎯', active: page === 'challenge', action: { type: 'page', page: 'challenge' } },
+      { key: 'menu-assessment', label: '종합심리검사', icon: '📊', active: page === 'assessment', action: { type: 'page', page: 'assessment' } },
+      { key: 'menu-board', label: '게시판', icon: '🧾', active: page === 'board', action: { type: 'page', page: 'board' } },
+    ]
+    if (isAdmin) {
+      items.push({ key: 'menu-admin', label: '관리자', icon: '🛡', active: page === 'admin', action: { type: 'page', page: 'admin' } })
+    }
+    items.push({ key: 'menu-logout', label: '로그아웃', icon: '↩', active: false, action: { type: 'logout' } })
+    return items
+  }, [token, page, accountMode, isAdmin])
+
+  function handleTopMenuItemSelect(item: MenuItem) {
+    if (closeMenuTimerRef.current != null) {
+      window.clearTimeout(closeMenuTimerRef.current)
+      closeMenuTimerRef.current = null
+    }
+    setMenuPinnedByClick(false)
+    if (item.action.type === 'logout') {
+      logout()
+      setTopMenuOpen(false)
+      return
+    }
+    if (item.action.type === 'account') {
+      setPage('account')
+      setAccountMode(item.action.mode)
+      setTopMenuOpen(false)
+      return
+    }
+    setPage(item.action.page)
+    setTopMenuOpen(false)
+  }
+
+  function clearMenuCloseTimer() {
+    if (closeMenuTimerRef.current != null) {
+      window.clearTimeout(closeMenuTimerRef.current)
+      closeMenuTimerRef.current = null
+    }
+  }
+
+  function openTopMenu() {
+    clearMenuCloseTimer()
+    setTopMenuOpen(true)
+  }
+
+  function scheduleTopMenuClose(delay = 250) {
+    clearMenuCloseTimer()
+    if (menuPinnedByClick) return
+    closeMenuTimerRef.current = window.setTimeout(() => {
+      setTopMenuOpen(false)
+      closeMenuTimerRef.current = null
+    }, delay)
+  }
+
+  function handleTopMenuWrapperEnter() {
+    if (!isDesktopMenu) return
+    openTopMenu()
+  }
+
+  function handleTopMenuWrapperLeave() {
+    if (!isDesktopMenu) return
+    scheduleTopMenuClose(260)
+  }
+
+  function handleTopMenuDropdownEnter() {
+    if (!isDesktopMenu) return
+    openTopMenu()
+  }
+
+  function handleTopMenuDropdownLeave() {
+    if (!isDesktopMenu) return
+    scheduleTopMenuClose(260)
+  }
+
+  function handleTopMenuTriggerClick() {
+    clearMenuCloseTimer()
+    if (topMenuOpen && menuPinnedByClick) {
+      setTopMenuOpen(false)
+      setMenuPinnedByClick(false)
+      return
+    }
+    setTopMenuOpen(true)
+    setMenuPinnedByClick(true)
+  }
 
   return (
     <main className="page">
+      <AppHeader
+        menuOpen={topMenuOpen}
+        isDesktop={isDesktopMenu}
+        menuItems={topMenuItems}
+        onMenuItemSelect={handleTopMenuItemSelect}
+        menuContainerRef={topRightMenuRef}
+        onWrapperEnter={handleTopMenuWrapperEnter}
+        onWrapperLeave={handleTopMenuWrapperLeave}
+        onTriggerClick={handleTopMenuTriggerClick}
+        onDropdownEnter={handleTopMenuDropdownEnter}
+        onDropdownLeave={handleTopMenuDropdownLeave}
+      />
       {!token && (
-        <header className="hero landingHero">
-          <p className="kicker">CBT Mind Partner</p>
-          <h1>체크인 + 인지행동치료 + 일기 + 실행형 챌린지</h1>
-          <p className="subtitle">체크인 후 인지행동치료 대화로 생각을 정리하고, 일기와 실행형 챌린지까지 한 흐름으로 관리합니다.</p>
-          <div className="actions heroActions">
-            <button onClick={() => { setPage('account'); setAccountMode('login') }}>Log in</button>
-            <button className="ghost" onClick={() => { setPage('account'); setAccountMode('signup') }}>Sign Up</button>
-          </div>
-        </header>
-      )}
+        <section className="mochiAuthShell">
+          <div className="mochiLoginCard">
+            <div className="mochiBrand">
+              <div className="mochiBrandIcon">M</div>
+              <h1>MochiAI</h1>
+              <p>Your Mindful Sanctuary</p>
+            </div>
 
-      {token && (
-        <section className="panel topNavPanel">
-          <div className="topBar">
-            <div className="brandBox">
-              <strong>MindCare</strong>
-              <span>{me?.nickname ?? '사용자'}님</span>
-            </div>
-            <div className="actions navActions">
-              <button className={page === 'mypage' ? '' : 'ghost'} onClick={() => setPage('mypage')}>마이페이지</button>
-              <button className={page === 'checkin' ? '' : 'ghost'} onClick={() => setPage('checkin')}>접속화면</button>
-              <button className={page === 'dashboard' ? '' : 'ghost'} onClick={() => setPage('dashboard')}>대시보드</button>
-              <button className={page === 'diary' ? '' : 'ghost'} onClick={() => setPage('diary')}>인지행동치료</button>
-              <button className={page === 'journal' ? '' : 'ghost'} onClick={() => setPage('journal')}>일기</button>
-              <button className={page === 'challenge' ? '' : 'ghost'} onClick={() => setPage('challenge')}>챌린지</button>
-              <button className={page === 'assessment' ? '' : 'ghost'} onClick={() => setPage('assessment')}>종합심리검사</button>
-              <button className={page === 'board' ? '' : 'ghost'} onClick={() => setPage('board')}>게시판</button>
-              {isAdmin && <button className={page === 'admin' ? '' : 'ghost'} onClick={() => setPage('admin')}>관리자</button>}
-              <button className="ghost" type="button" onClick={() => setLogoutConfirmOpen(true)}>로그아웃</button>
-            </div>
+            {accountMode === 'login' && (
+              <>
+                <form onSubmit={handleLogin} className="mochiForm">
+                  <label>
+                    <span>Email Address</span>
+                    <input value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="hello@mochi.ai" required />
+                  </label>
+                  <label>
+                    <div className="mochiLabelRow">
+                      <span>Password</span>
+                      <button
+                        type="button"
+                        className="mochiTextLink"
+                        onClick={() => {
+                          setShowRecoveryInline((v) => !v)
+                          setRecoveryQuestion('')
+                          setRecoveryAnswer('')
+                        }}
+                      >
+                        Forgot?
+                      </button>
+                    </div>
+                    <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="••••••••" required />
+                  </label>
+                  <button disabled={loading}>Login</button>
+                </form>
+
+                {showRecoveryInline && (
+                  <div className="mochiRecoveryBox">
+                    <h3>비밀번호 찾기</h3>
+                    <label>이메일<input value={recoveryEmail} onChange={(e) => setRecoveryEmail(e.target.value)} required /></label>
+                    {!recoveryQuestion ? (
+                      <button type="button" disabled={loading} onClick={() => void handleRequestRecoveryQuestion()}>보안질문 보기</button>
+                    ) : (
+                      <>
+                        <label>보안질문<input value={recoveryQuestion} readOnly /></label>
+                        <label>답변 입력<input value={recoveryAnswer} onChange={(e) => setRecoveryAnswer(e.target.value)} required /></label>
+                        <button type="button" disabled={loading} onClick={() => void handleVerifyRecoveryAnswer()}>답변 확인</button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  className="mochiGoogleBtn ghost"
+                  onClick={() => {
+                    setShowRecoveryInline((v) => !v)
+                    setRecoveryQuestion('')
+                    setRecoveryAnswer('')
+                  }}
+                >
+                  Forgot password?
+                </button>
+              </>
+            )}
+
+            {accountMode === 'signup' && (
+              <>
+                <form onSubmit={handleSignup} className="mochiForm">
+                  <label>
+                    <span>Email Address</span>
+                    <input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} placeholder="hello@mochi.ai" required />
+                  </label>
+                  <label>
+                    <span>Password</span>
+                    <input type="password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} required minLength={8} />
+                  </label>
+                  <label>
+                    <span>Confirm Password</span>
+                    <input type="password" value={signupPasswordConfirm} onChange={(e) => setSignupPasswordConfirm(e.target.value)} required minLength={8} />
+                  </label>
+                  <label>
+                    <span>Nickname</span>
+                    <input value={signupNickname} onChange={(e) => setSignupNickname(e.target.value)} required />
+                  </label>
+                  <label>
+                    <span>Security Question</span>
+                    <select value={signupSecurityQuestion} onChange={(e) => setSignupSecurityQuestion(e.target.value)}>
+                      {SECURITY_QUESTIONS.map((q) => <option key={q} value={q}>{q}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Security Answer</span>
+                    <input value={signupSecurityAnswer} onChange={(e) => setSignupSecurityAnswer(e.target.value)} required />
+                  </label>
+                  <button disabled={loading}>Sign Up</button>
+                </form>
+                <p className="mochiSwitchText">
+                  Already have an account?{' '}
+                  <button type="button" className="mochiInlineButton" onClick={() => setAccountMode('login')}>Login</button>
+                </p>
+              </>
+            )}
+
+            {accountMode === 'reset' && (
+              <>
+                <form onSubmit={handleResetPassword} className="mochiForm">
+                  <label>
+                    <span>New Password</span>
+                    <input type="password" value={resetNewPassword} onChange={(e) => setResetNewPassword(e.target.value)} required minLength={8} />
+                  </label>
+                  <label>
+                    <span>Confirm Password</span>
+                    <input type="password" value={resetNewPasswordConfirm} onChange={(e) => setResetNewPasswordConfirm(e.target.value)} required minLength={8} />
+                  </label>
+                  <button disabled={loading}>비밀번호 변경</button>
+                </form>
+                <p className="mochiSwitchText">
+                  <button type="button" className="mochiInlineButton" onClick={() => setAccountMode('login')}>로그인으로 돌아가기</button>
+                </p>
+              </>
+            )}
           </div>
         </section>
       )}
 
-      {page === 'account' && (
+      {page === 'account' && token && (
         <section className="panel accountPanel">
           <div className="accountModeTabs actions">
             <button className={accountMode === 'login' ? '' : 'ghost'} type="button" onClick={() => setAccountMode('login')}>로그인</button>
@@ -1989,8 +2790,23 @@ function App() {
               </>
             ) : (
               <div className="checkinDoneCenter">
-                <h3>체크인 완료</h3>
-                <p className="small">{checkinSummaryText || '오늘 체크인이 저장되었습니다.'}</p>
+                <p className="checkinDoneHeadline">{checkinDoneHeadline}</p>
+                <h3 className="checkinDoneTitle">
+                  <span className="checkinDoneIcon" aria-hidden="true">✅</span>
+                  체크인 완료!
+                </h3>
+                <div className="checkinRingGrid">
+                  {checkinVisualMetrics.map((metric) => (
+                    <CheckinRing
+                      key={metric.key}
+                      label={metric.label}
+                      valueText={metric.valueText}
+                      percent={metric.percent}
+                      color={metric.color}
+                    />
+                  ))}
+                </div>
+                <p className="small">{checkinSummaryText || '입력한 체크인 데이터가 시각화되었습니다.'}</p>
                 <button onClick={() => void startCbtFromCheckinSummary()} disabled={loading || chatGenerating}>인지행동치료로 이동</button>
               </div>
             )}
@@ -2060,77 +2876,205 @@ function App() {
       )}
 
       {page === 'diary' && token && (
-        <section className="panel cbtLayout diaryPanel">
-          <article className="cbtMain">
-            <h2>인지행동치료 챗봇 대화</h2>
-            <div className="chatShell diaryTight">
-              <div className="chatMessages" ref={chatMessagesRef}>
+        <section className="cbtRefinedPage">
+          <div className="cbtRefinedGrid">
+            <article className="cbtRefinedMain">
+              <div className="cbtRefinedMainHead">
+                <div className="cbtRefinedCoach">
+                  <div className="cbtRefinedCoachAvatar">M</div>
+                  <div>
+                    <h3>모치짱</h3>
+                    <span>이야기 들을 준비가 되었어요...</span>
+                  </div>
+                </div>
+                <button type="button" className="cbtRefinedHistory" onClick={exportRecentChatHistory}>history</button>
+              </div>
+
+              <div className="cbtRefinedMessages" ref={chatMessagesRef}>
+                {chatResult?.crisis_mode && (
+                  <div
+                    className={`cbtCrisisBanner ${
+                      chatResult.crisis_stage === 'A'
+                        ? 'stageA'
+                        : chatResult.crisis_stage === 'B'
+                          ? 'stageB'
+                          : 'stageC'
+                    }`}
+                  >
+                    <h4>안전 우선 모드</h4>
+                    <p>
+                      {chatResult.crisis_stage === 'B'
+                        ? '도움 연결 중입니다. 지금은 안전 대기가 중요해요.'
+                        : chatResult.crisis_stage === 'C'
+                          ? '안전 확보 이후 단계예요. 지금은 짧은 사후 안전계획을 유지해요.'
+                          : '지금은 대화 탐색보다 즉시 도움 연결이 우선입니다.'}
+                    </p>
+                    {chatResult.crisis_stage !== 'B' && chatResult.crisis_stage !== 'C' && (
+                      <div className="actions">
+                        <a href="tel:1393" className="crisisCallBtn">1393</a>
+                        <a href="tel:119" className="crisisCallBtn">119</a>
+                        <a href="tel:112" className="crisisCallBtn">112</a>
+                        <button type="button" className="ghost" onClick={() => void sendSupporterCrisisMessage()}>지지자에게 메시지 보내기</button>
+                      </div>
+                    )}
+                    {chatResult.crisis_stage === 'B' && (
+                      <div className="actions">
+                        <button type="button" className="ghost" onClick={() => void sendSupporterCrisisMessage()}>지지자에게 메시지 보내기</button>
+                        <a href="tel:119" className="crisisCallBtn">긴급 119</a>
+                      </div>
+                    )}
+                    {chatResult.crisis_stage === 'C' && (
+                      <div className="actions">
+                        <button type="button" className="ghost" onClick={() => void sendSupporterCrisisMessage()}>안전 동행 요청</button>
+                      </div>
+                    )}
+                    {Array.isArray(chatResult.crisis_actions) && chatResult.crisis_actions.length > 0 && (
+                      <ul className="crisisChecklist">
+                        {chatResult.crisis_actions.map((action, idx) => (
+                          <li key={`crisis-action-${idx}`}>
+                            <label className="crisisChecklistItem">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(crisisActionChecked[action])}
+                                onChange={(e) => {
+                                  setCrisisActionChecked((prev) => ({ ...prev, [action]: e.target.checked }))
+                                }}
+                              />
+                              <span>{action}</span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
                 {chatHistory.length === 0 && <div className="chatEmpty">오늘 있었던 사건, 감정, 생각의 흐름을 천천히 이야기해 주세요.</div>}
                 {chatHistory.map((turn, idx) => (
-                  <div key={`turn-${idx}`} className={`chatBubble ${turn.role === 'user' ? 'chatUser' : 'chatAssistant'}`}>
-                    <strong className="chatBubbleHeader">
-                      {turn.role === 'user' ? '나' : '인지행동 코치'}
-                      {turn.loading && (
-                        <span className="chatLoadingInline" title="응답 생성 중" aria-label="응답 생성 중">
-                          <span className="loadingDot" />
-                        </span>
-                      )}
-                    </strong>
-                    <p>{turn.content}</p>
+                  <div key={`turn-${idx}`} className={`cbtRefinedRow ${turn.role === 'user' ? 'user' : 'assistant'}`}>
+                    <div className="cbtRefinedAvatar">{turn.role === 'user' ? 'U' : 'M'}</div>
+                    <div className="cbtRefinedBubbleWrap">
+                      <div className={`cbtRefinedBubble ${turn.role === 'user' ? 'user' : 'assistant'}`}>
+                        <p>{turn.content}</p>
+                        {turn.loading && (
+                          <span className="chatLoadingInline" title="응답 생성 중" aria-label="응답 생성 중">
+                            <span className="loadingDot" />
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 ))}
+
+                {(thoughtWeb || challenges.length > 0) && !(chatResult?.crisis_mode && chatResult?.crisis_stage === 'B') && (
+                  <div className="cbtRefinedThoughtWeb">
+                    <h4>생각그물 요약</h4>
+                    {thoughtWeb && (
+                      <>
+                        <p><strong>자동사고:</strong> {thoughtWeb.thought}</p>
+                        <p><strong>연습 포인트:</strong> {thoughtWeb.practice_point}</p>
+                      </>
+                    )}
+                    {challenges.length > 0 && !chatChallengeCtaDismissed && (
+                      <div className="actions">
+                        <button type="button" onClick={startSuggestedChallengeNow}>지금 시작</button>
+                        <button type="button" className="ghost" onClick={dismissSuggestedChallengeCta}>나중에</button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <form onSubmit={handleChatSubmit} className="chatComposer">
-                <div className="chatInputRow">
-                  <textarea ref={chatInputRef} rows={1} value={chatMessage} onChange={(e) => setChatMessage(e.target.value)} placeholder="사건, 감정, 사고 흐름을 입력해 주세요" />
-                  <button className="chatSendBtn" disabled={loading || chatGenerating}>입력</button>
+
+              <form onSubmit={handleChatSubmit} className="cbtRefinedComposer">
+                <div className="cbtRefinedInputRow">
+                  <textarea
+                    ref={chatInputRef}
+                    rows={1}
+                    value={chatMessage}
+                    onChange={(e) => setChatMessage(e.target.value)}
+                    onKeyDown={handleChatTextareaKeyDown}
+                    placeholder="당신의 생각을 속삭여주세요..."
+                  />
+                  <button type="submit" className="cbtRefinedSend" disabled={loading || chatGenerating}>send</button>
                 </div>
                 <button type="button" className="chatFinishBtn" onClick={() => void handleFinishDialogue()} disabled={loading || chatGenerating}>대화 마치기</button>
               </form>
-            </div>
-          </article>
+            </article>
 
-          <aside className="cbtSide">
-            <div className="panel sideCard">
-              <h3>추천 생각 정리 도구</h3>
-              {challenges.length === 0 && <p className="small">대화를 충분히 나누면 현재 상태에 맞춰 추천해드릴게요.</p>}
-              <ul className="probList">
-                {challenges.map((c) => (
-                  <li key={c}>
-                    <span>{c}</span>
-                    <button className="ghost" type="button" onClick={() => startChallenge(c)}>선택</button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="panel sideCard">
-              <h3>진행 중 생각 정리</h3>
-              {activeChallengeInProgress ? (
-                <>
-                  <p><strong>{activeChallenge}</strong></p>
-                  <p className="small">현재 단계: {challengePhase === 'start' ? '시작' : challengePhase === 'continue' ? '진행' : '정리'}</p>
-                  <p className="small">{challengeHintText || chatResult?.challenge_step_prompt || '사실 1개, 감정 1개, 자동사고 1개를 순서대로 적어보세요.'}</p>
-                </>
-              ) : (
-                <p className="small">진행 중인 챌린지가 없습니다.</p>
-              )}
-              {(completedChallenges > 0 || challenges.length > 0) && (
+            <aside className="cbtRefinedSide">
+              <article className="cbtRefinedCard">
+                <div className="cbtSearchWrap">
+                  <span>search</span>
+                  <input placeholder="상담 기록 검색..." />
+                </div>
+              </article>
+
+              <article className="cbtRefinedCard">
+                <div className="cbtCardHead">
+                  <div>
+                    <h4>위험도 분석</h4>
+                    <p>30일 건강 트렌드</p>
+                  </div>
+                </div>
+                <div className="cbtTrendChart">
+                  <svg viewBox="0 0 310 128" role="img" aria-label="risk trend line">
+                    <path d="M0,100 Q30,110 60,80 T120,60 T180,30 T240,50 T310,20" />
+                    <circle cx="180" cy="30" r="4" />
+                    <circle cx="310" cy="20" r="5" />
+                  </svg>
+                </div>
+                <div className="cbtTrendAxis">
+                  <span>1일차</span><span>15일차</span><span>오늘</span>
+                </div>
+              </article>
+
+              <article className="cbtRefinedCard">
+                <div className="cbtCardHead">
+                  <h4>웰니스 지수</h4>
+                  <button type="button">상세보기</button>
+                </div>
+                <div className="cbtWellnessBox">
+                  <div className="cbtStatusHead">
+                    <div>
+                      <p>현재 상태</p>
+                      <h5>{liveEmotionSummary.moodLabel}</h5>
+                    </div>
+                    <span>{diaryRiskLabel}</span>
+                  </div>
+                  <div className="cbtMetricRow">
+                    <div><span>우울 (DEP)</span><strong>{diaryDep}%</strong></div>
+                    <div className="cbtMetricBar peach"><b style={{ width: `${Math.max(4, diaryDep)}%` }} /></div>
+                  </div>
+                  <div className="cbtMetricRow">
+                    <div><span>불안 (ANX)</span><strong>{diaryAnx}%</strong></div>
+                    <div className="cbtMetricBar lavender"><b style={{ width: `${Math.max(4, diaryAnx)}%` }} /></div>
+                  </div>
+                  <div className="cbtMetricRow">
+                    <div><span>불면 (INS)</span><strong>{diaryIns}%</strong></div>
+                    <div className="cbtMetricBar neon"><b style={{ width: `${Math.max(4, diaryIns)}%` }} /></div>
+                  </div>
+                </div>
+              </article>
+
+              <article className="cbtRefinedCard">
+                <h4>진행 중 생각 정리</h4>
+                {activeChallengeInProgress ? (
+                  <>
+                    <p><strong>{activeChallenge}</strong></p>
+                    <p className="small">현재 단계: {challengePhase === 'start' ? '시작' : challengePhase === 'continue' ? '진행' : '정리'}</p>
+                    <p className="small">{challengeHintText || chatResult?.challenge_step_prompt || '사실 1개, 감정 1개, 자동사고 1개를 순서대로 적어보세요.'}</p>
+                  </>
+                ) : (
+                  <p className="small">진행 중인 챌린지가 없습니다.</p>
+                )}
                 <p className="small">완료 {completedChallenges}/{challenges.length}</p>
-              )}
-            </div>
-            <div className="panel sideCard">
-              <h3>생각 정리 힌트</h3>
-              <p>{challengeHintText || chatResult?.challenge_step_prompt || '진행이 어렵다면 현재 감정강도(0~10)와 떠오른 생각 1개를 먼저 적어보세요.'}</p>
-            </div>
-            <div className="panel sideCard">
-              <h3>감정 요약 카드</h3>
-              <p><strong>현재 정서:</strong> {liveEmotionSummary.moodLabel}</p>
-              <p><strong>상황:</strong> {liveEmotionSummary.situation}</p>
-              <p><strong>왜곡 신호:</strong> {liveEmotionSummary.selfBlameSignal}</p>
-              <p><strong>재해석:</strong> {liveEmotionSummary.reframe}</p>
-              <p><strong>다음 행동:</strong> {liveEmotionSummary.nextAction}</p>
-            </div>
-          </aside>
+              </article>
+
+              <article className="cbtRefinedCard cbtTipCard">
+                <h4>오늘의 모치 팁</h4>
+                <p>{challengeHintText || chatResult?.challenge_step_prompt || '압박감이 느껴질 때는 5분만 눈을 감고 주변 소리에 집중해보세요.'}</p>
+              </article>
+            </aside>
+          </div>
 
           {dialogueFinishedOpen && (
             <div className="dialogueDoneOverlay" role="dialog" aria-modal="true">
@@ -2260,119 +3204,124 @@ function App() {
       )}
 
       {page === 'assessment' && (
-        <section className="panel">
-          <h2>종합 심리 검사</h2>
-          <form onSubmit={handleSurveySubmit} className="form">
-            <article className="panel questionBlock">
-              <h3>마음 에너지 변화</h3>
-              <p className="small">총점: {phqTotal}/27</p>
-              <div className="questionList">
-                {PHQ9_QUESTIONS.map((q, idx) => (
-                  <div key={`phq-${idx}`} className="questionItem">
-                    <p>{idx + 1}. {q}</p>
-                    <div className="likertButtons">
-                      {LIKERT_OPTIONS.filter((opt) => opt.value !== '').map((opt) => (
-                        <button
-                          key={`phq-${idx}-${opt.value}`}
-                          type="button"
-                          className={assessment.phq9[idx] === opt.value ? 'likertBtn active' : 'likertBtn ghost'}
-                          onClick={() => setPhqAnswer(idx, opt.value as LikertValue)}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
+        <section className="assessmentPage">
+          <div className="assessmentProgressRail">
+            <div className="assessmentProgressFill" style={{ width: `${assessmentProgress}%` }} />
+          </div>
+          <div className="assessmentHeader">
+            <div>
+              <h2>종합 심리 검사 센터</h2>
+              <p>현재 진행 중인 3가지 주요 지표 검사입니다.</p>
+            </div>
+            <div className="assessmentHelperBubble">
+              <div className="assessmentHelperAvatar">M</div>
+              <p>천천히 당신의 마음을 들여다보는 시간이에요.</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSurveySubmit} className="assessmentForm">
+            {[
+              { key: 'PHQ' as const, title: 'PHQ-9', subtitle: '우울증 선별 검사', sectionClass: 'sectionLavender', questions: PHQ9_QUESTIONS, score: `${phqTotal}/27` },
+              { key: 'GAD' as const, title: 'GAD-7', subtitle: '불안 장애 검사', sectionClass: 'sectionPeach', questions: GAD7_QUESTIONS, score: `${gadTotal}/21` },
+              { key: 'ISI' as const, title: 'ISI', subtitle: '불면증 심각도 지표', sectionClass: 'sectionNeon', questions: SLEEP_QUESTIONS, score: `${sleepTotal}/9` },
+            ].map((test) => {
+              const state = assessmentFlow[test.key]
+              const currentQuestion = test.questions[state.index]
+              const currentAnswer = state.answers[state.index]
+              const completed = isTestCompleted(test.key)
+              const canNext = currentAnswer != null
+
+              return (
+                <article key={`assessment-${test.key}`} className={`assessmentSection ${test.sectionClass} ${assessmentErrors[test.key] ? 'assessmentSectionError' : ''}`}>
+                  <div className="assessmentSectionHead assessmentSectionHeadWide">
+                    <div>
+                      <span>{test.title}</span>
+                      <p>{test.subtitle}</p>
+                    </div>
+                    <em>{state.index + 1}/{test.questions.length}</em>
+                    <b className={completed ? 'assessmentDoneBadge active' : 'assessmentDoneBadge'}>{completed ? '완료됨' : '진행중'}</b>
+                  </div>
+
+                  <div className="assessmentCarousel">
+                    <div key={`${test.key}-${state.index}`} className="assessmentSlide">
+                      {completed && (
+                        <div className="assessmentCompleteOverlay">
+                          <div className="assessmentCompleteIcon">✓</div>
+                          <strong>{test.title} 검사 완료됨</strong>
+                          <button type="button" className="ghost" onClick={() => setTestIndex(test.key, 0)}>수정하기</button>
+                        </div>
+                      )}
+                      <p className="assessmentSlideQuestion">{state.index + 1}. {currentQuestion}</p>
+                      <div className="assessmentSliderWrap">
+                        <input
+                          type="range"
+                          min={0}
+                          max={3}
+                          step={1}
+                          value={currentAnswer ?? 0}
+                          onChange={(e) => setTestAnswer(test.key, Number(e.target.value))}
+                          className="assessmentSlider"
+                          style={{
+                            background: `linear-gradient(to right, #0f172a 0%, #0f172a ${(((currentAnswer ?? 0) / 3) * 100)}%, #dbe4ea ${(((currentAnswer ?? 0) / 3) * 100)}%, #dbe4ea 100%)`,
+                          }}
+                        />
+                        <div className="assessmentSliderLabels">
+                          {SLIDER_LABELS.map((label, idx) => (
+                            <button
+                              key={`${test.key}-label-${idx}`}
+                              type="button"
+                              className={currentAnswer === idx ? 'active' : ''}
+                              onClick={() => setTestAnswer(test.key, idx)}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </article>
 
-            <article className="panel questionBlock">
-              <h3>긴장과 걱정 반응</h3>
-              <p className="small">총점: {gadTotal}/21</p>
-              <div className="questionList">
-                {GAD7_QUESTIONS.map((q, idx) => (
-                  <div key={`gad-${idx}`} className="questionItem">
-                    <p>{idx + 1}. {q}</p>
-                    <div className="likertButtons">
-                      {LIKERT_OPTIONS.filter((opt) => opt.value !== '').map((opt) => (
-                        <button
-                          key={`gad-${idx}-${opt.value}`}
-                          type="button"
-                          className={assessment.gad7[idx] === opt.value ? 'likertBtn active' : 'likertBtn ghost'}
-                          onClick={() => setGadAnswer(idx, opt.value as LikertValue)}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="assessmentNav">
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => moveTestIndex(test.key, -1)}
+                      disabled={state.index === 0 || completed}
+                    >
+                      이전
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleNextQuestion(test.key)}
+                      disabled={state.index >= test.questions.length - 1 || !canNext || completed}
+                    >
+                      다음
+                    </button>
                   </div>
-                ))}
-              </div>
-            </article>
+                </article>
+              )
+            })}
 
-            <article className="panel questionBlock">
-              <h3>수면 회복 상태</h3>
-              <p className="small">총점: {sleepTotal}/9</p>
-              <div className="questionList">
-                {SLEEP_QUESTIONS.map((q, idx) => (
-                  <div key={`sleep-${idx}`} className="questionItem">
-                    <p>{idx + 1}. {q}</p>
-                    <div className="likertButtons">
-                      {LIKERT_OPTIONS.filter((opt) => opt.value !== '').map((opt) => (
-                        <button
-                          key={`sleep-${idx}-${opt.value}`}
-                          type="button"
-                          className={assessment.sleep[idx] === opt.value ? 'likertBtn active' : 'likertBtn ghost'}
-                          onClick={() => setSleepAnswer(idx, opt.value as LikertValue)}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+            <div className="assessmentSubmitWrap">
+              <div className="assessmentBottomProgress">
+                <p>{assessmentProgress}% Completed</p>
+                <div className="assessmentBottomTrack">
+                  <div className="assessmentBottomFill" style={{ width: `${assessmentProgress}%` }} />
+                </div>
               </div>
-            </article>
-
-            <article className="panel questionBlock">
-              <h3>생활 맥락 체크</h3>
-              <p className="small">총점: {contextTotal}/15</p>
-              <div className="questionList">
-                {[
-                  ['daily_functioning', '최근 일상 기능이 눈에 띄게 떨어졌나요?'],
-                  ['stressful_event', '최근 스트레스 사건 영향이 크게 느껴졌나요?'],
-                  ['social_support', '지지받기 어렵다고 느껴졌나요?'],
-                  ['coping_skill', '감정 대처가 어렵게 느껴졌나요?'],
-                  ['motivation_for_change', '변화하고 싶은 동기가 떨어졌나요?'],
-                ].map(([key, text]) => (
-                  <div key={String(key)} className="questionItem">
-                    <p>{text}</p>
-                    <div className="likertButtons">
-                      {LIKERT_OPTIONS.filter((opt) => opt.value !== '').map((opt) => (
-                        <button
-                          key={`ctx-${String(key)}-${opt.value}`}
-                          type="button"
-                          className={assessment.context[key as keyof AssessmentState['context']] === opt.value ? 'likertBtn active' : 'likertBtn ghost'}
-                          onClick={() => setContextAnswer(key as keyof AssessmentState['context'], opt.value as LikertValue)}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </article>
-
-            <button disabled={loading}>결과 확인하기</button>
+              <button className="assessmentSubmitBtn" disabled={loading || !assessmentAllCompleted}>
+                전체 결과 확인하기 {assessmentAllCompleted ? '' : '🔒'}
+              </button>
+              <p>{assessmentGuideText}</p>
+            </div>
           </form>
 
           {checkPrediction && (
-            <div className="result">
-              <p>예측 결과: <strong>{severityToKorean(checkPrediction.prediction)}</strong></p>
-              <p>고위험 확률(3~4단계): <strong>{(highRiskProbability * 100).toFixed(1)}%</strong></p>
-            </div>
+            <AssessmentReportPage
+              data={reportData}
+              reportDate={reportDate}
+              onConsult={() => setPage('board')}
+            />
           )}
         </section>
       )}

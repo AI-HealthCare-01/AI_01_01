@@ -6,6 +6,16 @@ from pydantic import BaseModel, ConfigDict, Field, conint, constr
 MessageStr = constr(min_length=1, max_length=1200)
 ChallengeStr = constr(min_length=1, max_length=160)
 CbtPhase = Literal["EMOTION", "SITUATION", "THOUGHT", "DISTORTION", "REFRAME", "ACTION"]
+IntentLevel = Literal["none", "passive", "active"]
+CrisisLevel = Literal["none", "moderate", "high"]
+CrisisStage = Literal["A", "B", "C"]
+ThoughtWebCognitiveStyle = Literal[
+    "past_regret",
+    "future_worry",
+    "self_critical",
+    "control_fixation",
+    "over_responsibility",
+]
 DistortionName = Literal[
     "overgeneralization",
     "mind_reading",
@@ -29,6 +39,27 @@ class DistortionMetrics(BaseModel):
     overgeneralization_count: conint(ge=0, le=20) = 0
 
 
+class ThoughtWebEmotion(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    label: str
+    intensity_0_10: conint(ge=0, le=10)
+
+
+class ThoughtWeb(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    situation: str
+    thought: str
+    emotion: list[ThoughtWebEmotion] = Field(default_factory=list)
+    sensation: list[str] = Field(default_factory=list)
+    intermediate_belief: str
+    core_belief: str
+    core_experience_hint: str | None = None
+    cognitive_style: ThoughtWebCognitiveStyle
+    practice_point: str
+
+
 class ExtractedIndicators(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -38,6 +69,15 @@ class ExtractedIndicators(BaseModel):
     sleep_difficulty_0_10: conint(ge=0, le=10)
     distortion: DistortionMetrics
     distortions: list[DistortionName] = Field(default_factory=list)
+    thought_web: ThoughtWeb | None = None
+    suicide_risk_flag: bool = False
+    intent_level: IntentLevel = "none"
+    plan_means_flag: bool = False
+    crisis_lock_remaining: conint(ge=0, le=10) = 0
+    crisis_stage: CrisisStage | None = None
+    crisis_hotline_count: conint(ge=0, le=10) = 0
+    crisis_template_index: conint(ge=0, le=20) = 0
+    violent_risk_flag: bool = False
 
 
 class ChatTurn(BaseModel):
@@ -87,6 +127,10 @@ class ChatResponse(BaseModel):
     next_phase: CbtPhase | None = None
     summary_card: SummaryCard
     cbt_phase: CbtPhase | None = None
+    crisis_mode: bool = False
+    crisis_level: CrisisLevel = "none"
+    crisis_stage: CrisisStage | None = None
+    crisis_actions: list[str] = Field(default_factory=list)
 
 
 class ChallengeRecommendResponse(BaseModel):

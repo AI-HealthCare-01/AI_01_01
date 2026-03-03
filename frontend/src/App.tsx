@@ -337,8 +337,8 @@ function createChatSessionId(): string {
 }
 
 function calculateRiskLevel(phq: number, gad: number, isi: number): RiskLevel {
-  if (phq >= 15 || gad >= 15 || isi >= 15) return 'high'
-  if (phq >= 8 || gad >= 8 || isi >= 8) return 'moderate'
+  if (phq >= 15 || gad >= 15 || isi >= 6) return 'high'
+  if (phq >= 8 || gad >= 8 || isi >= 4) return 'moderate'
   return 'low'
 }
 
@@ -428,13 +428,13 @@ function TripleGaugeSection({ phqScore, gadScore, isiScore }: { phqScore: number
     <div className="reportGaugeGroup">
       <ScoreGauge label="PHQ-9" value={phqScore} max={27} />
       <ScoreGauge label="GAD-7" value={gadScore} max={21} />
-      <ScoreGauge label="ISI" value={isiScore} max={21} accent="#B8FFA9" />
+      <ScoreGauge label="ISI" value={isiScore} max={9} accent="#B8FFA9" />
     </div>
   )
 }
 
 function OverallAnalysisCard({ riskLevel, phqScore, gadScore, isiScore }: { riskLevel: RiskLevel; phqScore: number; gadScore: number; isiScore: number }) {
-  const normalizedAverage = ((phqScore / 27) + (gadScore / 21) + (isiScore / 21)) / 3
+  const normalizedAverage = ((phqScore / 27) + (gadScore / 21) + (isiScore / 9)) / 3
   const mentalEnergy = Math.max(0, Math.round((1 - normalizedAverage) * 100))
   const riskLabel = riskLevel === 'high' ? '고위험군' : riskLevel === 'moderate' ? '중등도 위험' : '안정군'
   return (
@@ -526,7 +526,7 @@ function AssessmentReportPage({
       <div className="reportMetricGrid">
         <MetricCard title="PHQ-9" score={data.phq_score} maxScore={27} />
         <MetricCard title="GAD-7" score={data.gad_score} maxScore={21} />
-        <MetricCard title="ISI" score={data.isi_score} maxScore={21} />
+        <MetricCard title="ISI" score={data.isi_score} maxScore={9} />
       </div>
       <ConsultationCTA riskLevel={data.risk_level} onClick={onConsult} />
     </section>
@@ -1788,15 +1788,6 @@ function App() {
       const current = prev[key]
       const max = current.answers.length - 1
       const nextIndex = Math.max(0, Math.min(max, current.index + dir))
-      return { ...prev, [key]: { ...current, index: nextIndex } }
-    })
-  }
-
-  function setTestIndex(key: TestKey, index: number) {
-    setAssessmentFlow((prev) => {
-      const current = prev[key]
-      const max = current.answers.length - 1
-      const nextIndex = Math.max(0, Math.min(max, index))
       return { ...prev, [key]: { ...current, index: nextIndex } }
     })
   }
@@ -3239,18 +3230,11 @@ function App() {
                       <p>{test.subtitle}</p>
                     </div>
                     <em>{state.index + 1}/{test.questions.length}</em>
-                    <b className={completed ? 'assessmentDoneBadge active' : 'assessmentDoneBadge'}>{completed ? '완료됨' : '진행중'}</b>
+                    <b className={completed ? 'assessmentDoneBadge active' : 'assessmentDoneBadge'}>{completed ? '응답완료' : '진행중'}</b>
                   </div>
 
                   <div className="assessmentCarousel">
                     <div key={`${test.key}-${state.index}`} className="assessmentSlide">
-                      {completed && (
-                        <div className="assessmentCompleteOverlay">
-                          <div className="assessmentCompleteIcon">✓</div>
-                          <strong>{test.title} 검사 완료됨</strong>
-                          <button type="button" className="ghost" onClick={() => setTestIndex(test.key, 0)}>수정하기</button>
-                        </div>
-                      )}
                       <p className="assessmentSlideQuestion">{state.index + 1}. {currentQuestion}</p>
                       <div className="assessmentSliderWrap">
                         <input
@@ -3286,14 +3270,14 @@ function App() {
                       type="button"
                       className="ghost"
                       onClick={() => moveTestIndex(test.key, -1)}
-                      disabled={state.index === 0 || completed}
+                      disabled={state.index === 0}
                     >
                       이전
                     </button>
                     <button
                       type="button"
                       onClick={() => handleNextQuestion(test.key)}
-                      disabled={state.index >= test.questions.length - 1 || !canNext || completed}
+                      disabled={state.index >= test.questions.length - 1 || !canNext}
                     >
                       다음
                     </button>

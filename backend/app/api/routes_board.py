@@ -297,6 +297,29 @@ async def list_posts(
     return BoardPostListResponse(page=page, page_size=page_size, total=total, items=items)
 
 
+@router.get("/posts/popular", response_model=BoardPostListResponse)
+async def list_popular_posts(
+    period_days: int = Query(default=7, ge=1, le=365),
+    min_likes: int = Query(default=3, ge=0, le=1000),
+    limit: int = Query(default=10, ge=1, le=100),
+    current_user: UserOut | None = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+) -> BoardPostListResponse:
+    await _ensure_board_schema(db)
+    viewer_is_admin = bool(current_user and await _is_admin_user(db, current_user))
+    viewer_id = current_user.id if current_user else None
+    rows = await crud.list_popular_board_posts(
+        db,
+        viewer_id=viewer_id,
+        viewer_is_admin=viewer_is_admin,
+        period_days=period_days,
+        min_likes=min_likes,
+        limit=limit,
+    )
+    items = [await _map_post(db, row, viewer_id=viewer_id) for row in rows]
+    return BoardPostListResponse(page=1, page_size=limit, total=len(items), items=items)
+
+
 @router.get("/me/bookmarks", response_model=BoardPostListResponse)
 async def list_my_bookmarks(
     limit: int = Query(default=30, ge=1, le=100),

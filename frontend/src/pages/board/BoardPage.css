@@ -9,9 +9,13 @@
 
 .boardToolbar {
   display: grid;
-  grid-template-columns: 1fr 200px auto auto;
+  grid-template-columns: auto 1fr 200px auto auto;
   gap: 0.55rem;
   align-items: center;
+}
+
+.boardModeTabs {
+  margin: 0;
 }
 
 .boardLayout {

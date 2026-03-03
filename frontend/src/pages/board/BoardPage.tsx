@@ -12,6 +12,7 @@ import {
   deleteBoardComment,
   deleteBoardPost,
   fetchBoardPostDetail,
+  fetchPopularBoardPosts,
   fetchBoardPosts,
   reportBoardPost,
   resolveBoardImageUrl,
@@ -34,6 +35,7 @@ const MAX_IMAGES_PER_POST = 5
 type CategoryInput = '' | BoardCategory | '공지' | '정신건강포스팅'
 type CategoryFilterInput = '' | BoardCategory | '정신건강포스팅'
 type EditorMode = 'list' | 'create' | 'edit'
+type BoardListMode = 'all' | 'popular'
 
 function normalizeBoardCategory(value: BoardCategoryApi): BoardCategory {
   return value === '질문' ? '문의' : value
@@ -130,6 +132,7 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
   const [message, setMessage] = useState('')
   const [q, setQ] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilterInput>('')
+  const [listMode, setListMode] = useState<BoardListMode>('all')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [posts, setPosts] = useState<BoardPost[]>([])
@@ -160,19 +163,24 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
   async function loadPosts(nextPage = page, preferredSelectedId: string | null = null) {
     setLoading(true)
     try {
-      const mentalHealthOnly = categoryFilter === '정신건강포스팅' ? true : undefined
-      const serverCategory = categoryFilter === '정신건강포스팅' ? '' : categoryFilter
-      const data = await fetchBoardPosts({
-        page: nextPage,
-        pageSize: PAGE_SIZE,
-        q,
-        category: serverCategory as BoardCategory | '',
-        token,
-        mentalHealthOnly,
-      })
+      const data = listMode === 'popular'
+        ? await fetchPopularBoardPosts({
+          token,
+          periodDays: 7,
+          minLikes: 3,
+          limit: 30,
+        })
+        : await fetchBoardPosts({
+          page: nextPage,
+          pageSize: PAGE_SIZE,
+          q,
+          category: (categoryFilter === '정신건강포스팅' ? '' : categoryFilter) as BoardCategory | '',
+          token,
+          mentalHealthOnly: categoryFilter === '정신건강포스팅' ? true : undefined,
+        })
       setPosts(data.items)
       setTotal(data.total)
-      setPage(data.page)
+      setPage(listMode === 'popular' ? 1 : data.page)
 
       if (data.items.length > 0) {
         const keepId = preferredSelectedId ?? selectedId
@@ -204,9 +212,9 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
   }
 
   useEffect(() => {
-    void loadPosts(1)
+    void loadPosts(1, focusPostId ?? null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [listMode, focusPostId])
 
   useEffect(() => {
     if (selectedId) void loadDetail(selectedId)
@@ -545,13 +553,17 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
       <p className="small">공지/문의/자유/꿀팁/피드백/정신건강 포스팅을 한 곳에서 관리합니다.</p>
 
       <div className="boardToolbar">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="제목/내용 검색" />
-        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as CategoryFilterInput)}>
+        <div className="actions boardModeTabs">
+          <button type="button" className={listMode === 'all' ? '' : 'ghost'} onClick={() => setListMode('all')}>전체글</button>
+          <button type="button" className={listMode === 'popular' ? '' : 'ghost'} onClick={() => setListMode('popular')}>인기글</button>
+        </div>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="제목/내용 검색" disabled={listMode === 'popular'} />
+        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as CategoryFilterInput)} disabled={listMode === 'popular'}>
           <option value="">전체 카테고리</option>
           {BOARD_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
           <option value="정신건강포스팅">정신건강 포스팅</option>
         </select>
-        <button type="button" disabled={loading} onClick={() => void loadPosts(1)}>검색</button>
+        <button type="button" disabled={loading || listMode === 'popular'} onClick={() => void loadPosts(1)}>검색</button>
         <button type="button" className="ghost" disabled={!token} onClick={openCreateScreen}>게시물 작성하기</button>
       </div>
 
@@ -593,21 +605,23 @@ export default function BoardPage({ token, myUserId, isAdmin, focusPostId }: Boa
               </div>
             </article>
           ))}
-          <div className="boardPager">
-            <button type="button" className="ghost" disabled={loading || page <= 1} onClick={() => void loadPosts(page - 1)}>이전</button>
-            {pageNumbers.map((n) => (
-              <button
-                key={`page-${n}`}
-                type="button"
-                className={n === page ? 'boardPageNum active' : 'boardPageNum ghost'}
-                disabled={loading}
-                onClick={() => void loadPosts(n)}
-              >
-                {n}
-              </button>
-            ))}
-            <button type="button" className="ghost" disabled={loading || page >= totalPages} onClick={() => void loadPosts(page + 1)}>다음</button>
-          </div>
+          {listMode === 'all' && (
+            <div className="boardPager">
+              <button type="button" className="ghost" disabled={loading || page <= 1} onClick={() => void loadPosts(page - 1)}>이전</button>
+              {pageNumbers.map((n) => (
+                <button
+                  key={`page-${n}`}
+                  type="button"
+                  className={n === page ? 'boardPageNum active' : 'boardPageNum ghost'}
+                  disabled={loading}
+                  onClick={() => void loadPosts(n)}
+                >
+                  {n}
+                </button>
+              ))}
+              <button type="button" className="ghost" disabled={loading || page >= totalPages} onClick={() => void loadPosts(page + 1)}>다음</button>
+            </div>
+          )}
         </article>
 
         <article className="boardDetail">

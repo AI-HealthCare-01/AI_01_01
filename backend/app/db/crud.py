@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Select, String, and_, cast, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -353,6 +353,41 @@ async def list_board_posts(
     rows = list((await db.execute(stmt)).scalars().all())
     total = int((await db.execute(count_stmt)).scalar_one())
     return rows, total
+
+
+async def list_popular_board_posts(
+    db: AsyncSession,
+    *,
+    viewer_id: uuid.UUID | None = None,
+    viewer_is_admin: bool = False,
+    period_days: int = 7,
+    min_likes: int = 3,
+    limit: int = 10,
+) -> list[BoardPost]:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, period_days))
+    likes_count = func.count(func.distinct(BoardPostLike.id))
+    comments_count = func.count(func.distinct(BoardComment.id))
+    score = (likes_count * 2) + comments_count
+
+    stmt = (
+        select(BoardPost)
+        .outerjoin(BoardPostLike, BoardPostLike.post_id == BoardPost.id)
+        .outerjoin(BoardComment, BoardComment.post_id == BoardPost.id)
+        .where(BoardPost.created_at >= cutoff)
+        .group_by(BoardPost.id)
+        .having(likes_count >= max(0, min_likes))
+        .order_by(desc(score), desc(likes_count), desc(comments_count), desc(BoardPost.created_at))
+        .limit(max(1, limit))
+    )
+
+    if not viewer_is_admin:
+        if viewer_id is None:
+            visibility_cond = BoardPost.is_private.is_(False)
+        else:
+            visibility_cond = or_(BoardPost.is_private.is_(False), BoardPost.author_id == viewer_id)
+        stmt = stmt.where(visibility_cond)
+
+    return list((await db.execute(stmt)).scalars().all())
 
 
 async def list_bookmarked_board_posts_for_user(

@@ -147,6 +147,24 @@ export async function fetchBoardPosts(params: {
   return normalizeBoardListResponse(data)
 }
 
+export async function fetchPopularBoardPosts(params: {
+  token?: string
+  periodDays?: number
+  minLikes?: number
+  limit?: number
+}): Promise<BoardPostListResponse> {
+  const qs = new URLSearchParams()
+  qs.set('period_days', String(params.periodDays ?? 7))
+  qs.set('min_likes', String(params.minLikes ?? 3))
+  qs.set('limit', String(params.limit ?? 10))
+  const response = await fetch(`${API_BASE}/board/posts/popular?${qs.toString()}`, {
+    headers: params.token ? { Authorization: `Bearer ${params.token}` } : undefined,
+  })
+  if (!response.ok) throw new Error(await readError(response))
+  const data = (await response.json()) as BoardPostListResponse
+  return normalizeBoardListResponse(data)
+}
+
 export async function fetchBoardPostDetail(postId: string, token?: string): Promise<BoardPostDetail> {
   const response = await fetch(`${API_BASE}/board/posts/${postId}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,

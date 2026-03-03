@@ -701,13 +701,6 @@ function todayDateString(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-function displayIfMeaningful(value: string | number | null | undefined, suffix = ''): string {
-  if (value == null) return ''
-  const text = String(value).trim()
-  if (!text || text === '0' || text === '0.0' || text === '0.00') return ''
-  return suffix ? `${text}${suffix}` : text
-}
-
 function MultiMetricTrendChart({
   labels,
   series,
@@ -2529,7 +2522,6 @@ function App() {
     return { monthLabel, cells, monthTotal, monthAttended }
   }, [checkinHistory])
 
-  const todayLogs = useMemo(() => contentLogs.filter((x) => x.performed_date === todayDateString()), [contentLogs])
   const todayJournalEntry = useMemo(() => journalEntries.find((x) => x.entry_date === todayDateString()) ?? null, [journalEntries])
   const moodFallbackRisk = todayCheckinRecord?.mood_score != null
     ? Math.max(0, Math.min(100, (10 - Number(todayCheckinRecord.mood_score)) * 10))
@@ -3111,37 +3103,6 @@ function App() {
               <button className="ghost" onClick={() => setJournalLibraryOpen((v) => !v)}>일기 도서관 {journalLibraryOpen ? '닫기' : '열기'}</button>
             </div>
           </article>
-
-          <aside className="cbtSide">
-            <div className="panel sideCard">
-              <h3>해당 일자 체크인</h3>
-              <p><strong>기분:</strong> {displayIfMeaningful(checkin.mood_score)}</p>
-              <p><strong>수면:</strong> {displayIfMeaningful(checkin.sleep_hours, '시간')}</p>
-              <p><strong>운동:</strong> {displayIfMeaningful(checkin.exercise_minutes_today, '분')}</p>
-              <p><strong>햇빛:</strong> {displayIfMeaningful(checkin.daylight_minutes_today, '분')}</p>
-            </div>
-
-            <div className="panel sideCard">
-              <h3>인지행동치료 요약</h3>
-              <p><strong>상황:</strong> {chatResult?.summary_card?.situation ?? '-'}</p>
-              <p><strong>재정리:</strong> {chatResult?.summary_card?.reframe ?? '-'}</p>
-              <p><strong>다음 행동:</strong> {chatResult?.summary_card?.next_action ?? '-'}</p>
-            </div>
-
-            <div className="panel sideCard">
-              <h3>오늘 챌린지 수행</h3>
-              {todayLogs.length === 0 ? <p className="small">기록이 없습니다.</p> : (
-                <ul className="probList">
-                  {todayLogs.map((x) => (
-                    <li key={`journal-log-${x.id}`}>
-                      <span>{x.challenge_name}</span>
-                      <strong>{displayIfMeaningful(x.duration_minutes, '분')}</strong>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </aside>
 
           {journalLibraryOpen && (
             <article className="panel" style={{ gridColumn: '1 / -1' }}>

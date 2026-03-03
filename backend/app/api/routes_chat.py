@@ -776,7 +776,7 @@ async def chat_cbt(
         prior_lock=prior_crisis_lock,
         crisis_triggered_now=bool(crisis_detect["crisis_mode"]),
     )
-    logger.info(
+    logger.warning(
         "[crisis] user_id=%s prev=%s lock=%s msg=%s detected_mode=%s detected_level=%s -> stage=%s lock=%s",
         current_user.id,
         prior_crisis_stage or "-",
@@ -838,6 +838,19 @@ async def chat_cbt(
             extracted=extracted,
             suggested_challenges=[],
         )
+        crisis_actions = _crisis_actions(
+            crisis_level,
+            crisis_stage or "A",
+            payload.message,
+            violent_risk_flag=bool(crisis_detect.get("violent_risk_flag", False)),
+        )
+        logger.warning(
+            "[crisis][response] user_id=%s crisis_mode=true crisis_level=%s crisis_stage=%s crisis_actions=%s",
+            current_user.id,
+            "high" if crisis_level == "high" else "moderate",
+            crisis_stage if crisis_stage in {"A", "B", "C"} else "A",
+            "|".join(crisis_actions),
+        )
         return ChatResponse(
             reply=safe_reply,
             extracted=extracted,
@@ -857,12 +870,7 @@ async def chat_cbt(
             crisis_mode=True,
             crisis_level="high" if crisis_level == "high" else "moderate",
             crisis_stage=crisis_stage if crisis_stage in {"A", "B", "C"} else "A",
-            crisis_actions=_crisis_actions(
-                crisis_level,
-                crisis_stage or "A",
-                payload.message,
-                violent_risk_flag=bool(crisis_detect.get("violent_risk_flag", False)),
-            ),
+            crisis_actions=crisis_actions,
         )
     prior_distress = _safe_score(latest_extracted.get("distress_0_10", 0), 0)
     prior_rumination = _safe_score(latest_extracted.get("rumination_0_10", 0), 0)
@@ -1054,6 +1062,10 @@ async def chat_cbt(
         suggested_challenges=filtered_suggestions,
     )
 
+    logger.warning(
+        "[crisis][response] user_id=%s crisis_mode=false crisis_level=none crisis_stage=- crisis_actions=-",
+        current_user.id,
+    )
     return ChatResponse(
         reply=result.reply,
         extracted=result.extracted,

@@ -84,8 +84,8 @@ async def get_my_nowcast_dashboard(
         rows = await build_user_weekly_dashboard(db, current_user.id)
         if rows:
             latest = rows[-1]
-            logger.info(
-                "nowcast_dashboard_me user_id=%s date=%s dep_source=%s dep_proxy=%s dep_components=%s dep_measurement=%s dep_var=%s dep_kalman_called=%s dep_state_final=%s anx_proxy=%s anx_components=%s anx_measurement=%s anx_var=%s anx_kalman_called=%s anx_state_final=%s",
+            logger.warning(
+                "nowcast_dashboard_me user_id=%s date=%s dep_source=%s dep_proxy=%s dep_components=%s dep_measurement=%s dep_var=%s dep_kalman_called=%s dep_state_method=%s dep_state_final=%s anx_proxy=%s anx_components=%s anx_measurement=%s anx_var=%s anx_kalman_called=%s anx_state_method=%s anx_state_final=%s",
                 current_user.id,
                 latest.get("week_start_date"),
                 latest.get("dep_measurement_source"),
@@ -94,14 +94,18 @@ async def get_my_nowcast_dashboard(
                 latest.get("dep_measurement_0_100"),
                 latest.get("dep_measurement_var"),
                 latest.get("dep_kalman_update_called"),
+                latest.get("dep_state_final_method"),
                 latest.get("dep_state_final_0_100_today"),
                 latest.get("anx_proxy_0_100"),
                 latest.get("anx_proxy_components_used"),
                 latest.get("anx_measurement_0_100"),
                 latest.get("anx_measurement_var"),
                 latest.get("anx_kalman_update_called"),
+                latest.get("anx_state_final_method"),
                 latest.get("anx_state_final_0_100_today"),
             )
+        else:
+            logger.warning("nowcast_dashboard_me user_id=%s rows=0 reason=no_dashboard_rows", current_user.id)
         return WeeklyDashboardResponse(user_id=str(current_user.id), rows=rows)
     except Exception as exc:
         raise HTTPException(

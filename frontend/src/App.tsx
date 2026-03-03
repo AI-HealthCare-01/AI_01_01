@@ -3,6 +3,7 @@ import type { FormEvent, KeyboardEvent, RefObject } from 'react'
 import './App.css'
 import AdminPage from './pages/admin/AdminPage'
 import BoardPage from './pages/board/BoardPage'
+import CbtCrisisBanner from './components/CbtCrisisBanner'
 
 type PageKey = 'landing' | 'account' | 'checkin' | 'dashboard' | 'diary' | 'journal' | 'challenge' | 'assessment' | 'board' | 'mypage' | 'admin'
 type AccountMode = 'login' | 'signup' | 'reset'
@@ -2440,9 +2441,15 @@ function App() {
 
   const todayLogs = useMemo(() => contentLogs.filter((x) => x.performed_date === todayDateString()), [contentLogs])
   const todayJournalEntry = useMemo(() => journalEntries.find((x) => x.entry_date === todayDateString()) ?? null, [journalEntries])
-  const diaryDep = Math.round(latestWeekly?.dep_week_pred_0_100 ?? 55)
-  const diaryAnx = Math.round(latestWeekly?.anx_week_pred_0_100 ?? 55)
-  const diaryIns = Math.round(latestWeekly?.ins_week_pred_0_100 ?? 55)
+  const moodFallbackRisk = todayCheckinRecord?.mood_score != null
+    ? Math.max(0, Math.min(100, (10 - Number(todayCheckinRecord.mood_score)) * 10))
+    : null
+  const sleepFallbackRisk = todayCheckinRecord?.sleep_hours != null
+    ? Math.max(0, Math.min(100, (Math.abs(Number(todayCheckinRecord.sleep_hours) - 7.5) / 4.5) * 100))
+    : null
+  const diaryDep = Math.round(latestWeekly?.dep_week_pred_0_100 ?? moodFallbackRisk ?? 55)
+  const diaryAnx = Math.round(latestWeekly?.anx_week_pred_0_100 ?? moodFallbackRisk ?? 55)
+  const diaryIns = Math.round(latestWeekly?.ins_week_pred_0_100 ?? sleepFallbackRisk ?? 55)
   const diaryRiskLabel = (latestWeekly?.alert_level ?? 'low') === 'high' ? 'HIGH RISK' : (latestWeekly?.alert_level ?? 'low') === 'medium' ? 'MEDIUM RISK' : 'LOW RISK'
 
   const topMenuItems = useMemo<MenuItem[]>(() => {
@@ -2903,61 +2910,15 @@ function App() {
 
               <div className="cbtRefinedMessages" ref={chatMessagesRef}>
                 {chatResult?.crisis_mode && (
-                  <div
-                    className={`cbtCrisisBanner ${
-                      chatResult.crisis_stage === 'A'
-                        ? 'stageA'
-                        : chatResult.crisis_stage === 'B'
-                          ? 'stageB'
-                          : 'stageC'
-                    }`}
-                  >
-                    <h4>안전 우선 모드</h4>
-                    <p>
-                      {chatResult.crisis_stage === 'B'
-                        ? '도움 연결 중입니다. 지금은 안전 대기가 중요해요.'
-                        : chatResult.crisis_stage === 'C'
-                          ? '안전 확보 이후 단계예요. 지금은 짧은 사후 안전계획을 유지해요.'
-                          : '지금은 대화 탐색보다 즉시 도움 연결이 우선입니다.'}
-                    </p>
-                    {chatResult.crisis_stage !== 'B' && chatResult.crisis_stage !== 'C' && (
-                      <div className="actions">
-                        <a href="tel:1393" className="crisisCallBtn">1393</a>
-                        <a href="tel:119" className="crisisCallBtn">119</a>
-                        <a href="tel:112" className="crisisCallBtn">112</a>
-                        <button type="button" className="ghost" onClick={() => void sendSupporterCrisisMessage()}>지지자에게 메시지 보내기</button>
-                      </div>
-                    )}
-                    {chatResult.crisis_stage === 'B' && (
-                      <div className="actions">
-                        <button type="button" className="ghost" onClick={() => void sendSupporterCrisisMessage()}>지지자에게 메시지 보내기</button>
-                        <a href="tel:119" className="crisisCallBtn">긴급 119</a>
-                      </div>
-                    )}
-                    {chatResult.crisis_stage === 'C' && (
-                      <div className="actions">
-                        <button type="button" className="ghost" onClick={() => void sendSupporterCrisisMessage()}>안전 동행 요청</button>
-                      </div>
-                    )}
-                    {Array.isArray(chatResult.crisis_actions) && chatResult.crisis_actions.length > 0 && (
-                      <ul className="crisisChecklist">
-                        {chatResult.crisis_actions.map((action, idx) => (
-                          <li key={`crisis-action-${idx}`}>
-                            <label className="crisisChecklistItem">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(crisisActionChecked[action])}
-                                onChange={(e) => {
-                                  setCrisisActionChecked((prev) => ({ ...prev, [action]: e.target.checked }))
-                                }}
-                              />
-                              <span>{action}</span>
-                            </label>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                  <CbtCrisisBanner
+                    crisisStage={chatResult.crisis_stage}
+                    crisisActions={Array.isArray(chatResult.crisis_actions) ? chatResult.crisis_actions : []}
+                    crisisActionChecked={crisisActionChecked}
+                    onToggleAction={(action, checked) => {
+                      setCrisisActionChecked((prev) => ({ ...prev, [action]: checked }))
+                    }}
+                    onSendSupporterMessage={() => void sendSupporterCrisisMessage()}
+                  />
                 )}
                 {chatHistory.length === 0 && <div className="chatEmpty">오늘 있었던 사건, 감정, 생각의 흐름을 천천히 이야기해 주세요.</div>}
                 {chatHistory.length > 0 && filteredChatHistory.length === 0 && (
@@ -3019,11 +2980,13 @@ function App() {
                 <div className="cbtSearchWrap">
                   <span>search</span>
                   <input
-                    placeholder="상담 기록 검색..."
+                    aria-label="현재 세션 내 상담 기록 검색"
+                    placeholder="현재 세션 내 검색 (공백 무시)"
                     value={chatSearchQuery}
                     onChange={(e) => setChatSearchQuery(e.target.value)}
                   />
                 </div>
+                <p className="cbtSearchHint">현재 탭에 로드된 대화에서만 찾습니다. 예: ‘잠못자’ = ‘잠 못 자’</p>
               </article>
 
               <article className="cbtRefinedCard">

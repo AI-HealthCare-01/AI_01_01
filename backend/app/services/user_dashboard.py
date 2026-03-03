@@ -51,6 +51,25 @@ def _sleep_penalty(sleep_hours: float | None) -> float | None:
     return min(100.0, (diff / 4.5) * 100.0)
 
 
+def _kalman_update(
+    prev_state: float | None,
+    prev_var: float | None,
+    measurement: float,
+    measurement_var: float,
+    process_noise: float,
+) -> tuple[float, float, bool]:
+    if prev_state is None or prev_var is None:
+        # 초기화 시점은 관측값으로 시작
+        return measurement, max(1.0, measurement_var), False
+
+    pred_state = prev_state
+    pred_var = max(1.0, prev_var) + max(0.1, process_noise)
+    k_gain = pred_var / (pred_var + max(1.0, measurement_var))
+    updated_state = pred_state + k_gain * (measurement - pred_state)
+    updated_var = (1.0 - k_gain) * pred_var
+    return updated_state, max(1.0, updated_var), True
+
+
 def _parse_checkin_note(raw_note: str | None) -> tuple[int, int]:
     if not raw_note:
         return 0, 0
@@ -168,10 +187,14 @@ async def build_user_weekly_dashboard(db: AsyncSession, user_id: UUID) -> list[d
         day_data[d]["phq_total"].append(float(row.total_score))
 
     if not day_data:
-        logger.info("dashboard_nowcast_empty user_id=%s reason=no_day_data", user_id)
+        logger.warning("dashboard_nowcast_empty user_id=%s reason=no_day_data", user_id)
         return []
 
     carry_phq_scaled: float | None = None
+    dep_prev_state: float | None = None
+    anx_prev_state: float | None = None
+    dep_prev_var: float | None = None
+    anx_prev_var: float | None = None
     day_scores: list[dict[str, Any]] = []
 
     for d in sorted(day_data.keys()):
@@ -219,43 +242,60 @@ async def build_user_weekly_dashboard(db: AsyncSession, user_id: UUID) -> list[d
         ) + float(max(0, 3 - dep_proxy_components_used) * 8)
         anx_measurement_var = 24.0 + float(max(0, 4 - anx_proxy_components_used) * 8)
 
-        dep = _weighted_score([
+        dep_raw = _weighted_score([
             (carry_phq_scaled, 0.45),
             (mood_inverse, 0.25),
             (rum_scaled, 0.2),
             (distortion_scaled, 0.1),
         ])
-        anx = _weighted_score([
+        anx_raw = _weighted_score([
             (distress_scaled, 0.45),
             (rum_scaled, 0.25),
             (mood_inverse, 0.2),
             (distortion_scaled, 0.1),
         ])
-        ins = _weighted_score([
+        ins_raw = _weighted_score([
             (sleep_diff_scaled, 0.6),
             (sleep_pen, 0.4),
         ])
 
-        dep = dep if dep is not None else 50.0
-        anx = anx if anx is not None else 50.0
-        ins = ins if ins is not None else 50.0
-        dep_measurement_0_100 = dep
-        anx_measurement_0_100 = anx
+        dep_measurement_0_100 = dep_raw if dep_raw is not None else 50.0
+        anx_measurement_0_100 = anx_raw if anx_raw is not None else 50.0
+        ins = ins_raw if ins_raw is not None else 50.0
 
         if challenge_completion is not None:
-            dep = dep - challenge_completion * 12.0
-            anx = anx - challenge_completion * 10.0
+            dep_measurement_0_100 = dep_measurement_0_100 - challenge_completion * 12.0
+            anx_measurement_0_100 = anx_measurement_0_100 - challenge_completion * 10.0
             ins = ins - challenge_completion * 6.0
 
+        dep_measurement_0_100 = max(0.0, min(100.0, dep_measurement_0_100))
+        anx_measurement_0_100 = max(0.0, min(100.0, anx_measurement_0_100))
+        ins = max(0.0, min(100.0, ins))
+        dep_kalman_process_noise = 8.0 + float(max(0, 3 - dep_proxy_components_used) * 2)
+        anx_kalman_process_noise = 10.0 + float(max(0, 4 - anx_proxy_components_used) * 2)
+        dep_kalman_measurement_noise = dep_measurement_var
+        anx_kalman_measurement_noise = anx_measurement_var
+
+        dep, dep_var, dep_kalman_update_called = _kalman_update(
+            dep_prev_state,
+            dep_prev_var,
+            dep_measurement_0_100,
+            dep_measurement_var,
+            dep_kalman_process_noise,
+        )
+        anx, anx_var, anx_kalman_update_called = _kalman_update(
+            anx_prev_state,
+            anx_prev_var,
+            anx_measurement_0_100,
+            anx_measurement_var,
+            anx_kalman_process_noise,
+        )
         dep = max(0.0, min(100.0, dep))
         anx = max(0.0, min(100.0, anx))
-        ins = max(0.0, min(100.0, ins))
-        dep_kalman_update_called = False
-        anx_kalman_update_called = False
-        dep_kalman_process_noise = None
-        anx_kalman_process_noise = None
-        dep_kalman_measurement_noise = None
-        anx_kalman_measurement_noise = None
+        dep_prev_state, dep_prev_var = dep, dep_var
+        anx_prev_state, anx_prev_var = anx, anx_var
+        dep_state_final_method = "kalman_update" if dep_kalman_update_called else "baseline_init"
+        anx_state_final_method = "kalman_update" if anx_kalman_update_called else "baseline_init"
 
         day_scores.append(
             {
@@ -272,6 +312,7 @@ async def build_user_weekly_dashboard(db: AsyncSession, user_id: UUID) -> list[d
                 "dep_kalman_process_noise": dep_kalman_process_noise,
                 "dep_kalman_measurement_noise": dep_kalman_measurement_noise,
                 "dep_state_final_0_100_today": dep,
+                "dep_state_final_method": dep_state_final_method,
                 "anx_measurement_source": anx_measurement_source,
                 "anx_proxy_0_100": anx_proxy_0_100,
                 "anx_proxy_components_used": anx_proxy_components_used,
@@ -281,12 +322,13 @@ async def build_user_weekly_dashboard(db: AsyncSession, user_id: UUID) -> list[d
                 "anx_kalman_process_noise": anx_kalman_process_noise,
                 "anx_kalman_measurement_noise": anx_kalman_measurement_noise,
                 "anx_state_final_0_100_today": anx,
+                "anx_state_final_method": anx_state_final_method,
             }
         )
-        logger.info(
+        logger.warning(
             "dashboard_nowcast_day user_id=%s date=%s dep_measurement_source=%s dep_proxy_0_100=%s dep_proxy_components_used=%s "
-            "dep_measurement_0_100=%s dep_measurement_var=%s dep_kalman_update_called=%s dep_state_final_0_100_today=%s "
-            "anx_proxy_0_100=%s anx_proxy_components_used=%s anx_measurement_0_100=%s anx_measurement_var=%s anx_kalman_update_called=%s anx_state_final_0_100_today=%s",
+            "dep_measurement_0_100=%s dep_measurement_var=%s dep_kalman_update_called=%s dep_state_final_method=%s dep_state_final_0_100_today=%s "
+            "anx_proxy_0_100=%s anx_proxy_components_used=%s anx_measurement_0_100=%s anx_measurement_var=%s anx_kalman_update_called=%s anx_state_final_method=%s anx_state_final_0_100_today=%s",
             user_id,
             d,
             dep_measurement_source,
@@ -295,12 +337,14 @@ async def build_user_weekly_dashboard(db: AsyncSession, user_id: UUID) -> list[d
             round(dep_measurement_0_100, 2),
             round(dep_measurement_var, 2),
             dep_kalman_update_called,
+            dep_state_final_method,
             round(dep, 2),
             None if anx_proxy_0_100 is None else round(anx_proxy_0_100, 2),
             anx_proxy_components_used,
             round(anx_measurement_0_100, 2),
             round(anx_measurement_var, 2),
             anx_kalman_update_called,
+            anx_state_final_method,
             round(anx, 2),
         )
 
@@ -328,6 +372,7 @@ async def build_user_weekly_dashboard(db: AsyncSession, user_id: UUID) -> list[d
                 "dep_kalman_process_noise": row.get("dep_kalman_process_noise"),
                 "dep_kalman_measurement_noise": row.get("dep_kalman_measurement_noise"),
                 "dep_state_final_0_100_today": row.get("dep_state_final_0_100_today"),
+                "dep_state_final_method": row.get("dep_state_final_method"),
                 "anx_measurement_source": row.get("anx_measurement_source"),
                 "anx_proxy_0_100": row.get("anx_proxy_0_100"),
                 "anx_proxy_components_used": row.get("anx_proxy_components_used"),
@@ -337,6 +382,7 @@ async def build_user_weekly_dashboard(db: AsyncSession, user_id: UUID) -> list[d
                 "anx_kalman_process_noise": row.get("anx_kalman_process_noise"),
                 "anx_kalman_measurement_noise": row.get("anx_kalman_measurement_noise"),
                 "anx_state_final_0_100_today": row.get("anx_state_final_0_100_today"),
+                "anx_state_final_method": row.get("anx_state_final_method"),
             }
         )
 

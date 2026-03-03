@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -20,6 +21,7 @@ from app.services.challenge_recommend import (
 from app.services.llm import generate_cbt_reply
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+logger = logging.getLogger(__name__)
 CHALLENGE_POLICY_CONFIG_KEY = "challenge_policy_v1"
 CHALLENGE_CATALOG_IDS = [
     "MEDITATION_5MIN",
@@ -35,13 +37,13 @@ CHALLENGE_CATALOG_IDS = [
     "WEEKLY_MINI_CHALLENGE",
 ]
 HIGH_RISK_KEYWORDS = [
-    "자살", "자해", "죽고 싶", "죽고싶", "목숨", "해치고 싶", "kill myself", "suicide", "self-harm",
+    "자살", "자해", "죽고 싶", "죽고싶", "죽는 게", "목숨", "해치고 싶", "kill myself", "suicide", "self-harm",
 ]
 HIGH_RISK_DIRECT_PATTERNS = [
     "오늘 죽", "지금 죽", "마무리할래", "끝내고 싶", "사라지고 싶", "유서", "잘 있어", "지금까지 고마웠어",
 ]
 MEDIUM_RISK_KEYWORDS = [
-    "살기 싫", "버티기 힘들", "절망", "공황", "패닉", "극심한 불안", "불면", "무가치", "hopeless", "panic",
+    "살기 싫", "버티기 힘들", "없어지고 싶", "잠들고 싶어", "절망", "공황", "패닉", "극심한 불안", "불면", "무가치", "hopeless", "panic",
 ]
 PLAN_MEANS_KEYWORDS = ["준비했", "칼", "약", "목맬", "투신", "방법", "수단", "장소", "시간 정했"]
 VIOLENT_TARGET_KEYWORDS = ["다른 사람", "남을", "타인을", "누군가", "사람을"]
@@ -50,13 +52,22 @@ VIOLENT_DIRECT_PATTERNS = ["다른 사람을 죽이고 싶", "남을 죽이고 �
 SAFETY_RELEASE_KEYWORDS = ["안전해", "괜찮아졌", "연락했", "도움받고", "지금은 괜찮", "병원 왔", "옆에 사람 있어"]
 CRISIS_LOCK_TURNS = 5
 CRISIS_STAGE_A_TRIGGER_KEYWORDS = [
-    "죽고", "자살", "마무리", "준비중", "오늘 죽", "살기 싫", "끝내",
+    "죽고", "죽는 게", "자살", "마무리", "준비중", "오늘 죽", "살기 싫", "없어지고 싶", "잠들고 싶어", "끝내",
 ]
 CRISIS_STAGE_A_TO_B_KEYWORDS = [
     "전화", "통화", "연결", "응급실", "구급차", "119에", "상담사",
 ]
 CRISIS_STAGE_B_TO_C_KEYWORDS = [
     "도착", "옆에", "안전", "문 열었", "누가 왔", "응급실 도착",
+]
+CRISIS_STAGE_B_NEGATIVE_KEYWORDS = [
+    "싫어", "전화 안", "통화 안", "연결 안", "안 할", "안할", "거부", "못 해", "못해", "안 하고", "안하고",
+]
+CRISIS_STAGE_B_POSITIVE_KEYWORDS = [
+    "전화하고 있어", "통화 중", "연결됐", "연결 중", "가는 중", "가고 있어", "오고 있", "오는 중", "응급실 가는 중", "상담사와 통화",
+]
+CRISIS_STAGE_B_ALT_ACTION_KEYWORDS = [
+    "문 못 열", "문못열", "열 수 없", "못 열어", "혼자야", "혼자 있어", "현관 못 가", "움직이기 힘들",
 ]
 CRISIS_EXIT_KEYWORDS = ["대화 종료", "마무리", "안정됨", "이제 괜찮아", "도움 받고 있어"]
 MODERATE_PLUS_KEYWORDS = [
@@ -143,10 +154,18 @@ def _resolve_crisis_stage_and_lock(
     text = message.lower()
     a_trigger = _contains_any(text, CRISIS_STAGE_A_TRIGGER_KEYWORDS)
     b_trigger = _contains_any(text, CRISIS_STAGE_A_TO_B_KEYWORDS)
+    b_negative = _contains_any(text, CRISIS_STAGE_B_NEGATIVE_KEYWORDS)
+    b_positive = _contains_any(text, CRISIS_STAGE_B_POSITIVE_KEYWORDS)
+    if b_trigger and b_negative and not b_positive:
+        b_trigger = False
     c_trigger = _contains_any(text, CRISIS_STAGE_B_TO_C_KEYWORDS)
 
     if c_trigger:
         return "C", 1
+
+    # B 잠금 중이라도 강한 A 트리거가 재발하면 즉시 A로 복귀한다.
+    if a_trigger and not b_positive:
+        return "A", CRISIS_LOCK_TURNS
 
     # B는 최소 2턴 유지: 이 구간에서는 A로 즉시 롤백하지 않는다.
     if prior_stage == "B" and prior_lock > 0 and not c_trigger:
@@ -234,7 +253,7 @@ def _build_crisis_reply(
                 ),
             ]
             return _pick_rotating_template(templates, last_reply, prior_template_index)
-        if hotline_count >= 2:
+        if hotline_count >= 1:
             templates = [
                 (
                     "지금은 안전 확보가 가장 중요해요.\n"
@@ -272,6 +291,20 @@ def _build_crisis_reply(
         ]
         return _pick_rotating_template(templates, last_reply, prior_template_index)
     if stage == "B":
+        if _contains_any(message.lower(), CRISIS_STAGE_B_ALT_ACTION_KEYWORDS):
+            templates = [
+                (
+                    "연결을 이어가는 것 자체가 매우 중요해요. 지금처럼 버티고 있는 게 맞아요.\n"
+                    "문을 열기 어렵다면 지금 있는 자리에서 위험 물건을 손 닿지 않게 치우고, 4초 들숨/6초 날숨을 3회만 해보세요.\n"
+                    "지금 혼자 계신가요, 아니면 통화로라도 곁에 있는 사람이 있나요?"
+                ),
+                (
+                    "지금 상황을 알려줘서 좋아요. 이동이 어렵다면 현 위치에서 안전을 먼저 맞추면 됩니다.\n"
+                    "현관 이동 대신 안전한 자리 유지, 위험 물건/약 치우기, 짧은 호흡 3회를 먼저 해주세요.\n"
+                    "지금 완전히 혼자인가요, 아니면 연락 가능한 사람이 곁에 있나요?"
+                ),
+            ]
+            return _pick_rotating_template(templates, last_reply, prior_template_index)
         templates = [
             (
                 "연결을 시작한 건 정말 중요한 선택이었어요. 지금 그 행동이 당신을 지키고 있어요.\n"
@@ -555,6 +588,17 @@ async def chat_cbt(
         prior_stage=prior_crisis_stage,
         prior_lock=prior_crisis_lock,
         crisis_triggered_now=bool(crisis_detect["crisis_mode"]),
+    )
+    logger.info(
+        "[crisis] user_id=%s prev=%s lock=%s msg=%s detected_mode=%s detected_level=%s -> stage=%s lock=%s",
+        current_user.id,
+        prior_crisis_stage or "-",
+        prior_crisis_lock,
+        payload.message[:80].replace("\n", " "),
+        bool(crisis_detect["crisis_mode"]),
+        crisis_detect["crisis_level"],
+        crisis_stage or "-",
+        crisis_lock_remaining,
     )
     if explicit_exit and prior_crisis_stage == "C" and safety_released:
         crisis_mode = False

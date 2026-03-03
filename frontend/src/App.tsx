@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent, RefObject } from 'react'
 import './App.css'
 import AdminPage from './pages/admin/AdminPage'
@@ -1049,6 +1049,7 @@ function App() {
 
   const [chatMessage, setChatMessage] = useState('')
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([])
+  const [chatSearchQuery, setChatSearchQuery] = useState('')
   const [chatResult, setChatResult] = useState<ChatResponse | null>(null)
   const [activeChallenge, setActiveChallenge] = useState('')
   const [challengePhase, setChallengePhase] = useState<'start' | 'continue' | 'reflect'>('continue')
@@ -2327,6 +2328,12 @@ function App() {
 
   const challenges = (chatResult?.suggested_challenges ?? [])
   const thoughtWeb = chatResult?.extracted?.thought_web ?? null
+  const normalizeSearchText = useCallback((text: string) => text.toLowerCase().replace(/\s+/g, ''), [])
+  const filteredChatHistory = useMemo(() => {
+    const q = normalizeSearchText(chatSearchQuery.trim())
+    if (!q) return chatHistory
+    return chatHistory.filter((turn) => normalizeSearchText(turn.content).includes(q))
+  }, [chatHistory, chatSearchQuery, normalizeSearchText])
   const todayCheckinRecord = useMemo(() => {
     const today = todayDateString()
     return checkinHistory.find((x) => x.timestamp.slice(0, 10) === today) ?? null
@@ -2949,7 +2956,10 @@ function App() {
                   </div>
                 )}
                 {chatHistory.length === 0 && <div className="chatEmpty">오늘 있었던 사건, 감정, 생각의 흐름을 천천히 이야기해 주세요.</div>}
-                {chatHistory.map((turn, idx) => (
+                {chatHistory.length > 0 && filteredChatHistory.length === 0 && (
+                  <div className="chatEmpty">검색 결과가 없습니다.</div>
+                )}
+                {filteredChatHistory.map((turn, idx) => (
                   <div key={`turn-${idx}`} className={`cbtRefinedRow ${turn.role === 'user' ? 'user' : 'assistant'}`}>
                     <div className="cbtRefinedAvatar">{turn.role === 'user' ? 'U' : 'M'}</div>
                     <div className="cbtRefinedBubbleWrap">
@@ -3004,7 +3014,11 @@ function App() {
               <article className="cbtRefinedCard">
                 <div className="cbtSearchWrap">
                   <span>search</span>
-                  <input placeholder="상담 기록 검색..." />
+                  <input
+                    placeholder="상담 기록 검색..."
+                    value={chatSearchQuery}
+                    onChange={(e) => setChatSearchQuery(e.target.value)}
+                  />
                 </div>
               </article>
 

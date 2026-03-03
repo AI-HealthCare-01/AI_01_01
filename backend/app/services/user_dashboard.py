@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 import json
 from datetime import date
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -10,6 +11,8 @@ from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Assessment, AssessmentType, ChatEvent, CheckIn
+
+logger = logging.getLogger(__name__)
 
 
 def _mean(values: list[float]) -> float | None:
@@ -165,6 +168,7 @@ async def build_user_weekly_dashboard(db: AsyncSession, user_id: UUID) -> list[d
         day_data[d]["phq_total"].append(float(row.total_score))
 
     if not day_data:
+        logger.info("dashboard_nowcast_empty user_id=%s reason=no_day_data", user_id)
         return []
 
     carry_phq_scaled: float | None = None
@@ -189,6 +193,31 @@ async def build_user_weekly_dashboard(db: AsyncSession, user_id: UUID) -> list[d
         sleep_diff_scaled = None if sleep_diff is None else sleep_diff * 10.0
         distortion_scaled = None if distortion_total is None else min(100.0, distortion_total * 12.0)
         sleep_pen = _sleep_penalty(sleep_hours)
+        dep_proxy_components_used = sum(
+            x is not None for x in [mood_inverse, rum_scaled, distortion_scaled]
+        )
+        anx_proxy_components_used = sum(
+            x is not None for x in [distress_scaled, rum_scaled, mood_inverse, distortion_scaled]
+        )
+        dep_proxy_0_100 = _weighted_score([
+            (mood_inverse, 0.45),
+            (rum_scaled, 0.35),
+            (distortion_scaled, 0.2),
+        ])
+        anx_proxy_0_100 = _weighted_score([
+            (distress_scaled, 0.5),
+            (rum_scaled, 0.25),
+            (mood_inverse, 0.15),
+            (distortion_scaled, 0.1),
+        ])
+        dep_measurement_source = (
+            "phq_observed" if phq is not None else ("carry_forward" if carry_phq_scaled is not None else "baseline_init")
+        )
+        anx_measurement_source = "proxy_only"
+        dep_measurement_var = (
+            16.0 if dep_measurement_source == "phq_observed" else (36.0 if dep_measurement_source == "carry_forward" else 64.0)
+        ) + float(max(0, 3 - dep_proxy_components_used) * 8)
+        anx_measurement_var = 24.0 + float(max(0, 4 - anx_proxy_components_used) * 8)
 
         dep = _weighted_score([
             (carry_phq_scaled, 0.45),
@@ -210,6 +239,8 @@ async def build_user_weekly_dashboard(db: AsyncSession, user_id: UUID) -> list[d
         dep = dep if dep is not None else 50.0
         anx = anx if anx is not None else 50.0
         ins = ins if ins is not None else 50.0
+        dep_measurement_0_100 = dep
+        anx_measurement_0_100 = anx
 
         if challenge_completion is not None:
             dep = dep - challenge_completion * 12.0
@@ -219,6 +250,12 @@ async def build_user_weekly_dashboard(db: AsyncSession, user_id: UUID) -> list[d
         dep = max(0.0, min(100.0, dep))
         anx = max(0.0, min(100.0, anx))
         ins = max(0.0, min(100.0, ins))
+        dep_kalman_update_called = False
+        anx_kalman_update_called = False
+        dep_kalman_process_noise = None
+        anx_kalman_process_noise = None
+        dep_kalman_measurement_noise = None
+        anx_kalman_measurement_noise = None
 
         day_scores.append(
             {
@@ -226,7 +263,45 @@ async def build_user_weekly_dashboard(db: AsyncSession, user_id: UUID) -> list[d
                 "dep": max(0.0, min(100.0, dep)),
                 "anx": max(0.0, min(100.0, anx)),
                 "ins": max(0.0, min(100.0, ins)),
+                "dep_measurement_source": dep_measurement_source,
+                "dep_proxy_0_100": dep_proxy_0_100,
+                "dep_proxy_components_used": dep_proxy_components_used,
+                "dep_measurement_0_100": dep_measurement_0_100,
+                "dep_measurement_var": dep_measurement_var,
+                "dep_kalman_update_called": dep_kalman_update_called,
+                "dep_kalman_process_noise": dep_kalman_process_noise,
+                "dep_kalman_measurement_noise": dep_kalman_measurement_noise,
+                "dep_state_final_0_100_today": dep,
+                "anx_measurement_source": anx_measurement_source,
+                "anx_proxy_0_100": anx_proxy_0_100,
+                "anx_proxy_components_used": anx_proxy_components_used,
+                "anx_measurement_0_100": anx_measurement_0_100,
+                "anx_measurement_var": anx_measurement_var,
+                "anx_kalman_update_called": anx_kalman_update_called,
+                "anx_kalman_process_noise": anx_kalman_process_noise,
+                "anx_kalman_measurement_noise": anx_kalman_measurement_noise,
+                "anx_state_final_0_100_today": anx,
             }
+        )
+        logger.info(
+            "dashboard_nowcast_day user_id=%s date=%s dep_measurement_source=%s dep_proxy_0_100=%s dep_proxy_components_used=%s "
+            "dep_measurement_0_100=%s dep_measurement_var=%s dep_kalman_update_called=%s dep_state_final_0_100_today=%s "
+            "anx_proxy_0_100=%s anx_proxy_components_used=%s anx_measurement_0_100=%s anx_measurement_var=%s anx_kalman_update_called=%s anx_state_final_0_100_today=%s",
+            user_id,
+            d,
+            dep_measurement_source,
+            None if dep_proxy_0_100 is None else round(dep_proxy_0_100, 2),
+            dep_proxy_components_used,
+            round(dep_measurement_0_100, 2),
+            round(dep_measurement_var, 2),
+            dep_kalman_update_called,
+            round(dep, 2),
+            None if anx_proxy_0_100 is None else round(anx_proxy_0_100, 2),
+            anx_proxy_components_used,
+            round(anx_measurement_0_100, 2),
+            round(anx_measurement_var, 2),
+            anx_kalman_update_called,
+            round(anx, 2),
         )
 
     rows: list[dict[str, Any]] = []
@@ -244,6 +319,24 @@ async def build_user_weekly_dashboard(db: AsyncSession, user_id: UUID) -> list[d
                 "ins_week_pred_0_100": ins_score,
                 "symptom_composite_pred_0_100": composite,
                 "active_days": 1,
+                "dep_measurement_source": row.get("dep_measurement_source"),
+                "dep_proxy_0_100": row.get("dep_proxy_0_100"),
+                "dep_proxy_components_used": row.get("dep_proxy_components_used"),
+                "dep_measurement_0_100": row.get("dep_measurement_0_100"),
+                "dep_measurement_var": row.get("dep_measurement_var"),
+                "dep_kalman_update_called": row.get("dep_kalman_update_called"),
+                "dep_kalman_process_noise": row.get("dep_kalman_process_noise"),
+                "dep_kalman_measurement_noise": row.get("dep_kalman_measurement_noise"),
+                "dep_state_final_0_100_today": row.get("dep_state_final_0_100_today"),
+                "anx_measurement_source": row.get("anx_measurement_source"),
+                "anx_proxy_0_100": row.get("anx_proxy_0_100"),
+                "anx_proxy_components_used": row.get("anx_proxy_components_used"),
+                "anx_measurement_0_100": row.get("anx_measurement_0_100"),
+                "anx_measurement_var": row.get("anx_measurement_var"),
+                "anx_kalman_update_called": row.get("anx_kalman_update_called"),
+                "anx_kalman_process_noise": row.get("anx_kalman_process_noise"),
+                "anx_kalman_measurement_noise": row.get("anx_kalman_measurement_noise"),
+                "anx_state_final_0_100_today": row.get("anx_state_final_0_100_today"),
             }
         )
 

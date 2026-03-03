@@ -204,6 +204,16 @@ async def create_chat_event(
     return row
 
 
+async def get_latest_chat_event(db: AsyncSession, user_id: uuid.UUID) -> ChatEvent | None:
+    stmt: Select[tuple[ChatEvent]] = (
+        select(ChatEvent)
+        .where(ChatEvent.user_id == user_id)
+        .order_by(desc(ChatEvent.created_at))
+        .limit(1)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
 async def create_checkin(db: AsyncSession, user_id: uuid.UUID, mood_score: int, sleep_hours: float | None, exercised: bool, note: str | None) -> CheckIn:
     row = CheckIn(user_id=user_id, mood_score=mood_score, sleep_hours=sleep_hours, exercised=exercised, note=note)
     db.add(row)

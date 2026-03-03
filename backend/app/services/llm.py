@@ -120,7 +120,7 @@ def _should_defer_challenge(user_message: str, conversation_history: list[dict[s
     history = conversation_history or []
     user_turns = sum(1 for t in history if t.get("role") == "user") + 1
     explicit_request = any(h in user_message.lower() for h in CHALLENGE_REQUEST_HINTS)
-    enough_depth = user_turns >= 3 and len(user_message.strip()) >= 20
+    enough_depth = user_turns >= 3 or (user_turns >= 2 and len(user_message.strip()) >= 8)
     return (not explicit_request) and (not enough_depth)
 
 
@@ -140,6 +140,39 @@ def _pick_non_repetitive_reply(candidates: list[str], last_assistant: str) -> st
         if norm_c and norm_c != norm_last and norm_c not in norm_last:
             return c
     return candidates[0]
+
+
+def _normalize_text_for_repeat_check(text: str) -> str:
+    return re.sub(r"\s+", "", (text or "").strip().lower())
+
+
+def _is_repetitive_against_last(reply: str, last_assistant: str) -> bool:
+    cur = _normalize_text_for_repeat_check(reply)
+    last = _normalize_text_for_repeat_check(last_assistant)
+    if not cur or not last:
+        return False
+    if cur == last:
+        return True
+    if len(cur) >= 20 and cur in last:
+        return True
+    if len(last) >= 20 and last in cur:
+        return True
+    return False
+
+
+def _phase_followup_prompt(phase: str, user_message: str) -> str:
+    snippet = user_message.strip().replace("\n", " ")[:40]
+    if phase == "EMOTION":
+        return f"'{snippet}'라고 했을 때, 지금 감정 이름 1개와 강도(0~10)를 알려줄래요?"
+    if phase == "SITUATION":
+        return f"'{snippet}' 상황에서 실제로 확인된 사실 1가지만 먼저 적어볼까요?"
+    if phase == "THOUGHT":
+        return "그 순간 머리에 가장 먼저 떠오른 자동사고를 한 문장으로 적어볼까요?"
+    if phase == "DISTORTION":
+        return "그 생각 안에 흑백논리/과장/독심추론 중 어떤 패턴이 있었는지 1개만 골라볼까요?"
+    if phase == "REFRAME":
+        return "그 생각을 100% 사실로 단정하지 않는 대안 문장을 한 줄로 만들어볼까요?"
+    return "지금 당장 2~5분 안에 할 수 있는 행동 1개를 정해서 실행해볼까요?"
 
 
 def _normalize_cbt_phase(raw: str | None) -> str | None:
@@ -810,14 +843,18 @@ def generate_cbt_reply(
             )
 
     system_prompt = (
-        "You are a warm CBT coach for depression, anxiety, and insomnia support. "
-        "Never diagnose or prescribe medication. Keep tone empathic, validating, and practical. "
-        "If user shows self-blame or guilt, explicitly normalize emotion and reduce shame. "
-        "Use short Korean sentences suitable for app UI. Do not expose CBT mechanism labels like '바로 해결로 가기보다' in your reply. "
-        "Avoid repeating manual phrases such as '정말 힘드셨겠어요/고통스러우시겠어요'. "
-        "Before recommending thought-organization exercises, first explore user's event-emotion-thought flow deeply for enough turns unless user explicitly asks for one. "
-        "Also extract indicators from the user's text every turn. "
-        "Return strict JSON with keys: reply, extracted, suggested_challenges, challenge_rationale, summary_card, active_challenge, challenge_step_prompt, challenge_completed, completed_challenge, completion_message, cbt_phase, next_phase. "
+        "너는 CBT(인지행동치료) 기반의 전문 심리상담 파트너다. "
+        "톤은 따뜻하지만 임상적으로 구조화되어야 하며, 감정 반영-사실 확인-사고 탐색-재구성-행동계획 순서를 유지한다. "
+        "절대 진단명 확정, 약물 처방, 의학적 단정 표현을 하지 않는다. "
+        "사용자를 비난하거나 훈계하지 말고, 수치심/자기비난을 낮추는 언어를 사용한다. "
+        "한국어로 답하고, 짧고 명확한 문장을 사용한다. "
+        "같은 시작 문장을 반복하지 말고, 직전 assistant 문장을 그대로 재사용하지 않는다. "
+        "매 턴에는 반드시 사용자 최신 발화에 맞춘 구체 질문 1개를 포함한다. "
+        "질문은 포괄형 대신 관찰 가능한 사실/감정/자동사고를 묻는 CBT형 질문만 사용한다. "
+        "문제 해결을 서두르지 말고, 정보가 부족하면 탐색 질문을 먼저 한다. "
+        "사용자가 자책하면 먼저 정상화(normalization) 후 사실과 해석을 분리하도록 돕는다. "
+        "응답은 반드시 엄격한 JSON으로만 반환한다. "
+        "JSON keys: reply, extracted, suggested_challenges, challenge_rationale, summary_card, active_challenge, challenge_step_prompt, challenge_completed, completed_challenge, completion_message, cbt_phase, next_phase. "
         "extracted must include integer distress_0_10, rumination_0_10, avoidance_0_10, sleep_difficulty_0_10 in range 0..10, "
         "and distortion object with all_or_nothing_count, catastrophizing_count, mind_reading_count, "
         "should_statements_count, personalization_count, overgeneralization_count. "
@@ -827,13 +864,12 @@ def generate_cbt_reply(
         "personalization_overresponsibility, emotional_reasoning, labeling_negative_identity. "
         "At least one distortion count must be >= 1 and aligned with extracted.distortions. "
         "summary_card must include 5 keys: situation, self_blame_signal, reframe, next_action, encouragement. "
-        "reframe should sound like '그건 네 잘못이 전부는 아니다' style without blaming user. "
-        "next_action should be one concrete action user can do today."
+        "reframe은 비난 없이 균형적 사고를 제시하고, next_action은 오늘 바로 가능한 1개 행동으로 작성한다. "
         "When challenges are relevant, suggested_challenges must be 1 or 2 IDs only from the fixed catalog IDs. "
         "challenge_completed must be true only when there is clear textual evidence of completion. "
         "When challenge_completed is true, completion_message should be '챌린지 수행을 완료하였습니다.'. "
         "If challenge_candidates are provided, suggested_challenges must choose from those IDs only. "
-        "Also include challenge_rationale in one sentence. "
+        "challenge_rationale은 1문장으로 간결하게 작성한다. "
         f"Current CBT phase is {resolved_phase}. {_phase_instruction(resolved_phase)} "
         f"{(safety_addendum or '').strip()} "
         f"{crisis_addendum if crisis_mode else ''} "
@@ -902,6 +938,9 @@ def generate_cbt_reply(
         )
 
     reply = str(parsed.get("reply", "")).strip()[:1500] or ((text or "").strip()[:1500] or fallback.reply)
+    last_assistant = _last_assistant_message(conversation_history)
+    if _is_repetitive_against_last(reply, last_assistant):
+        reply = _phase_followup_prompt(resolved_phase, user_message)
     try:
         extracted = _normalize_extracted(
             parsed.get("extracted", {}),

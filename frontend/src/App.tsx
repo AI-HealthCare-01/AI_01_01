@@ -67,6 +67,8 @@ type ChatResponse = {
   reply: string
   disclaimer: string
   timestamp: string
+  cbt_phase?: 'EMOTION' | 'SITUATION' | 'THOUGHT' | 'DISTORTION' | 'REFRAME' | 'ACTION' | null
+  next_phase?: 'EMOTION' | 'SITUATION' | 'THOUGHT' | 'DISTORTION' | 'REFRAME' | 'ACTION' | null
   extracted: {
     distress_0_10: number
     rumination_0_10: number
@@ -1243,7 +1245,7 @@ function App() {
   function toChatHistoryPayload(turns: ChatTurn[]): ChatHistoryPayloadTurn[] {
     return turns
       .filter((turn) => !turn.loading)
-      .map((turn) => ({ role: turn.role, content: turn.content.trim() }))
+      .map((turn) => ({ role: turn.role, content: turn.content.trim().slice(0, 1200) }))
       .filter((turn) => turn.content.length > 0)
       .slice(-12)
   }
@@ -1920,7 +1922,7 @@ function App() {
       return
     }
 
-    const text = chatMessage.trim()
+    const text = chatMessage.trim().slice(0, 1200)
     if (!text) {
       setMessage('대화 내용을 입력해주세요.')
       return
@@ -1943,6 +1945,8 @@ function App() {
         message: text,
         conversation_history: history,
       }
+      const cbtPhase = chatResult?.next_phase ?? chatResult?.cbt_phase
+      if (cbtPhase) payload.cbt_phase = cbtPhase
       if (activeChallenge) {
         payload.active_challenge = activeChallenge
         payload.challenge_phase = challengePhase

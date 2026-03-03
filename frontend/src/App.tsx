@@ -1994,7 +1994,7 @@ function App() {
         setChallengeHintText(data.challenge_step_prompt)
       }
 
-      setMessage('대화 분석 완료')
+      setMessage('')
     } catch (error) {
       setChatHistory((prev) => prev.filter((turn) => !turn.loading))
       setMessage(`인지행동치료 대화 오류: ${(error as Error).message}`)

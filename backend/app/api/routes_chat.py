@@ -47,8 +47,50 @@ MEDIUM_RISK_KEYWORDS = [
 ]
 PLAN_MEANS_KEYWORDS = ["준비했", "칼", "약", "목맬", "투신", "방법", "수단", "장소", "시간 정했"]
 VIOLENT_TARGET_KEYWORDS = ["다른 사람", "남을", "타인을", "누군가", "사람을"]
-VIOLENT_ACTION_KEYWORDS = ["죽이고", "해치고", "찌르고", "폭행", "때리고", "보복"]
-VIOLENT_DIRECT_PATTERNS = ["다른 사람을 죽이고 싶", "남을 죽이고 싶", "타인을 해치고 싶"]
+VIOLENT_ACTION_KEYWORDS = ["죽이고", "해치고", "찌르고", "폭행", "때리고", "보복", "패고", "패버리", "조지고"]
+VIOLENT_DIRECT_PATTERNS = ["다른 사람을 죽이고 싶", "남을 죽이고 싶", "타인을 해치고 싶", "패고 싶"]
+HOSTILE_TO_ASSISTANT_KEYWORDS = [
+    "너말이야",
+    "너 때문",
+    "너때문",
+    "닥쳐",
+    "꺼져",
+    "씨발",
+    "시발",
+    "ㅆㅂ",
+    "병신",
+    "새끼",
+    "새꺄",
+    "새캬",
+    "새꺄",
+    "ㅅㄲ",
+    "좆",
+    "개새",
+    "ㅅㅂ",
+    "ㅂㅅ",
+]
+CONVERSATION_STUCK_KEYWORDS = [
+    "대화가 안돼",
+    "대화가 진행이 안",
+    "진행이 안돼",
+    "진행이 안되",
+    "꼬리물기",
+    "답답",
+    "반복",
+    "같은 말",
+    "왜 자꾸",
+]
+FINISH_INTENT_KEYWORDS = [
+    "마무리",
+    "끝낼",
+    "끝내자",
+    "여기까지",
+    "오늘은 끝",
+    "종료",
+    "정리해",
+]
+FINISH_SAVE_CONFIRM_KEYWORDS = ["저장", "저장할게", "저장해", "확정", "완료"]
+FINISH_EDIT_KEYWORDS = ["수정", "고칠게", "다시", "아니", "변경"]
 SAFETY_RELEASE_KEYWORDS = ["안전해", "괜찮아졌", "연락했", "도움받고", "지금은 괜찮", "병원 왔", "옆에 사람 있어"]
 CRISIS_LOCK_TURNS = 5
 CRISIS_STAGE_A_TRIGGER_KEYWORDS = [
@@ -435,16 +477,8 @@ def _is_finish_candidate(
         return True
     if any(k in text for k in ["해볼게", "지금 할게", "해보고 싶어", "시작할게", "해보겠습니다"]):
         return True
-    if any(k in text for k in ["다르게 생각", "완전히는 아냐", "증거를 보면", "그럴 수도"]):
-        return True
-
-    all_user_texts = history_user_texts + [message]
-    emotion_ok = _is_slot_filled(all_user_texts, ["불안", "우울", "힘들", "속상", "지침", "무기력"])
-    situation_ok = _is_slot_filled(all_user_texts, ["상황", "오늘", "아까", "회사", "학교", "집에서", "사건"])
-    thought_ok = _is_slot_filled(all_user_texts, ["생각", "자동사고", "난", "나는", "해석"])
-    distortion_ok = _is_slot_filled(all_user_texts, ["항상", "절대", "망했", "내 탓", "가치없", "없어도 상관"])
-    reframe_ok = _is_slot_filled(all_user_texts, ["대안", "다르게", "한 가지 가능성", "균형"])
-    return emotion_ok and situation_ok and thought_ok and distortion_ok and reframe_ok
+    # 마무리 판단은 보수적으로: 사용자가 명시적으로 실행 의지를 표현할 때만.
+    return False
 
 
 def _looks_like_automatic_thought(message: str) -> bool:
@@ -487,6 +521,46 @@ def _is_moderate_plus(message: str, recent_user_text: str = "", prior_distress: 
     return (prior_distress or 0) >= 7
 
 
+def _is_hostile_to_assistant(message: str, recent_user_text: str = "") -> bool:
+    text = f"{message} {recent_user_text}".lower()
+    return any(k in text for k in HOSTILE_TO_ASSISTANT_KEYWORDS)
+
+
+def _is_conversation_stuck(message: str, recent_user_text: str = "") -> bool:
+    text = f"{message} {recent_user_text}".lower()
+    return any(k in text for k in CONVERSATION_STUCK_KEYWORDS)
+
+
+def _is_finish_intent(message: str) -> bool:
+    text = message.lower()
+    return any(k in text for k in FINISH_INTENT_KEYWORDS)
+
+
+def _is_finish_save_confirm(message: str) -> bool:
+    text = message.lower()
+    return any(k in text for k in FINISH_SAVE_CONFIRM_KEYWORDS)
+
+
+def _is_finish_edit_intent(message: str) -> bool:
+    text = message.lower()
+    return any(k in text for k in FINISH_EDIT_KEYWORDS)
+
+
+def _build_finish_reply(summary_card: dict[str, str], challenge_name: str | None = None) -> str:
+    situation = (summary_card.get("situation") or "오늘 힘들었던 사건이 있었습니다.").strip()
+    reframe = (summary_card.get("reframe") or "상황을 전부 내 잘못으로 단정하지 않기로 했습니다.").strip()
+    next_action = (summary_card.get("next_action") or "호흡 2분 + 사실 1문장 기록").strip()
+    challenge_line = challenge_name or "SENSORY_MEDITATION"
+    return (
+        "오늘 대화를 마무리할게요.\n"
+        f"1) 오늘 요약: {situation}\n"
+        f"2) 재정리: {reframe}\n"
+        f"3) 다음 행동(2~10분): {next_action}\n"
+        f"4) 권장 챌린지: {challenge_line}\n"
+        "이 요약으로 저장할까요? (저장/수정)"
+    )
+
+
 def _build_challenge_candidates(
     message: str,
     *,
@@ -521,8 +595,6 @@ def _build_challenge_candidates(
         candidates.extend(CHALLENGE_CANDIDATE_RULES["RELATION_SELFBLAME"])
     if moderate_plus and not candidates:
         candidates.extend(CHALLENGE_CANDIDATE_RULES["LOW_ENERGY"])
-    if not candidates:
-        candidates = ["WEEKLY_MINI_CHALLENGE"]
 
     unique: list[str] = []
     allowed = set(CHALLENGE_CATALOG_IDS)
@@ -570,6 +642,121 @@ async def chat_cbt(
     latest_event = await crud.get_latest_chat_event(db=db, user_id=current_user.id)
     latest_extracted = latest_event.extracted if latest_event and isinstance(latest_event.extracted, dict) else {}
     last_assistant_reply = str(latest_event.assistant_reply or "") if latest_event else ""
+    finish_intent = _is_finish_intent(payload.message)
+    waiting_finish_confirm = "이 요약으로 저장할까요? (저장/수정)" in last_assistant_reply
+    if waiting_finish_confirm and _is_finish_save_confirm(payload.message):
+        extracted = dict(latest_extracted) if isinstance(latest_extracted, dict) else {
+            "distress_0_10": 4,
+            "rumination_0_10": 3,
+            "avoidance_0_10": 3,
+            "sleep_difficulty_0_10": 3,
+            "distortion": {
+                "all_or_nothing_count": 0,
+                "catastrophizing_count": 0,
+                "mind_reading_count": 0,
+                "should_statements_count": 0,
+                "personalization_count": 0,
+                "overgeneralization_count": 0,
+            },
+            "distortions": [],
+        }
+        done_reply = (
+            "좋아요. 오늘 대화 요약을 저장했어요. "
+            "내일은 같은 시간에 기분 점수와 사건 1줄만 다시 기록해보면 변화 추적에 도움이 됩니다."
+        )
+        summary_card = {
+            "situation": "오늘 대화 요약 저장 완료",
+            "self_blame_signal": "자기비난을 줄이려는 시도가 확인되었습니다.",
+            "reframe": "상황을 한 번에 해결하려 하기보다 작은 행동부터 진행하기로 했습니다.",
+            "next_action": "내일 체크인 1회",
+            "encouragement": "지금처럼 정리하고 마무리한 행동이 회복에 도움이 됩니다.",
+        }
+        await crud.create_chat_event(
+            db=db,
+            user_id=current_user.id,
+            user_message=payload.message,
+            assistant_reply=done_reply,
+            extracted=extracted,
+            suggested_challenges=[],
+        )
+        return ChatResponse(
+            reply=done_reply,
+            extracted=extracted,
+            suggested_challenges=[],
+            summary_card=summary_card,
+            cbt_phase="ACTION",
+            phase="ACTION",
+            next_phase="EMOTION",
+            challenge_rationale=None,
+            active_challenge=None,
+            challenge_step_prompt=None,
+            challenge_completed=False,
+            completed_challenge=None,
+            completion_message=None,
+            disclaimer="이 정보는 참고용이며, 진단 아님 안내입니다.",
+            timestamp=datetime.now(timezone.utc),
+            crisis_mode=False,
+            crisis_level="none",
+            crisis_stage=None,
+            crisis_actions=[],
+        )
+    if waiting_finish_confirm and _is_finish_edit_intent(payload.message):
+        edit_reply = (
+            "좋아요. 수정 모드로 바꿀게요. "
+            "아래 3개 중 하나만 먼저 적어주세요: "
+            "1) 오늘 핵심 사건 2) 자동사고 3) 다음 행동."
+        )
+        extracted = dict(latest_extracted) if isinstance(latest_extracted, dict) else {
+            "distress_0_10": 4,
+            "rumination_0_10": 3,
+            "avoidance_0_10": 3,
+            "sleep_difficulty_0_10": 3,
+            "distortion": {
+                "all_or_nothing_count": 0,
+                "catastrophizing_count": 0,
+                "mind_reading_count": 0,
+                "should_statements_count": 0,
+                "personalization_count": 0,
+                "overgeneralization_count": 0,
+            },
+            "distortions": [],
+        }
+        summary_card = {
+            "situation": payload.message[:120],
+            "self_blame_signal": "사용자가 요약 수정 의사를 밝혔습니다.",
+            "reframe": "수정 가능한 부분부터 다시 정리합니다.",
+            "next_action": "핵심 사건/사고/행동 중 1개 재작성",
+            "encouragement": "수정 요청은 자기이해를 높이는 좋은 과정입니다.",
+        }
+        await crud.create_chat_event(
+            db=db,
+            user_id=current_user.id,
+            user_message=payload.message,
+            assistant_reply=edit_reply,
+            extracted=extracted,
+            suggested_challenges=[],
+        )
+        return ChatResponse(
+            reply=edit_reply,
+            extracted=extracted,
+            suggested_challenges=[],
+            summary_card=summary_card,
+            cbt_phase="SITUATION",
+            phase="SITUATION",
+            next_phase="THOUGHT",
+            challenge_rationale=None,
+            active_challenge=None,
+            challenge_step_prompt="핵심 사건/자동사고/다음 행동 중 1개를 먼저 적어주세요.",
+            challenge_completed=False,
+            completed_challenge=None,
+            completion_message=None,
+            disclaimer="이 정보는 참고용이며, 진단 아님 안내입니다.",
+            timestamp=datetime.now(timezone.utc),
+            crisis_mode=False,
+            crisis_level="none",
+            crisis_stage=None,
+            crisis_actions=[],
+        )
     prior_crisis_lock = int(latest_extracted.get("crisis_lock_remaining", 0) or 0)
     prior_hotline_count = int(latest_extracted.get("crisis_hotline_count", 0) or 0)
     prior_template_index = int(latest_extracted.get("crisis_template_index", 0) or 0)
@@ -682,8 +869,89 @@ async def chat_cbt(
     prior_sleep_difficulty = _safe_score(latest_extracted.get("sleep_difficulty_0_10", 0), 0)
     prior_avoidance = _safe_score(latest_extracted.get("avoidance_0_10", 0), 0)
     prior_distortions = latest_extracted.get("distortions", [])
+    hostile_mode = _is_hostile_to_assistant(payload.message, recent_user_text=recent_user_text)
+    stuck_mode = _is_conversation_stuck(payload.message, recent_user_text=recent_user_text)
+    if hostile_mode or stuck_mode:
+        extracted = dict(latest_extracted) if isinstance(latest_extracted, dict) else {}
+        extracted.update(
+            {
+                "distress_0_10": max(6, _safe_score(extracted.get("distress_0_10", 6), 6)),
+                "rumination_0_10": max(5, _safe_score(extracted.get("rumination_0_10", 5), 5)),
+                "avoidance_0_10": max(4, _safe_score(extracted.get("avoidance_0_10", 4), 4)),
+                "sleep_difficulty_0_10": _safe_score(extracted.get("sleep_difficulty_0_10", 4), 4),
+                "suicide_risk_flag": bool(extracted.get("suicide_risk_flag", False)),
+                "intent_level": str(extracted.get("intent_level", "none") or "none"),
+                "plan_means_flag": bool(extracted.get("plan_means_flag", False)),
+                "crisis_lock_remaining": 0,
+                "crisis_stage": None,
+                "crisis_hotline_count": int(extracted.get("crisis_hotline_count", 0) or 0),
+                "crisis_template_index": int(extracted.get("crisis_template_index", 0) or 0),
+                "violent_risk_flag": bool(extracted.get("violent_risk_flag", False)),
+            }
+        )
+        if not isinstance(extracted.get("distortion"), dict):
+            extracted["distortion"] = {
+                "all_or_nothing_count": 0,
+                "catastrophizing_count": 0,
+                "mind_reading_count": 0,
+                "should_statements_count": 0,
+                "personalization_count": 0,
+                "overgeneralization_count": 0,
+            }
+        if not isinstance(extracted.get("distortions"), list):
+            extracted["distortions"] = []
+
+        safe_reply = (
+            "지금 대화가 답답하게 느껴졌다는 점 이해했어요. "
+            "지금부터는 꼬리질문을 멈추고 짧게 진행할게요. "
+            "오늘 가장 크게 기분을 떨어뜨린 사건 1가지만 적어주세요. "
+            "그다음 제가 사실/생각을 한 번에 정리해서 다음 행동 1개만 제안할게요."
+        )
+        if hostile_mode:
+            safe_reply = (
+                "지금 많이 화난 상태라는 점은 이해했어요. "
+                "지금은 꼬리질문을 멈추고 핵심만 정리할게요. "
+                "오늘 가장 크게 기분을 떨어뜨린 사건 1가지만 적어주세요. "
+                "그다음 제가 사실/생각을 한 번에 정리해서 다음 행동 1개만 제안할게요."
+            )
+        summary_card = {
+            "situation": payload.message[:120],
+            "self_blame_signal": "대화 피로/분노 신호가 관찰되어 질문량을 줄여 진행합니다.",
+            "reframe": "지금의 거친 표현은 통제 어려운 스트레스 반응일 수 있으며, 감정 자체는 다룰 수 있습니다.",
+            "next_action": "사건 1개를 사실 위주로 1문장 작성",
+            "encouragement": "지금처럼 멈춰달라고 말한 것은 매우 유효한 경계 설정입니다.",
+        }
+        await crud.create_chat_event(
+            db=db,
+            user_id=current_user.id,
+            user_message=payload.message,
+            assistant_reply=safe_reply,
+            extracted=extracted,
+            suggested_challenges=[],
+        )
+        return ChatResponse(
+            reply=safe_reply,
+            extracted=extracted,
+            suggested_challenges=[],
+            summary_card=summary_card,
+            cbt_phase="SITUATION",
+            phase="SITUATION",
+            next_phase="THOUGHT",
+            challenge_rationale=None,
+            active_challenge=None,
+            challenge_step_prompt="사건 1개를 사실 중심으로 1문장만 적어주세요.",
+            challenge_completed=False,
+            completed_challenge=None,
+            completion_message=None,
+            disclaimer="이 정보는 참고용이며, 진단 아님 안내입니다.",
+            timestamp=datetime.now(timezone.utc),
+            crisis_mode=False,
+            crisis_level="none",
+            crisis_stage=None,
+            crisis_actions=[],
+        )
     latest_checkin = await crud.get_latest_checkin(db=db, user_id=current_user.id)
-    finish_candidate = _is_finish_candidate(
+    finish_candidate = finish_intent or _is_finish_candidate(
         payload.message,
         cbt_phase=payload.cbt_phase,
         active_challenge=payload.active_challenge,
@@ -712,7 +980,7 @@ async def chat_cbt(
         recent_distortions=prior_distortions if isinstance(prior_distortions, list) else [],
     )
     if (payload.cbt_phase == "ACTION" or payload.active_challenge or finish_candidate) and not challenge_candidates:
-        challenge_candidates = ["WEEKLY_MINI_CHALLENGE"]
+        challenge_candidates = []
 
     safety_addendum = ""
     if risk_level == "MEDIUM":
@@ -757,6 +1025,10 @@ async def chat_cbt(
     summary_card = dict(result.summary_card)
     if finish_candidate and filtered_suggestions:
         summary_card["next_action"] = f"{summary_card.get('next_action', '')} / 추천 챌린지: {filtered_suggestions[0]}".strip(" /")
+    if finish_intent:
+        suggested = filtered_suggestions[0] if filtered_suggestions else (challenge_candidates[0] if challenge_candidates else None)
+        result.reply = _build_finish_reply(summary_card, suggested)
+        filtered_suggestions = [suggested] if suggested else []
 
     if result.challenge_completed and result.completed_challenge:
         done_name = result.completed_challenge.strip()[:200]

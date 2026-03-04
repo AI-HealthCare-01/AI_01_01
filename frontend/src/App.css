@@ -2931,6 +2931,16 @@ button:disabled {
   position: relative;
 }
 
+.challengeLibraryCard.setCard {
+  aspect-ratio: auto;
+  min-height: 0;
+  height: auto;
+}
+
+.challengeLibraryCard.setCard p {
+  min-height: 0;
+}
+
 .challengeLibraryCard:hover {
   border-color: #b8c3d1;
   transform: translateY(-1px);
@@ -3051,6 +3061,32 @@ button:disabled {
 
 .challengeLibraryCard .tags .categoryBadge.socialSleep {
   background: #B8FFA9;
+}
+
+.challengeSetPreview {
+  margin-top: 0.55rem;
+  padding: 0.52rem 0.62rem;
+  border-radius: 10px;
+  border: 1px solid #d7e2ea;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.challengeSetPreview strong {
+  display: block;
+  margin-bottom: 0.24rem;
+  font-size: 0.67rem;
+  color: #334155;
+}
+
+.challengeSetPreview ul {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.challengeSetPreview li {
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: #475569;
 }
 
 .challengeLibraryCard .actions button.ghost {
@@ -3180,7 +3216,7 @@ button:disabled {
 
 @media (min-width: 1200px) {
   .challengeLibraryRow {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 

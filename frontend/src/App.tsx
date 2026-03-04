@@ -198,6 +198,15 @@ type ChallengeTemplateItem = {
 }
 
 type ChallengeDurationBucket = 1 | 3 | 7
+type ChallengeSetFocus = 'depression' | 'anxiety' | 'insomnia' | 'mixed'
+type ChallengeSetPreset = {
+  id: string
+  label: string
+  focusLabel: string
+  description: string
+  bucket: Exclude<ChallengeDurationBucket, 1>
+  templateKeys: string[]
+}
 
 type ActiveChallengeCompletionItem = {
   id: string
@@ -794,6 +803,81 @@ function challengeDurationBucket(days: number): ChallengeDurationBucket {
   if (days >= 3) return 3
   return 1
 }
+
+const CHALLENGE_SET_PRESET_CONFIG: Array<ChallengeSetPreset & { focus: ChallengeSetFocus }> = [
+  {
+    id: 'set-7d-depression',
+    label: '우울 케어 7일 세트',
+    focus: 'depression',
+    focusLabel: '우울',
+    description: '행동활성 + 햇빛 + 기록 + 감사로 기분 회복 루틴을 구성해요.',
+    bucket: 7,
+    templateKeys: ['EXERCISE_WALK_20', 'SUNLIGHT_20MIN', 'JOURNAL_STREAK_7D', 'GRATITUDE_3_7D'],
+  },
+  {
+    id: 'set-7d-anxiety',
+    label: '불안 완화 7일 세트',
+    focus: 'anxiety',
+    focusLabel: '불안',
+    description: '호흡/명상/걱정시간 구조화로 긴장 조절 능력을 높여요.',
+    bucket: 7,
+    templateKeys: ['BREATHING_3MIN_7D', 'MEDITATION_5MIN_7D', 'WORRY_TIME_10MIN_7D', 'EXERCISE_WALK_20'],
+  },
+  {
+    id: 'set-7d-insomnia',
+    label: '불면 개선 7일 세트',
+    focus: 'insomnia',
+    focusLabel: '불면',
+    description: '수면 위생/디지털 선셋/햇빛/호흡으로 수면 리듬을 다져요.',
+    bucket: 7,
+    templateKeys: ['SLEEP_HYGIENE_ROUTINE', 'DIGITAL_SUNSET_7D', 'SUNLIGHT_20MIN', 'BREATHING_3MIN_7D'],
+  },
+  {
+    id: 'set-7d-mixed',
+    label: '복합 관리 7일 세트',
+    focus: 'mixed',
+    focusLabel: '복합',
+    description: '기분·불안·수면 요소를 균형 있게 포함한 종합 루틴이에요.',
+    bucket: 7,
+    templateKeys: ['JOURNAL_STREAK_7D', 'BREATHING_3MIN_7D', 'SLEEP_HYGIENE_ROUTINE', 'EXERCISE_WALK_20'],
+  },
+  {
+    id: 'set-3d-depression',
+    label: '우울 케어 3일 세트',
+    focus: 'depression',
+    focusLabel: '우울',
+    description: '짧은 기간에 행동활성/기록 기반으로 분위기 반전을 시도해요.',
+    bucket: 3,
+    templateKeys: ['WALK_10MIN_3D', 'SUNLIGHT_5MIN_3D', 'JOURNAL_STREAK', 'GRATITUDE_3_3D'],
+  },
+  {
+    id: 'set-3d-anxiety',
+    label: '불안 완화 3일 세트',
+    focus: 'anxiety',
+    focusLabel: '불안',
+    description: '호흡/명상/걱정 분리 기록을 3일 집중으로 수행해요.',
+    bucket: 3,
+    templateKeys: ['BREATHING_3MIN_3D', 'MEDITATION_5MIN_3D', 'WORRY_LOG_3D', 'WALK_10MIN_3D'],
+  },
+  {
+    id: 'set-3d-insomnia',
+    label: '불면 개선 3일 세트',
+    focus: 'insomnia',
+    focusLabel: '불면',
+    description: '수면 리셋/햇빛/완화 호흡으로 빠르게 리듬을 재정렬해요.',
+    bucket: 3,
+    templateKeys: ['SLEEP_RESET_3D', 'SUNLIGHT_5MIN_3D', 'BREATHING_3MIN_3D', 'MEDITATION_5MIN_3D'],
+  },
+  {
+    id: 'set-3d-mixed',
+    label: '복합 관리 3일 세트',
+    focus: 'mixed',
+    focusLabel: '복합',
+    description: '기록/호흡/수면/활동을 담은 단기 복합 루틴이에요.',
+    bucket: 3,
+    templateKeys: ['JOURNAL_STREAK', 'BREATHING_3MIN_3D', 'SLEEP_RESET_3D', 'WALK_10MIN_3D'],
+  },
+]
 function MultiMetricTrendChart({
   labels,
   series,
@@ -1593,8 +1677,8 @@ function App() {
   }
 
   const durationLimitByBucket: Record<ChallengeDurationBucket, number> = {
-    7: 2,
-    3: 3,
+    7: 4,
+    3: 4,
     1: 4,
   }
 
@@ -1633,6 +1717,37 @@ function App() {
       }
       return [...prev, templateKey]
     })
+  }
+
+  function applyChallengeSetSelection(setLabel: string, templateKeys: string[]) {
+    const uniqueKeys = templateKeys.filter((key, idx, arr) => arr.indexOf(key) === idx).slice(0, 4)
+    if (uniqueKeys.length !== 4) {
+      setMessage('세트 구성 오류가 있어요. 잠시 후 다시 시도해주세요.')
+      return
+    }
+    const missing = uniqueKeys.filter((key) => !challengeLibrary.some((item) => item.template_key === key))
+    if (missing.length > 0) {
+      setMessage('세트 구성 챌린지를 아직 불러오지 못했어요. 새로고침 후 다시 시도해주세요.')
+      return
+    }
+    const locked = selectedChallengeKeys.filter((key) => isSelectionLockedByProgress(key) && !uniqueKeys.includes(key))
+    if (locked.length > 0) {
+      setMessage('이미 수행을 시작해 고정된 챌린지가 있어 세트를 교체할 수 없습니다.')
+      return
+    }
+    const todayCompletedOutside = todayCompletedChallengeKeys.filter((key) => !uniqueKeys.includes(key))
+    if (todayCompletedOutside.length > 0) {
+      setMessage('오늘 완료한 챌린지가 있어 세트 교체는 내일 다시 시도해주세요.')
+      return
+    }
+    const needConfirm = selectedChallengeKeys.length > 0 && selectedChallengeKeys.some((key) => !uniqueKeys.includes(key))
+    if (needConfirm) {
+      const confirmed = window.confirm('현재 선택한 챌린지를 새 세트로 교체할까요? 기존 수행 기록은 그대로 보존됩니다.')
+      if (!confirmed) return
+    }
+    setSelectedChallengeKeys(uniqueKeys)
+    setSelectedTemplateKey(uniqueKeys[0] ?? '')
+    setMessage(`${setLabel}을(를) 적용했어요.`)
   }
 
   function removeSelectedChallenge(templateKey: string) {
@@ -2451,8 +2566,8 @@ function App() {
   ) {
     const normalized = templateKey.trim().toUpperCase()
     let sec = 0
-    if (normalized === 'MEDITATION_5MIN') sec = 5 * 60
-    if (normalized === 'BREATHING_3MIN') sec = 3 * 60
+    if (normalized.startsWith('MEDITATION_5MIN')) sec = 5 * 60
+    if (normalized.startsWith('BREATHING_3MIN')) sec = 3 * 60
     if (!sec) return
 
     setTimerTitle(title)
@@ -2472,19 +2587,21 @@ function App() {
 
   function isTimerChallenge(templateKey: string): boolean {
     const normalized = templateKey.trim().toUpperCase()
-    return normalized === 'MEDITATION_5MIN' || normalized === 'BREATHING_3MIN'
+    return normalized.startsWith('MEDITATION_5MIN') || normalized.startsWith('BREATHING_3MIN')
   }
 
   function isTextInputChallenge(templateKey: string): boolean {
     const normalized = templateKey.trim().toUpperCase()
-    return normalized === 'JOURNAL_STREAK' || normalized === 'GRATITUDE_3' || normalized === 'GRATITUDE_LOTTERY'
+    return normalized.startsWith('JOURNAL_STREAK') || normalized.startsWith('GRATITUDE_3') || normalized === 'GRATITUDE_LOTTERY' || normalized === 'WORRY_LOG_3D' || normalized === 'WORRY_TIME_10MIN_7D'
   }
 
   function textChallengePlaceholder(templateKey: string): string {
     const normalized = templateKey.trim().toUpperCase()
-    if (normalized === 'GRATITUDE_3') return '감사한 일 3가지를 줄바꿈으로 적어주세요.'
+    if (normalized.startsWith('GRATITUDE_3')) return '감사한 일 3가지를 줄바꿈으로 적어주세요.'
     if (normalized === 'GRATITUDE_LOTTERY') return '랜덤 감사 주제에 대한 짧은 기록을 남겨주세요.'
-    if (normalized === 'JOURNAL_STREAK') return '오늘의 사실/생각/감정을 짧게 기록해 주세요.'
+    if (normalized.startsWith('JOURNAL_STREAK')) return '오늘의 사실/생각/감정을 짧게 기록해 주세요.'
+    if (normalized === 'WORRY_LOG_3D') return '걱정 내용을 적고 통제 가능/불가를 나눠 기록해 주세요.'
+    if (normalized === 'WORRY_TIME_10MIN_7D') return '오늘의 걱정시간 10분 내용을 짧게 남겨주세요.'
     return '수행 내용을 자유롭게 입력해 주세요.'
   }
 
@@ -2975,14 +3092,27 @@ function App() {
     return merged
   }, [selectedChallengeKeys, todayCompletedChallengeKeys])
   const effectiveChallengeCount = useMemo(() => effectiveChallengeKeys.length, [effectiveChallengeKeys])
-  const challengeLibrarySections = useMemo(() => {
-    const buckets: ChallengeDurationBucket[] = [7, 3, 1]
-    return buckets.map((bucket) => ({
-      bucket,
-      title: bucket === 7 ? '일주일 챌린지' : bucket === 3 ? '3일 챌린지' : '하루 챌린지',
-      items: challengeLibrary.filter((item) => challengeDurationBucket(item.default_duration_days) === bucket),
-    }))
+  const challengeSetSections = useMemo(() => {
+    const sections: Array<{ bucket: 7 | 3; title: string; items: ChallengeSetPreset[] }> = [
+      { bucket: 7, title: '7일 세트', items: [] },
+      { bucket: 3, title: '3일 세트', items: [] },
+    ]
+    const availableKeys = new Set(challengeLibrary.map((item) => item.template_key))
+    for (const preset of CHALLENGE_SET_PRESET_CONFIG) {
+      if (!preset.templateKeys.every((key) => availableKeys.has(key))) continue
+      const target = sections.find((section) => section.bucket === preset.bucket)
+      if (target) target.items.push(preset)
+    }
+    return sections
   }, [challengeLibrary])
+  const directPickChallenges = useMemo(
+    () => challengeLibrary.filter((item) => challengeDurationBucket(item.default_duration_days) === 1),
+    [challengeLibrary],
+  )
+  const challengeTitleByKey = useMemo(
+    () => new Map(challengeLibrary.map((item) => [item.template_key, item.title])),
+    [challengeLibrary],
+  )
   const challengeDailyMissions = useMemo(() => {
     const today = todayDateString()
     return effectiveChallengeKeys.slice(0, 4).map((templateKey) => {
@@ -3743,76 +3873,101 @@ function App() {
             <div className="challengeLibraryGuide">
               <strong>선택/해제 규칙 안내</strong>
               <ul>
-                <li>하루에 챌린지는 최대 4개까지 선택할 수 있어요.</li>
-                <li>유형별 선택 제한: 7일형 2개, 3일형 3개, 1일형 4개.</li>
-                <li>7일형/3일형은 선택만 한 상태(수행 0회)에서는 선택 해제가 가능해요.</li>
-                <li>7일형/3일형을 1회 이상 수행하면 해당 기간 동안 선택이 고정되어 취소할 수 없어요.</li>
-                <li>1일형은 당일 완료되면 라이브러리에서 완료 상태로 고정되고 다음 날 다시 선택할 수 있어요.</li>
+                <li>7일/3일은 우울·불안·불면·복합 세트 중 하나를 골라 4개 챌린지를 한 번에 추가할 수 있어요.</li>
+                <li>직접 고르기에서는 하루형 챌린지를 최대 4개까지 자유롭게 선택할 수 있어요.</li>
+                <li>다른 세트로 변경 시 현재 선택 목록이 교체되며, 기존 수행 기록은 보존됩니다.</li>
+                <li>오늘 완료한 챌린지는 라이브러리에서 완료 상태로 고정되고 내일 다시 선택할 수 있어요.</li>
               </ul>
             </div>
-            {challengeLibrarySections.map((section) => (
-              <div key={`challenge-library-section-${section.bucket}`} className="challengeDurationBlock">
+            {challengeSetSections.map((section) => (
+              <div key={`challenge-set-section-${section.bucket}`} className="challengeDurationBlock">
                 <h4>{section.title}</h4>
                 <div className="challengeLibraryRow">
-                  {section.items.map((item) => {
-                    const tone = challengeCategoryTone(item.category_label, item.title)
-                    const isCompletedToday = completedChallengeKeysToday.has(item.template_key)
-                    const selected = isCompletedToday || selectedChallengeKeys.includes(item.template_key)
-                    const timerEnabled = isTimerChallenge(item.template_key)
-                    return (
-                      <article
-                        key={`challenge-library-${item.template_key}`}
-                        className={`challengeLibraryCard tone-${tone} ${selected ? 'selected' : ''} ${timerEnabled ? 'hasTimer' : ''} ${isCompletedToday ? 'locked' : ''}`}
-                        onClick={() => {
-                          if (isCompletedToday) return
-                          setSelectedTemplateKey(item.template_key)
-                        }}
-                      >
-                        {selected && (
-                          <span className={`challengeSelectMark tone-${tone}`} aria-hidden>✓</span>
-                        )}
-                        <div className="emoji">{challengeEmoji(item.title)}</div>
-                        <h4>{item.title}</h4>
-                        <p>{item.short_desc}</p>
-                        <div className="tags">
-                          <span className={`categoryBadge ${challengeCategoryBadgeClass(item.category_label)}`}>{item.category_label}</span>
-                          <span className="categoryBadge">{challengeDurationBucket(item.default_duration_days)}일</span>
-                        </div>
-                        <div className="actions">
-                          {isCompletedToday ? (
-                            <button type="button" className="ghost completedBtn" disabled>완료</button>
-                          ) : selected ? (
-                            <button type="button" className="ghost completedBtn" disabled>추가됨</button>
-                          ) : !timerEnabled ? (
-                            <button
-                              type="button"
-                              className="ghost"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                addChallengeSelection(item.template_key)
-                              }}
-                            >
-                              추가하기
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="ghost timerBtn"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                addChallengeSelection(item.template_key)
-                              }}
-                            >
-                              추가하기
-                            </button>
-                          )}
-                        </div>
-                      </article>
-                    )
-                  })}
+                  {section.items.map((setItem) => (
+                    <article key={setItem.id} className="challengeLibraryCard tone-peach setCard">
+                      <div className="emoji">📦</div>
+                      <h4>{setItem.label}</h4>
+                      <p>{setItem.description}</p>
+                      <div className="challengeSetPreview">
+                        <strong>포함 챌린지 4개</strong>
+                        <ul>
+                          {setItem.templateKeys.map((templateKey) => (
+                            <li key={`${setItem.id}-${templateKey}`}>
+                              {challengeTitleByKey.get(templateKey) ?? templateKey}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="tags">
+                        <span className="categoryBadge lifestyle">{setItem.focusLabel}</span>
+                        <span className="categoryBadge">{setItem.bucket}일</span>
+                        <span className="categoryBadge">4개 구성</span>
+                      </div>
+                      <div className="actions">
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => applyChallengeSetSelection(setItem.label, setItem.templateKeys)}
+                        >
+                          세트 추가하기
+                        </button>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </div>
             ))}
+
+            <div className="challengeDurationBlock">
+              <h4>직접 고르기 (하루형)</h4>
+              <div className="challengeLibraryRow">
+                {directPickChallenges.map((item) => {
+                  const tone = challengeCategoryTone(item.category_label, item.title)
+                  const isCompletedToday = completedChallengeKeysToday.has(item.template_key)
+                  const selected = isCompletedToday || selectedChallengeKeys.includes(item.template_key)
+                  const timerEnabled = isTimerChallenge(item.template_key)
+                  return (
+                    <article
+                      key={`challenge-library-${item.template_key}`}
+                      className={`challengeLibraryCard tone-${tone} ${selected ? 'selected' : ''} ${timerEnabled ? 'hasTimer' : ''} ${isCompletedToday ? 'locked' : ''}`}
+                      onClick={() => {
+                        if (isCompletedToday) return
+                        setSelectedTemplateKey(item.template_key)
+                      }}
+                    >
+                      {selected && (
+                        <span className={`challengeSelectMark tone-${tone}`} aria-hidden>✓</span>
+                      )}
+                      <div className="emoji">{challengeEmoji(item.title)}</div>
+                      <h4>{item.title}</h4>
+                      <p>{item.short_desc}</p>
+                      <div className="tags">
+                        <span className={`categoryBadge ${challengeCategoryBadgeClass(item.category_label)}`}>{item.category_label}</span>
+                        <span className="categoryBadge">하루형</span>
+                      </div>
+                      <div className="actions">
+                        {isCompletedToday ? (
+                          <button type="button" className="ghost completedBtn" disabled>완료</button>
+                        ) : selected ? (
+                          <button type="button" className="ghost completedBtn" disabled>추가됨</button>
+                        ) : (
+                          <button
+                            type="button"
+                            className={timerEnabled ? 'ghost timerBtn' : 'ghost'}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              addChallengeSelection(item.template_key)
+                            }}
+                          >
+                            추가하기
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            </div>
           </section>
 
           <section>

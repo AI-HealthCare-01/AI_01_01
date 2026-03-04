@@ -26,12 +26,17 @@ from app.schemas.auth import (
     UserLogin,
     UserOut,
 )
-from app.services.admin_service import is_email_blocked
+from app.services.admin_service import get_admin_email_set, is_email_blocked
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 _AUTH_SCHEMA_READY = False
+
+
+async def _is_admin_email(db: AsyncSession, email: str) -> bool:
+    admin_emails = await get_admin_email_set(db)
+    return email.strip().lower() in admin_emails
 
 
 def _extract_client_ip(request: Request) -> str | None:
@@ -117,13 +122,14 @@ async def get_current_user(
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="토큰 정보가 올바르지 않습니다.") from exc
 
-    ip = _extract_client_ip(request)
-    if ip and await crud.is_ip_blocked(db, ip):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="차단된 IP입니다. 관리자에게 문의하세요.")
-
     user = await crud.get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="사용자 정보를 찾을 수 없습니다.")
+
+    ip = _extract_client_ip(request)
+    if ip and await crud.is_ip_blocked(db, ip):
+        if not await _is_admin_email(db, user.email):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="차단된 IP입니다. 관리자에게 문의하세요.")
 
     if await is_email_blocked(db, user.email):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="차단된 계정입니다. 관리자에게 문의하세요.")
@@ -179,16 +185,17 @@ async def signup(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> Use
 async def login(payload: UserLogin, request: Request, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     await _ensure_auth_schema(db)
 
-    ip = _extract_client_ip(request)
-    if ip and await crud.is_ip_blocked(db, ip):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="차단된 IP입니다. 관리자에게 문의하세요.")
-
     if await is_email_blocked(db, payload.email):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="차단된 계정입니다. 관리자에게 문의하세요.")
 
     user = await crud.authenticate_user(db, payload.email, payload.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
+
+    ip = _extract_client_ip(request)
+    if ip and await crud.is_ip_blocked(db, ip):
+        if not await _is_admin_email(db, user.email):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="차단된 IP입니다. 관리자에게 문의하세요.")
 
     expires_delta = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     token = create_access_token(subject=str(user.id), expires_delta=expires_delta)

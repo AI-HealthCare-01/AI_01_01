@@ -184,11 +184,43 @@ type ClinicalReport = {
   }>
 }
 
-type ContentChallengeCatalogItem = {
-  id: string
+type ChallengeTemplateItem = {
+  template_key: string
   title: string
-  description: string
-  category: string
+  short_desc: string
+  category_label: string
+  type: string
+  default_duration_days: number
+  target_frequency_per_week: number
+  difficulty_1_5: number
+  cta_label: string
+  rules_text: string
+}
+
+type ActiveChallengeCompletionItem = {
+  id: string
+  challenge_id: string
+  completed_date: string
+  completed_flag: boolean
+  completion_quality_0_5: number | null
+  perceived_helpfulness_0_10: number | null
+  created_at: string
+  updated_at: string
+}
+
+type ActiveChallengeItem = {
+  id: string
+  template_key: string
+  title: string
+  category_label: string
+  type: string
+  start_date: string
+  end_date: string
+  target_frequency_per_week: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  completions: ActiveChallengeCompletionItem[]
 }
 
 type ContentChallengeLogItem = {
@@ -684,12 +716,22 @@ function CheckinRing({
 
 async function extractApiError(response: Response): Promise<string> {
   try {
-    const data = (await response.json()) as { detail?: string }
-    if (data.detail && typeof data.detail === 'string') return data.detail
+    const data = (await response.json()) as { detail?: string | Array<{ loc?: Array<string | number>; msg?: string }> }
+    if (typeof data.detail === 'string') return data.detail
+    if (Array.isArray(data.detail) && data.detail.length > 0) {
+      const first = data.detail[0]
+      const loc = Array.isArray(first?.loc) ? first.loc.join('.') : ''
+      const msg = first?.msg ?? '요청 값이 올바르지 않습니다.'
+      return loc ? `${loc}: ${msg}` : msg
+    }
   } catch {
     // ignore
   }
   return `HTTP ${response.status}`
+}
+
+function isValidUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
 
@@ -713,6 +755,30 @@ function todayDateString(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+function challengeEmoji(title: string): string {
+  if (title.includes('명상') || title.includes('감각')) return '🧘'
+  if (title.includes('아침') || title.includes('수면') || title.includes('햇빛')) return '☀️'
+  if (title.includes('일기') || title.includes('CBT') || title.includes('기록')) return '✍️'
+  if (title.includes('감사') || title.includes('관계') || title.includes('IPT')) return '🙏'
+  if (title.includes('산책')) return '🚶'
+  return '🎯'
+}
+
+function challengeCategoryTone(category: string, title: string): 'lavender' | 'neon' | 'peach' | 'blue' {
+  const text = `${category} ${title}`.toLowerCase()
+  if (text.includes('명상') || text.includes('감각')) return 'lavender'
+  if (text.includes('아침') || text.includes('수면') || text.includes('햇빛') || text.includes('루틴')) return 'neon'
+  if (text.includes('일기') || text.includes('cbt') || text.includes('기록')) return 'peach'
+  return 'blue'
+}
+
+function challengeCategoryBadgeClass(category: string): 'emotion' | 'exercise' | 'lifestyle' | 'socialSleep' {
+  const text = category.trim()
+  if (text === '정서조절') return 'emotion'
+  if (text === '신체활동') return 'exercise'
+  if (text === '생활습관') return 'lifestyle'
+  return 'socialSleep'
+}
 function MultiMetricTrendChart({
   labels,
   series,
@@ -788,41 +854,6 @@ function MiniBarChart({ labels, values, color }: { labels: string[]; values: num
         </div>
       ))}
     </div>
-  )
-}
-
-function WeeklyCurveChart({ labels, values }: { labels: string[]; values: number[] }) {
-  if (!values.length) return <p className="small">데이터가 없습니다.</p>
-
-  const max = Math.max(...values, 1)
-  const points = values.map((v, idx) => {
-    const x = (idx / Math.max(1, values.length - 1)) * 100
-    const y = 85 - ((v / max) * 60)
-    return { x, y }
-  })
-
-  let d = ''
-  points.forEach((p, i) => {
-    if (i === 0) {
-      d += `M ${p.x} ${p.y}`
-      return
-    }
-    const prev = points[i - 1]
-    const midX = (prev.x + p.x) / 2
-    d += ` C ${midX} ${prev.y}, ${midX} ${p.y}, ${p.x} ${p.y}`
-  })
-
-  return (
-    <svg viewBox="0 0 120 90" width="100%" height={180} role="img" aria-label="weekly activity curve">
-      <line x1="0" y1="86" x2="120" y2="86" stroke="#e6eaef" strokeWidth="1" />
-      <path d={d} fill="none" stroke="#d8b4fe" strokeWidth="2.8" strokeLinecap="round" />
-      {points.map((p, i) => (
-        <g key={`weekly-point-${labels[i] ?? i}`}>
-          <circle cx={p.x} cy={p.y} r="1.3" fill="#d8b4fe" />
-          <text x={p.x} y="89" textAnchor="middle" fontSize="3.2" fill="#94a3b8">{labels[i]?.slice(5) ?? ''}</text>
-        </g>
-      ))}
-    </svg>
   )
 }
 
@@ -1085,13 +1116,13 @@ function App() {
   const [crisisActionChecked, setCrisisActionChecked] = useState<Record<string, boolean>>({})
   const [boardFocusPostId, setBoardFocusPostId] = useState<string | null>(null)
 
-  const [contentCatalog, setContentCatalog] = useState<ContentChallengeCatalogItem[]>([])
+  const [challengeLibrary, setChallengeLibrary] = useState<ChallengeTemplateItem[]>([])
+  const [activeChallenges, setActiveChallenges] = useState<ActiveChallengeItem[]>([])
   const [contentLogs, setContentLogs] = useState<ContentChallengeLogItem[]>([])
   const [recommendedPosts, setRecommendedPosts] = useState<RecommendedPost[]>([])
   const [bookmarkedPosts, setBookmarkedPosts] = useState<BookmarkedBoardPost[]>([])
-  const [selectedContentTitle, setSelectedContentTitle] = useState('')
-  const [contentDuration, setContentDuration] = useState('')
-  const [contentDetail, setContentDetail] = useState('')
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState('')
+  const [selectedChallengeKeys, setSelectedChallengeKeys] = useState<string[]>([])
 
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([])
   const [journalTitle, setJournalTitle] = useState('오늘의 일기')
@@ -1112,6 +1143,13 @@ function App() {
   const [topMenuOpen, setTopMenuOpen] = useState(false)
   const [menuPinnedByClick, setMenuPinnedByClick] = useState(false)
   const [isDesktopMenu, setIsDesktopMenu] = useState<boolean>(() => window.innerWidth >= 768)
+  const [timerModalOpen, setTimerModalOpen] = useState(false)
+  const [timerTitle, setTimerTitle] = useState('')
+  const [timerTotalSeconds, setTimerTotalSeconds] = useState(0)
+  const [timerRemainingSeconds, setTimerRemainingSeconds] = useState(0)
+  const [timerRunning, setTimerRunning] = useState(false)
+  const [timerAutoCompleteTarget, setTimerAutoCompleteTarget] = useState<{ templateKey: string; challengeId: string | null } | null>(null)
+  const timerIntervalRef = useRef<number | null>(null)
 
   const [dashboard, setDashboard] = useState<WeeklyDashboardResponse | null>(null)
   const [checkinHistory, setCheckinHistory] = useState<CheckinHistoryItem[]>([])
@@ -1161,7 +1199,8 @@ function App() {
     void loadCheckinHistory()
     void loadPhqHistory()
     void loadAdminAccess()
-    void loadContentCatalog()
+    void loadChallengeLibrary()
+    void loadActiveChallenges()
     void loadContentLogs()
     void loadRecommendedPosts()
     void loadMyBookmarkedPosts()
@@ -1252,6 +1291,35 @@ function App() {
       closeMenuTimerRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    if (!timerModalOpen || !timerRunning) return
+    if (timerIntervalRef.current != null) {
+      window.clearInterval(timerIntervalRef.current)
+    }
+    timerIntervalRef.current = window.setInterval(() => {
+      setTimerRemainingSeconds((prev) => {
+        if (prev <= 1) {
+          if (timerIntervalRef.current != null) {
+            window.clearInterval(timerIntervalRef.current)
+            timerIntervalRef.current = null
+          }
+          setTimerRunning(false)
+          if (timerAutoCompleteTarget) {
+            void handleCompleteHomeChallenge(timerAutoCompleteTarget.templateKey, timerAutoCompleteTarget.challengeId)
+          }
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => {
+      if (timerIntervalRef.current != null) {
+        window.clearInterval(timerIntervalRef.current)
+        timerIntervalRef.current = null
+      }
+    }
+  }, [timerModalOpen, timerRunning])
 
   useEffect(() => {
     if (!chatResult) return
@@ -1428,16 +1496,47 @@ function App() {
   }
 
 
-  async function loadContentCatalog() {
+  async function loadChallengeLibrary() {
     if (!token) return
     try {
-      const response = await fetch(`${API_BASE}/content-challenges/catalog`, { headers: authHeaders })
+      const response = await fetch(`${API_BASE}/challenges/library`, { headers: authHeaders })
       if (!response.ok) throw new Error(await extractApiError(response))
-      const data = (await response.json()) as { items: ContentChallengeCatalogItem[] }
-      setContentCatalog(data.items ?? [])
+      const data = (await response.json()) as { items: ChallengeTemplateItem[] }
+      const items = data.items ?? []
+      setChallengeLibrary(items)
+      if (!selectedTemplateKey && items.length > 0) {
+        setSelectedTemplateKey(items[0].template_key)
+      }
     } catch (error) {
       setMessage(`챌린지 컨텐츠 조회 오류: ${(error as Error).message}`)
     }
+  }
+
+  async function loadActiveChallenges(): Promise<ActiveChallengeItem[]> {
+    if (!token) return []
+    try {
+      const response = await fetch(`${API_BASE}/challenges/active`, { headers: authHeaders })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      const data = (await response.json()) as { items: ActiveChallengeItem[] }
+      const items = data.items ?? []
+      setActiveChallenges(items)
+      return items
+    } catch (error) {
+      setMessage(`진행 중 챌린지 조회 오류: ${(error as Error).message}`)
+      return []
+    }
+  }
+
+  function toggleChallengeSelection(templateKey: string) {
+    setSelectedTemplateKey(templateKey)
+    setSelectedChallengeKeys((prev) => {
+      if (prev.includes(templateKey)) return prev.filter((x) => x !== templateKey)
+      if (prev.length >= 4) {
+        setMessage('챌린지는 최대 4개까지 선택할 수 있어요.')
+        return prev
+      }
+      return [...prev, templateKey]
+    })
   }
 
   async function loadContentLogs() {
@@ -2180,43 +2279,149 @@ function App() {
     }
   }
 
-  async function handleSaveContentChallenge() {
-    if (!token) return
-    if (!selectedContentTitle.trim()) {
+  async function handleStartChallengeTemplate(templateKey?: string): Promise<ActiveChallengeItem | null> {
+    if (!token) return null
+    const key = (templateKey ?? selectedTemplateKey).trim()
+    if (!key) {
       setMessage('먼저 수행할 챌린지 컨텐츠를 선택해주세요.')
-      return
-    }
-
-    const duration = contentDuration.trim() ? Number(contentDuration) : null
-    if (duration != null && (Number.isNaN(duration) || duration < 0)) {
-      setMessage('수행 시간은 0 이상 숫자로 입력해주세요.')
-      return
+      return null
     }
 
     setLoading(true)
     try {
-      const response = await fetch(`${API_BASE}/content-challenges/logs`, {
+      const response = await fetch(`${API_BASE}/challenges/start`, {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({
-          challenge_name: selectedContentTitle,
-          category: '생활습관',
-          performed_date: todayDateString(),
-          duration_minutes: duration,
-          detail: contentDetail.trim() || null,
+          template_key: key,
         }),
       })
       if (!response.ok) throw new Error(await extractApiError(response))
-
+      const data = (await response.json()) as { challenge?: ActiveChallengeItem }
+      await loadActiveChallenges()
       await loadContentLogs()
-      setContentDuration('')
-      setContentDetail('')
-      setMessage('챌린지 수행 기록을 저장했습니다.')
+      setMessage('챌린지를 시작했습니다.')
+      return data.challenge ?? null
     } catch (error) {
-      setMessage(`챌린지 기록 저장 오류: ${(error as Error).message}`)
+      setMessage(`챌린지 시작 오류: ${(error as Error).message}`)
+      return null
     } finally {
       setLoading(false)
     }
+  }
+
+  function openTimerForChallenge(
+    templateKey: string,
+    title: string,
+    options?: { autoCompleteOnFinish?: boolean; challengeId?: string | null },
+  ) {
+    const normalized = templateKey.trim().toUpperCase()
+    let sec = 0
+    if (normalized === 'MEDITATION_5MIN') sec = 5 * 60
+    if (normalized === 'BREATHING_3MIN') sec = 3 * 60
+    if (!sec) return
+
+    setTimerTitle(title)
+    setTimerTotalSeconds(sec)
+    setTimerRemainingSeconds(sec)
+    setTimerModalOpen(true)
+    setTimerRunning(false)
+    if (options?.autoCompleteOnFinish) {
+      setTimerAutoCompleteTarget({
+        templateKey,
+        challengeId: options.challengeId ?? null,
+      })
+    } else {
+      setTimerAutoCompleteTarget(null)
+    }
+  }
+
+  function isTimerChallenge(templateKey: string): boolean {
+    const normalized = templateKey.trim().toUpperCase()
+    return normalized === 'MEDITATION_5MIN' || normalized === 'BREATHING_3MIN'
+  }
+
+  function closeTimerModal() {
+    setTimerModalOpen(false)
+    setTimerRunning(false)
+    setTimerAutoCompleteTarget(null)
+    if (timerIntervalRef.current != null) {
+      window.clearInterval(timerIntervalRef.current)
+      timerIntervalRef.current = null
+    }
+  }
+
+  function formatTimer(seconds: number): string {
+    const m = Math.floor(seconds / 60)
+    const s = seconds % 60
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  }
+
+  function getTimerPrimaryButtonLabel(): string {
+    if (timerRemainingSeconds === 0) return '완료'
+    if (timerRunning) return '일시정지'
+    if (timerRemainingSeconds === timerTotalSeconds) return '시작'
+    return '재개'
+  }
+
+  function handleTimerPrimaryAction() {
+    if (timerRemainingSeconds === 0) {
+      closeTimerModal()
+      return
+    }
+    setTimerRunning((v) => !v)
+  }
+
+  async function handleCompleteChallenge(
+    challengeId: string,
+    completedFlag: boolean,
+    completionQuality: number | null = null,
+    perceivedHelpfulness: number | null = null,
+  ) {
+    if (!token) return
+    if (!isValidUuid(challengeId)) {
+      setMessage('챌린지 식별자가 올바르지 않아 완료를 저장할 수 없습니다. 다시 시도해주세요.')
+      return
+    }
+    setLoading(true)
+    try {
+      const payload: Record<string, string | boolean | number> = {
+        challenge_id: challengeId,
+        date: todayDateString(),
+        completed_flag: completedFlag,
+      }
+      if (completionQuality != null) payload.completion_quality_0_5 = completionQuality
+      if (perceivedHelpfulness != null) payload.perceived_helpfulness_0_10 = perceivedHelpfulness
+      const response = await fetch(`${API_BASE}/challenges/complete`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify(payload),
+      })
+      if (!response.ok) throw new Error(await extractApiError(response))
+
+      await loadActiveChallenges()
+      await loadContentLogs()
+      setMessage(completedFlag ? '챌린지 완료 기록을 저장했습니다.' : '챌린지 완료 상태를 해제했습니다.')
+    } catch (error) {
+      setMessage(`챌린지 완료 기록 오류: ${(error as Error).message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleCompleteHomeChallenge(templateKey: string, challengeId: string | null) {
+    let targetId = challengeId
+    if (targetId && !isValidUuid(targetId)) targetId = null
+    if (!targetId) {
+      const started = await handleStartChallengeTemplate(templateKey)
+      targetId = started?.id ?? null
+    }
+    if (!targetId) {
+      const refreshed = await loadActiveChallenges()
+      targetId = refreshed.find((x) => x.template_key === templateKey)?.id ?? null
+    }
+    if (!targetId) return
+    await handleCompleteChallenge(targetId, true)
   }
 
   async function handleSaveJournalEntry() {
@@ -2473,40 +2678,6 @@ function App() {
     }
   }, [chatHistory, chatMessage, chatResult])
 
-  const weeklyProgress = useMemo(() => {
-    const byDate = new Map<string, { checked: boolean; contentCount: number }>()
-    const today = new Date()
-    for (let i = 6; i >= 0; i -= 1) {
-      const d = new Date(today)
-      d.setDate(today.getDate() - i)
-      byDate.set(formatDateYYYYMMDD(d), { checked: false, contentCount: 0 })
-    }
-
-    for (const row of checkinHistory) {
-      const key = row.timestamp.slice(0, 10)
-      if (!byDate.has(key)) continue
-      const prev = byDate.get(key)
-      if (!prev) continue
-      byDate.set(key, { ...prev, checked: true })
-    }
-
-    for (const row of contentLogs) {
-      if (!byDate.has(row.performed_date)) continue
-      const prev = byDate.get(row.performed_date)
-      if (!prev) continue
-      byDate.set(row.performed_date, { ...prev, contentCount: prev.contentCount + 1 })
-    }
-
-    const items = [...byDate.entries()].map(([date, v]) => ({ date, ...v }))
-    const attendance = items.filter((x) => x.checked).length
-    const challengeDays = items.filter((x) => x.contentCount > 0).length
-    return {
-      items,
-      attendanceRate: Math.round((attendance / Math.max(1, items.length)) * 100),
-      challengeRate: Math.round((challengeDays / Math.max(1, items.length)) * 100),
-    }
-  }, [checkinHistory, contentLogs])
-
   const monthlyAttendance = useMemo(() => {
     const now = new Date()
     const year = now.getFullYear()
@@ -2541,6 +2712,100 @@ function App() {
   }, [checkinHistory])
 
   const todayJournalEntry = useMemo(() => journalEntries.find((x) => x.entry_date === todayDateString()) ?? null, [journalEntries])
+  const challengeWeekDays = useMemo(() => {
+    const start = startOfWeekMonday(new Date())
+    const labels = ['월', '화', '수', '목', '금', '토', '일']
+    return Array.from({ length: 7 }).map((_, idx) => {
+      const d = new Date(start)
+      d.setDate(start.getDate() + idx)
+      return { label: labels[idx], key: formatDateYYYYMMDD(d) }
+    })
+  }, [])
+  useEffect(() => {
+    if (selectedChallengeKeys.length > 0) return
+    const fromActive = activeChallenges
+      .map((x) => x.template_key)
+      .filter((x, idx, arr) => arr.indexOf(x) === idx)
+      .slice(0, 4)
+    if (fromActive.length > 0) setSelectedChallengeKeys(fromActive)
+  }, [activeChallenges, selectedChallengeKeys.length])
+
+  const challengeWeeklyRows = useMemo(() => {
+    const selectedTemplates = challengeLibrary
+      .filter((x) => selectedChallengeKeys.includes(x.template_key))
+      .slice(0, 4)
+    const activeByTemplateKey = new Map(activeChallenges.map((x) => [x.template_key, x]))
+    return selectedTemplates.map((template) => {
+      const name = template.title
+      const category = template.category_label ?? '생활습관'
+      const active = activeByTemplateKey.get(template.template_key)
+      const done = new Set(
+        (active?.completions ?? [])
+          .filter((x) => x.completed_flag)
+          .map((x) => x.completed_date),
+      )
+      return {
+        name,
+        category,
+        icon: challengeEmoji(name),
+        tone: challengeCategoryTone(category, name),
+        cells: challengeWeekDays.map((w) => done.has(w.key)),
+      }
+    })
+  }, [challengeLibrary, activeChallenges, challengeWeekDays, selectedChallengeKeys])
+  const challengeDailyMissions = useMemo(() => {
+    const today = todayDateString()
+    return activeChallenges.slice(0, 5).map((item) => {
+      const doneToday = item.completions.some((x) => x.completed_date === today && x.completed_flag)
+      const fromCatalog = challengeLibrary.find((x) => x.template_key === item.template_key)
+      const tone = challengeCategoryTone(item.category_label, item.title)
+      return {
+        id: item.id,
+        templateKey: item.template_key,
+        name: item.title,
+        category: item.category_label,
+        description: fromCatalog?.short_desc ?? '오늘의 작은 실천으로 마음 근육을 키워보세요.',
+        completed: doneToday,
+        tone,
+      }
+    })
+  }, [activeChallenges, challengeLibrary])
+  const activeChallengeByTemplateKey = useMemo(() => (
+    new Map(activeChallenges.map((item) => [item.template_key, item]))
+  ), [activeChallenges])
+  const homeSelectedChallengeCards = useMemo(() => {
+    const today = todayDateString()
+    return selectedChallengeKeys
+      .slice(0, 4)
+      .map((templateKey) => {
+        const template = challengeLibrary.find((x) => x.template_key === templateKey)
+        if (!template) return null
+        const active = activeChallengeByTemplateKey.get(templateKey) ?? null
+        const completed = active ? active.completions.some((x) => x.completed_date === today && x.completed_flag) : false
+        const tone = challengeCategoryTone(template.category_label, template.title)
+        return {
+          templateKey,
+          challengeId: active?.id ?? null,
+          title: template.title,
+          shortDesc: template.short_desc,
+          tone,
+          ctaLabel: template.cta_label || '시작하기',
+          completed,
+          timerEnabled: isTimerChallenge(template.template_key),
+        }
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+  }, [selectedChallengeKeys, challengeLibrary, activeChallengeByTemplateKey])
+  const selectedChallengeCount = useMemo(() => selectedChallengeKeys.length, [selectedChallengeKeys])
+  const challengeTodayLabel = useMemo(
+    () => new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' }),
+    [],
+  )
+  const latestJournalTitles = useMemo(() => (
+    [...journalEntries]
+      .sort((a, b) => (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || ''))
+      .slice(0, 3)
+  ), [journalEntries])
   const moodFallbackRisk = todayCheckinRecord?.mood_score != null
     ? Math.max(0, Math.min(100, (10 - Number(todayCheckinRecord.mood_score)) * 10))
     : null
@@ -2809,11 +3074,43 @@ function App() {
 
             <div className="panel checkinCard">
               <div className="monthCalendarHead">
-                <h3>주간 챌린지 활동률 그래프</h3>
-                <span>WEEKLY CHALLENGE</span>
+                <h3>오늘 수행할 챌린지</h3>
+                <span>TODAY CHALLENGE</span>
               </div>
-              <WeeklyCurveChart labels={weeklyProgress.items.map((x) => x.date)} values={weeklyProgress.items.map((x) => x.contentCount)} />
-              <p className="small">최근 7일 활동 수행일: {weeklyProgress.items.filter((x) => x.contentCount > 0).length}일 ({weeklyProgress.challengeRate}%)</p>
+              {homeSelectedChallengeCards.length === 0 ? (
+                <p className="small">챌린지 탭에서 선택한 항목이 여기에 표시됩니다.</p>
+              ) : (
+                <div className="checkinChallengeCardGrid">
+                  {homeSelectedChallengeCards.map((item) => (
+                    <article key={`checkin-selected-${item.templateKey}`} className={`challengeLibraryCard challengeLibraryCardCompact tone-${item.tone}`}>
+                      <div className="emoji">{challengeEmoji(item.title)}</div>
+                      <h4>{item.title}</h4>
+                      <p>{item.shortDesc}</p>
+                      <div className="actions">
+                        {item.completed ? (
+                          <span className="doneBadge doneBadgeCompact"><span aria-hidden>✅</span>완료</span>
+                        ) : item.timerEnabled ? (
+                          <button
+                            type="button"
+                            className="ghost fullWidth"
+                            onClick={() => openTimerForChallenge(item.templateKey, item.title, { autoCompleteOnFinish: true, challengeId: item.challengeId })}
+                          >
+                            타이머
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="ghost fullWidth"
+                            onClick={() => { void handleCompleteHomeChallenge(item.templateKey, item.challengeId) }}
+                          >
+                            완료 체크
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -2865,19 +3162,28 @@ function App() {
 
           <div className="homeMiddleRow">
             <article className="panel homeShortcutCard diaryLibraryCard">
-              <h3>일기 보관함</h3>
-              <p className="small">기록해둔 일기를 모아 확인할 수 있습니다.</p>
-              <div className="actions">
+              <div className="diaryLibraryHead">
+                <h3>일기 보관함</h3>
                 <button
-                  className="ghost"
+                  className="diaryArrowBtn"
+                  aria-label="일기 쓰기로 이동"
                   onClick={() => {
-                    setJournalLibraryOpen(true)
+                    setJournalLibraryOpen(false)
                     setPage('journal')
                   }}
                 >
-                  열기
+                  →
                 </button>
               </div>
+              {latestJournalTitles.length === 0 ? (
+                <p className="small">일기작성을 시작해보세요!</p>
+              ) : (
+                <ul className="diaryRecentList">
+                  {latestJournalTitles.map((entry) => (
+                    <li key={`home-journal-${entry.id}`}>{entry.title}</li>
+                  ))}
+                </ul>
+              )}
             </article>
 
             <article className="panel homeShortcutCard recommendPostCard">
@@ -2906,15 +3212,15 @@ function App() {
           </div>
 
           <div className="challengeTileGrid">
-            {contentCatalog.slice(0, 3).map((item) => (
-              <article key={item.id} className="panel challengeTile">
+            {challengeLibrary.slice(0, 3).map((item) => (
+              <article key={item.template_key} className="panel challengeTile">
                 <h3>챌린지</h3>
                 <p><strong>{item.title}</strong></p>
-                <p className="small">{item.description}</p>
+                <p className="small">{item.short_desc}</p>
                 <button
                   className="ghost"
                   onClick={() => {
-                    setSelectedContentTitle(item.title)
+                    setSelectedTemplateKey(item.template_key)
                     setPage('challenge')
                   }}
                 >
@@ -3184,39 +3490,169 @@ function App() {
       )}
 
       {page === 'challenge' && token && (
-        <section className="panel cbtLayout">
-          <article className="cbtMain">
-            <h2>챌린지 컨텐츠 수행</h2>
-            <label>
-              선택된 챌린지
-              <input value={selectedContentTitle} onChange={(e) => setSelectedContentTitle(e.target.value)} placeholder="챌린지 이름" />
-            </label>
-            <div className="miniGrid">
-              <label>수행 시간(분)<input inputMode="numeric" value={contentDuration} onChange={(e) => setContentDuration(e.target.value)} /></label>
-              <label>수행 일자<input value={todayDateString()} readOnly /></label>
+        <section className="challengeHubPage">
+          <header className="challengeHubHeader">
+            <div>
+              <h2>모치AI 챌린지</h2>
+              <p>오늘도 마음 근육을 키워볼까요? 당신의 성장을 응원해요.</p>
             </div>
-            <label>
-              수행 메모
-              <textarea rows={5} value={contentDetail} onChange={(e) => setContentDetail(e.target.value)} placeholder="수행 중 느낀 점이나 어려움, 변화 등을 기록해 주세요." />
-            </label>
-            <div className="actions">
-              <button onClick={() => void handleSaveContentChallenge()} disabled={loading}>수행 기록 저장</button>
-              <button className="ghost" onClick={() => setPage('journal')}>일기에 반영하기</button>
+            <aside className="challengeCheerCard">
+              <div className="avatar">🐰</div>
+              <div>
+                <strong>모치의 응원</strong>
+                <p>작은 습관이 큰 변화를 만들어요!</p>
+              </div>
+            </aside>
+          </header>
+
+          <article className="challengeSectionCard">
+            <div className="challengeSectionHead">
+              <h3>주간 챌린지 현황</h3>
+              <div className="legend">
+                <span><i className="waiting" /> 대기</span>
+                <span><i className="done" /> 완료</span>
+              </div>
+            </div>
+            <div className="challengeWeekTableWrap">
+              <table className="challengeWeekTable">
+                <thead>
+                  <tr>
+                    <th>미션</th>
+                    {challengeWeekDays.map((d) => <th key={`challenge-week-head-${d.key}`}>{d.label}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {challengeWeeklyRows.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="empty">챌린지 데이터가 아직 없습니다.</td>
+                    </tr>
+                  )}
+                  {challengeWeeklyRows.map((row) => (
+                    <tr key={`challenge-week-row-${row.name}`}>
+                      <td className="missionName"><span>{row.icon}</span>{row.name}</td>
+                      {row.cells.map((done, idx) => (
+                        <td key={`challenge-week-cell-${row.name}-${challengeWeekDays[idx].key}`}>
+                          <div className={`dot ${done ? `isDone tone-${row.tone}` : ''}`} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </article>
 
-          <aside className="cbtSide">
-            <div className="panel sideCard">
-              <h3>추천 컨텐츠</h3>
-              <ul className="probList">
-                {contentCatalog.map((item) => (
-                  <li key={`challenge-catalog-${item.id}`}>
-                    <span>{item.title}</span>
-                    <button className="ghost" onClick={() => setSelectedContentTitle(item.title)}>선택</button>
-                  </li>
-                ))}
-              </ul>
+          <section className="challengeLibrarySection">
+            <div className="challengeSubHead">
+              <h3>챌린지 라이브러리</h3>
+              <span>12가지 챌린지 탐색하기</span>
             </div>
+            <div className="challengeLibraryRow">
+              {challengeLibrary.map((item) => {
+                const tone = challengeCategoryTone(item.category_label, item.title)
+                const selected = selectedChallengeKeys.includes(item.template_key)
+                const timerEnabled = isTimerChallenge(item.template_key)
+                return (
+                  <article
+                    key={`challenge-library-${item.template_key}`}
+                    className={`challengeLibraryCard tone-${tone} ${selected ? 'selected' : ''} ${timerEnabled ? 'hasTimer' : ''}`}
+                    onClick={() => toggleChallengeSelection(item.template_key)}
+                  >
+                    {selected && (
+                      <span className={`challengeSelectMark tone-${tone}`} aria-hidden>✓</span>
+                    )}
+                    <div className="emoji">{challengeEmoji(item.title)}</div>
+                    <h4>{item.title}</h4>
+                    <p>{item.short_desc}</p>
+                    <div className="tags">
+                      <span className={`categoryBadge ${challengeCategoryBadgeClass(item.category_label)}`}>{item.category_label}</span>
+                    </div>
+                    <div className="actions">
+                      {!timerEnabled ? (
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void handleStartChallengeTemplate(item.template_key)
+                          }}
+                        >
+                          시작하기
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="ghost timerBtn"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void handleStartChallengeTemplate(item.template_key)
+                            openTimerForChallenge(item.template_key, item.title)
+                          }}
+                        >
+                          타이머
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          </section>
+
+          <section>
+            <div className="challengeSubHead">
+              <h3>오늘의 데일리 미션</h3>
+              <span>{challengeTodayLabel}</span>
+            </div>
+            <div className="challengeDailyList">
+              {challengeDailyMissions.length === 0 && (
+                <article className="challengeDailyItem">
+                  <div className="main">
+                    <h4>오늘 미션이 아직 없습니다.</h4>
+                    <p>라이브러리에서 챌린지를 선택하고 기록을 남겨보세요.</p>
+                  </div>
+                </article>
+              )}
+              {challengeDailyMissions.map((item) => (
+                <article key={`challenge-daily-${item.id}`} className="challengeDailyItem">
+                  <div className="check">
+                    <input type="checkbox" checked={item.completed} readOnly />
+                  </div>
+                  <div className="main">
+                    <h4>{item.name}</h4>
+                    <p>{item.description}</p>
+                  </div>
+                  {item.completed ? (
+                    <span className="doneBadge">완료</span>
+                  ) : (
+                    <div className="actions">
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => void handleCompleteChallenge(item.id, true)}
+                      >
+                        완료 체크
+                      </button>
+                      {isTimerChallenge(item.templateKey) && (
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => openTimerForChallenge(item.templateKey, item.name)}
+                        >
+                          타이머
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
+          <aside className="challengeCoachFloating" aria-hidden>
+            <div className="bubble">
+              <p><strong>모치</strong>님, 벌써 미션을 {selectedChallengeCount}개 진행했어요!</p>
+            </div>
+            <div className="avatar">🐰</div>
           </aside>
         </section>
       )}
@@ -3601,21 +4037,27 @@ function App() {
             <span className="dockIcon" aria-hidden>⌂</span>
             <span>홈</span>
           </button>
-          <button className={page === 'diary' ? 'active' : ''} onClick={() => setPage('diary')}>
-            <span className="dockIcon" aria-hidden>◍</span>
+          <button className={page === 'challenge' ? 'active' : ''} onClick={() => setPage('challenge')}>
+            <span className="dockIcon" aria-hidden>◈</span>
+            <span>챌린지</span>
+          </button>
+          <button className={`dockChatBtn ${page === 'diary' ? 'active' : ''}`} onClick={() => setPage('diary')}>
+            <span className="dockIcon" aria-hidden>💬</span>
             <span>대화</span>
           </button>
           <button className={page === 'journal' ? 'active' : ''} onClick={() => setPage('journal')}>
             <span className="dockIcon" aria-hidden>✎</span>
             <span>일기</span>
           </button>
-          <button className={page === 'dashboard' ? 'active' : ''} onClick={() => setPage('dashboard')}>
+          <button
+            className={page === 'mypage' && myTab === 'report' ? 'active' : ''}
+            onClick={() => {
+              setMyTab('report')
+              setPage('mypage')
+            }}
+          >
             <span className="dockIcon" aria-hidden>▤</span>
-            <span>지표</span>
-          </button>
-          <button className={page === 'mypage' ? 'active' : ''} onClick={() => setPage('mypage')}>
-            <span className="dockIcon" aria-hidden>⚙</span>
-            <span>설정</span>
+            <span>리포트</span>
           </button>
         </nav>
       )}
@@ -3633,6 +4075,38 @@ function App() {
                 }}
               >
                 확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {timerModalOpen && (
+        <div className="timerOverlay" role="dialog" aria-modal="true">
+          <div className="timerCard">
+            <button type="button" className="timerCloseBtn" onClick={closeTimerModal} aria-label="타이머 닫기">✕</button>
+            <h3>{timerTitle || '챌린지 타이머'}</h3>
+            <p className="small">집중해서 천천히 진행해보세요.</p>
+            <div className="timerDisplay">{formatTimer(timerRemainingSeconds)}</div>
+            <div className="timerProgressTrack">
+              <div
+                className="timerProgressFill"
+                style={{ width: `${timerTotalSeconds > 0 ? (timerRemainingSeconds / timerTotalSeconds) * 100 : 0}%` }}
+              />
+            </div>
+            <div className="actions">
+              <button type="button" onClick={handleTimerPrimaryAction}>
+                {getTimerPrimaryButtonLabel()}
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  setTimerRemainingSeconds(timerTotalSeconds)
+                  setTimerRunning(false)
+                }}
+              >
+                초기화
               </button>
             </div>
           </div>

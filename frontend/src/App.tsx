@@ -841,42 +841,6 @@ const CHALLENGE_SET_PRESET_CONFIG: Array<ChallengeSetPreset & { focus: Challenge
     bucket: 7,
     templateKeys: ['JOURNAL_STREAK_7D', 'BREATHING_3MIN_7D', 'SLEEP_HYGIENE_ROUTINE', 'EXERCISE_WALK_20'],
   },
-  {
-    id: 'set-3d-depression',
-    label: '우울 케어 3일 세트',
-    focus: 'depression',
-    focusLabel: '우울',
-    description: '짧은 기간에 행동활성/기록 기반으로 분위기 반전을 시도해요.',
-    bucket: 3,
-    templateKeys: ['WALK_10MIN_3D', 'SUNLIGHT_5MIN_3D', 'JOURNAL_STREAK', 'GRATITUDE_3_3D'],
-  },
-  {
-    id: 'set-3d-anxiety',
-    label: '불안 완화 3일 세트',
-    focus: 'anxiety',
-    focusLabel: '불안',
-    description: '호흡/명상/걱정 분리 기록을 3일 집중으로 수행해요.',
-    bucket: 3,
-    templateKeys: ['BREATHING_3MIN_3D', 'MEDITATION_5MIN_3D', 'WORRY_LOG_3D', 'WALK_10MIN_3D'],
-  },
-  {
-    id: 'set-3d-insomnia',
-    label: '불면 개선 3일 세트',
-    focus: 'insomnia',
-    focusLabel: '불면',
-    description: '수면 리셋/햇빛/완화 호흡으로 빠르게 리듬을 재정렬해요.',
-    bucket: 3,
-    templateKeys: ['SLEEP_RESET_3D', 'SUNLIGHT_5MIN_3D', 'BREATHING_3MIN_3D', 'MEDITATION_5MIN_3D'],
-  },
-  {
-    id: 'set-3d-mixed',
-    label: '복합 관리 3일 세트',
-    focus: 'mixed',
-    focusLabel: '복합',
-    description: '기록/호흡/수면/활동을 담은 단기 복합 루틴이에요.',
-    bucket: 3,
-    templateKeys: ['JOURNAL_STREAK', 'BREATHING_3MIN_3D', 'SLEEP_RESET_3D', 'WALK_10MIN_3D'],
-  },
 ]
 function MultiMetricTrendChart({
   labels,
@@ -3093,9 +3057,8 @@ function App() {
   }, [selectedChallengeKeys, todayCompletedChallengeKeys])
   const effectiveChallengeCount = useMemo(() => effectiveChallengeKeys.length, [effectiveChallengeKeys])
   const challengeSetSections = useMemo(() => {
-    const sections: Array<{ bucket: 7 | 3; title: string; items: ChallengeSetPreset[] }> = [
+    const sections: Array<{ bucket: 7; title: string; items: ChallengeSetPreset[] }> = [
       { bucket: 7, title: '7일 세트', items: [] },
-      { bucket: 3, title: '3일 세트', items: [] },
     ]
     const availableKeys = new Set(challengeLibrary.map((item) => item.template_key))
     for (const preset of CHALLENGE_SET_PRESET_CONFIG) {
@@ -3873,7 +3836,7 @@ function App() {
             <div className="challengeLibraryGuide">
               <strong>선택/해제 규칙 안내</strong>
               <ul>
-                <li>7일/3일은 우울·불안·불면·복합 세트 중 하나를 골라 4개 챌린지를 한 번에 추가할 수 있어요.</li>
+                <li>7일 패키지는 우울·불안·불면·복합 중 하나를 골라 4개 챌린지를 한 번에 추가할 수 있어요.</li>
                 <li>직접 고르기에서는 하루형 챌린지를 최대 4개까지 자유롭게 선택할 수 있어요.</li>
                 <li>다른 세트로 변경 시 현재 선택 목록이 교체되며, 기존 수행 기록은 보존됩니다.</li>
                 <li>오늘 완료한 챌린지는 라이브러리에서 완료 상태로 고정되고 내일 다시 선택할 수 있어요.</li>

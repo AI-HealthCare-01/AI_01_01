@@ -1044,6 +1044,8 @@ function normalizeNoticeMessage(raw: string): string | null {
     '대화 분석 완료',
     '인지행동치료 대화를 시작했습니다.',
     '대화를 마치고 일기 작성 단계로 이동합니다.',
+    '로그인 성공',
+    '로그인이 완료되었습니다.',
   ])
   if (hidden.has(msg)) return null
 
@@ -2998,37 +3000,6 @@ function App() {
       }
     }).filter((x): x is NonNullable<typeof x> => x !== null)
   }, [selectedChallengeKeys, todayCompletedChallengeKeys, activeChallenges, challengeLibrary, completedChallengeKeysToday])
-  const activeChallengeByTemplateKey = useMemo(() => (
-    new Map(activeChallenges.map((item) => [item.template_key, item]))
-  ), [activeChallenges])
-  const homeSelectedChallengeCards = useMemo(() => {
-    const today = todayDateString()
-    const keyOrder = [...selectedChallengeKeys]
-    for (const key of todayCompletedChallengeKeys) {
-      if (!keyOrder.includes(key)) keyOrder.push(key)
-    }
-    return keyOrder
-      .slice(0, 4)
-      .map((templateKey) => {
-        const template = challengeLibrary.find((x) => x.template_key === templateKey)
-        if (!template) return null
-        const active = activeChallengeByTemplateKey.get(templateKey) ?? null
-        const completed = completedChallengeKeysToday.has(templateKey) || (active ? active.completions.some((x) => x.completed_date === today && x.completed_flag) : false)
-        const tone = challengeCategoryTone(template.category_label, template.title)
-        return {
-          templateKey,
-          challengeId: active?.id ?? null,
-          title: template.title,
-          shortDesc: template.short_desc,
-          tone,
-          ctaLabel: template.cta_label || '시작하기',
-          completed,
-          timerEnabled: isTimerChallenge(template.template_key),
-          textInputEnabled: isTextInputChallenge(template.template_key),
-        }
-      })
-      .filter((x): x is NonNullable<typeof x> => x !== null)
-  }, [selectedChallengeKeys, todayCompletedChallengeKeys, challengeLibrary, activeChallengeByTemplateKey, completedChallengeKeysToday])
   const challengeTodayLabel = useMemo(
     () => new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' }),
     [],
@@ -3309,15 +3280,15 @@ function App() {
                 <h3>오늘 수행할 챌린지</h3>
                 <span>TODAY CHALLENGE</span>
               </div>
-              {homeSelectedChallengeCards.length === 0 ? (
+              {challengeDailyMissions.length === 0 ? (
                 <p className="small">챌린지 탭에서 선택한 항목이 여기에 표시됩니다.</p>
               ) : (
                 <div className="checkinChallengeCardGrid">
-                  {homeSelectedChallengeCards.map((item) => (
+                  {challengeDailyMissions.map((item) => (
                     <article key={`checkin-selected-${item.templateKey}`} className={`challengeLibraryCard challengeLibraryCardCompact tone-${item.tone}`}>
-                      <div className="emoji">{challengeEmoji(item.title)}</div>
-                      <h4>{item.title}</h4>
-                      <p>{item.shortDesc}</p>
+                      <div className="emoji">{challengeEmoji(item.name)}</div>
+                      <h4>{item.name}</h4>
+                      <p>{item.description}</p>
                       <div className="actions">
                         {item.completed ? (
                           <span className="doneBadge doneBadgeCompact"><span aria-hidden>✅</span>완료</span>
@@ -3325,7 +3296,7 @@ function App() {
                           <button
                             type="button"
                             className="ghost fullWidth"
-                            onClick={() => { void handleStartChallengeExecution({ templateKey: item.templateKey, name: item.title, challengeId: item.challengeId }) }}
+                            onClick={() => { void handleStartChallengeExecution({ templateKey: item.templateKey, name: item.name, challengeId: item.challengeId }) }}
                           >
                             {item.textInputEnabled ? '시작하기' : item.timerEnabled ? '시작하기' : '수행 완료'}
                           </button>

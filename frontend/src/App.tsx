@@ -197,6 +197,8 @@ type ChallengeTemplateItem = {
   rules_text: string
 }
 
+type ChallengeDurationBucket = 1 | 3 | 7
+
 type ActiveChallengeCompletionItem = {
   id: string
   challenge_id: string
@@ -221,6 +223,13 @@ type ActiveChallengeItem = {
   created_at: string
   updated_at: string
   completions: ActiveChallengeCompletionItem[]
+}
+
+type ChallengeWeeklyProgressItem = {
+  date: string
+  completed_count: number
+  max_count: number
+  completion_rate_percent: number
 }
 
 type ContentChallengeLogItem = {
@@ -757,7 +766,7 @@ function todayDateString(): string {
 
 function challengeEmoji(title: string): string {
   if (title.includes('명상') || title.includes('감각')) return '🧘'
-  if (title.includes('아침') || title.includes('수면') || title.includes('햇빛')) return '☀️'
+  if (title.includes('아침') || title.includes('모닝') || title.includes('기상') || title.includes('수면') || title.includes('햇빛') || title.includes('루틴')) return '☀️'
   if (title.includes('일기') || title.includes('CBT') || title.includes('기록')) return '✍️'
   if (title.includes('감사') || title.includes('관계') || title.includes('IPT')) return '🙏'
   if (title.includes('산책')) return '🚶'
@@ -778,6 +787,12 @@ function challengeCategoryBadgeClass(category: string): 'emotion' | 'exercise' |
   if (text === '신체활동') return 'exercise'
   if (text === '생활습관') return 'lifestyle'
   return 'socialSleep'
+}
+
+function challengeDurationBucket(days: number): ChallengeDurationBucket {
+  if (days >= 7) return 7
+  if (days >= 3) return 3
+  return 1
 }
 function MultiMetricTrendChart({
   labels,
@@ -1118,6 +1133,8 @@ function App() {
 
   const [challengeLibrary, setChallengeLibrary] = useState<ChallengeTemplateItem[]>([])
   const [activeChallenges, setActiveChallenges] = useState<ActiveChallengeItem[]>([])
+  const [challengeWeeklyProgress, setChallengeWeeklyProgress] = useState<ChallengeWeeklyProgressItem[]>([])
+  const [todayCompletedChallengeKeys, setTodayCompletedChallengeKeys] = useState<string[]>([])
   const [contentLogs, setContentLogs] = useState<ContentChallengeLogItem[]>([])
   const [recommendedPosts, setRecommendedPosts] = useState<RecommendedPost[]>([])
   const [bookmarkedPosts, setBookmarkedPosts] = useState<BookmarkedBoardPost[]>([])
@@ -1150,6 +1167,12 @@ function App() {
   const [timerRunning, setTimerRunning] = useState(false)
   const [timerAutoCompleteTarget, setTimerAutoCompleteTarget] = useState<{ templateKey: string; challengeId: string | null } | null>(null)
   const timerIntervalRef = useRef<number | null>(null)
+  const [textChallengeModalOpen, setTextChallengeModalOpen] = useState(false)
+  const [textChallengeTitle, setTextChallengeTitle] = useState('')
+  const [textChallengeTemplateKey, setTextChallengeTemplateKey] = useState('')
+  const [textChallengeId, setTextChallengeId] = useState<string | null>(null)
+  const [textChallengeValue, setTextChallengeValue] = useState('')
+  const challengeSelectionHydratedRef = useRef(false)
 
   const [dashboard, setDashboard] = useState<WeeklyDashboardResponse | null>(null)
   const [checkinHistory, setCheckinHistory] = useState<CheckinHistoryItem[]>([])
@@ -1189,10 +1212,20 @@ function App() {
       setAutoCbtStarted(false)
       setRecommendedPosts([])
       setBookmarkedPosts([])
+      setSelectedChallengeKeys([])
+      setTodayCompletedChallengeKeys([])
+      challengeSelectionHydratedRef.current = false
       setChatSessionId(createChatSessionId())
       setPage('account')
       return
     }
+    setSelectedTemplateKey('')
+    setSelectedChallengeKeys([])
+    setActiveChallenges([])
+    setChallengeWeeklyProgress([])
+    setTodayCompletedChallengeKeys([])
+    setContentLogs([])
+    challengeSelectionHydratedRef.current = false
     void loadProfile()
     void loadMyProfile()
     void loadMyDashboard()
@@ -1201,6 +1234,8 @@ function App() {
     void loadAdminAccess()
     void loadChallengeLibrary()
     void loadActiveChallenges()
+    void loadChallengeWeeklyProgress()
+    void loadTodayCompletedChallenges()
     void loadContentLogs()
     void loadRecommendedPosts()
     void loadMyBookmarkedPosts()
@@ -1306,7 +1341,11 @@ function App() {
           }
           setTimerRunning(false)
           if (timerAutoCompleteTarget) {
-            void handleCompleteHomeChallenge(timerAutoCompleteTarget.templateKey, timerAutoCompleteTarget.challengeId)
+            void (async () => {
+              await handleCompleteHomeChallenge(timerAutoCompleteTarget.templateKey, timerAutoCompleteTarget.challengeId)
+              await createContentChallengeLog(timerAutoCompleteTarget.templateKey, { durationMinutes: Math.round(timerTotalSeconds / 60) })
+              await loadContentLogs()
+            })()
           }
           return 0
         }
@@ -1319,7 +1358,7 @@ function App() {
         timerIntervalRef.current = null
       }
     }
-  }, [timerModalOpen, timerRunning])
+  }, [timerModalOpen, timerRunning, timerAutoCompleteTarget, timerTotalSeconds])
 
   useEffect(() => {
     if (!chatResult) return
@@ -1527,16 +1566,86 @@ function App() {
     }
   }
 
-  function toggleChallengeSelection(templateKey: string) {
+  async function loadChallengeWeeklyProgress() {
+    if (!token) return
+    try {
+      const response = await fetch(`${API_BASE}/challenges/weekly-progress`, { headers: authHeaders })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      const data = (await response.json()) as { items?: ChallengeWeeklyProgressItem[] }
+      setChallengeWeeklyProgress(data.items ?? [])
+    } catch (error) {
+      setMessage(`주간 수행률 조회 오류: ${(error as Error).message}`)
+    }
+  }
+
+  async function loadTodayCompletedChallenges() {
+    if (!token) return
+    try {
+      const response = await fetch(`${API_BASE}/challenges/today-completions`, { headers: authHeaders })
+      if (!response.ok) throw new Error(await extractApiError(response))
+      const data = (await response.json()) as { keys?: string[] }
+      setTodayCompletedChallengeKeys(data.keys ?? [])
+    } catch (error) {
+      setMessage(`오늘 완료 챌린지 조회 오류: ${(error as Error).message}`)
+    }
+  }
+
+  const durationLimitByBucket: Record<ChallengeDurationBucket, number> = {
+    7: 2,
+    3: 3,
+    1: 4,
+  }
+
+  function getChallengeBucketByKey(templateKey: string): ChallengeDurationBucket {
+    const item = challengeLibrary.find((x) => x.template_key === templateKey)
+    return challengeDurationBucket(item?.default_duration_days ?? 1)
+  }
+
+  function isSelectionLockedByProgress(templateKey: string): boolean {
+    const bucket = getChallengeBucketByKey(templateKey)
+    if (bucket === 1) return false
+    const active = activeChallenges.find((x) => x.template_key === templateKey)
+    return Boolean(active && active.completions.length > 0)
+  }
+
+  function addChallengeSelection(templateKey: string) {
+    if (completedChallengeKeysToday.has(templateKey)) {
+      setMessage('오늘 완료한 챌린지는 내일 다시 선택할 수 있어요.')
+      return
+    }
     setSelectedTemplateKey(templateKey)
     setSelectedChallengeKeys((prev) => {
-      if (prev.includes(templateKey)) return prev.filter((x) => x !== templateKey)
+      if (prev.includes(templateKey)) {
+        setMessage('이미 추가된 챌린지예요.')
+        return prev
+      }
       if (prev.length >= 4) {
         setMessage('챌린지는 최대 4개까지 선택할 수 있어요.')
         return prev
       }
+      const bucket = getChallengeBucketByKey(templateKey)
+      const sameBucketCount = prev.filter((x) => getChallengeBucketByKey(x) === bucket).length
+      if (sameBucketCount >= durationLimitByBucket[bucket]) {
+        setMessage(`${bucket}일 챌린지는 최대 ${durationLimitByBucket[bucket]}개까지 선택할 수 있어요.`)
+        return prev
+      }
       return [...prev, templateKey]
     })
+  }
+
+  function removeSelectedChallenge(templateKey: string) {
+    if (isSelectionLockedByProgress(templateKey)) {
+      const bucket = getChallengeBucketByKey(templateKey)
+      setMessage(`${bucket}일 챌린지는 1회 이상 수행 후 해당 기간 동안 선택 해제할 수 없습니다.`)
+      return
+    }
+    const completedToday = completedChallengeKeysToday.has(templateKey)
+    if (completedToday) {
+      setMessage('오늘 수행완료한 챌린지는 선택 해제할 수 없습니다.')
+      return
+    }
+    setSelectedChallengeKeys((prev) => prev.filter((x) => x !== templateKey))
+    setSelectedTemplateKey((prev) => (prev === templateKey ? '' : prev))
   }
 
   async function loadContentLogs() {
@@ -2286,6 +2395,22 @@ function App() {
       setMessage('먼저 수행할 챌린지 컨텐츠를 선택해주세요.')
       return null
     }
+    if (completedChallengeKeysToday.has(key)) {
+      setMessage('오늘 완료한 챌린지는 내일 다시 시작할 수 있어요.')
+      return null
+    }
+    if (!selectedChallengeKeys.includes(key) && selectedChallengeKeys.length >= 4) {
+      setMessage('챌린지는 최대 4개까지 선택할 수 있어요.')
+      return null
+    }
+    if (!selectedChallengeKeys.includes(key)) {
+      const bucket = getChallengeBucketByKey(key)
+      const sameBucketCount = selectedChallengeKeys.filter((x) => getChallengeBucketByKey(x) === bucket).length
+      if (sameBucketCount >= durationLimitByBucket[bucket]) {
+        setMessage(`${bucket}일 챌린지는 최대 ${durationLimitByBucket[bucket]}개까지 선택할 수 있어요.`)
+        return null
+      }
+    }
 
     setLoading(true)
     try {
@@ -2298,7 +2423,14 @@ function App() {
       })
       if (!response.ok) throw new Error(await extractApiError(response))
       const data = (await response.json()) as { challenge?: ActiveChallengeItem }
+      setSelectedChallengeKeys((prev) => {
+        if (prev.includes(key)) return prev
+        if (prev.length >= 4) return prev
+        return [...prev, key]
+      })
       await loadActiveChallenges()
+      await loadChallengeWeeklyProgress()
+      await loadTodayCompletedChallenges()
       await loadContentLogs()
       setMessage('챌린지를 시작했습니다.')
       return data.challenge ?? null
@@ -2341,6 +2473,19 @@ function App() {
     return normalized === 'MEDITATION_5MIN' || normalized === 'BREATHING_3MIN'
   }
 
+  function isTextInputChallenge(templateKey: string): boolean {
+    const normalized = templateKey.trim().toUpperCase()
+    return normalized === 'JOURNAL_STREAK' || normalized === 'GRATITUDE_3' || normalized === 'GRATITUDE_LOTTERY'
+  }
+
+  function textChallengePlaceholder(templateKey: string): string {
+    const normalized = templateKey.trim().toUpperCase()
+    if (normalized === 'GRATITUDE_3') return '감사한 일 3가지를 줄바꿈으로 적어주세요.'
+    if (normalized === 'GRATITUDE_LOTTERY') return '랜덤 감사 주제에 대한 짧은 기록을 남겨주세요.'
+    if (normalized === 'JOURNAL_STREAK') return '오늘의 사실/생각/감정을 짧게 기록해 주세요.'
+    return '수행 내용을 자유롭게 입력해 주세요.'
+  }
+
   function closeTimerModal() {
     setTimerModalOpen(false)
     setTimerRunning(false)
@@ -2348,6 +2493,47 @@ function App() {
     if (timerIntervalRef.current != null) {
       window.clearInterval(timerIntervalRef.current)
       timerIntervalRef.current = null
+    }
+  }
+
+  function openTextChallengeModal(templateKey: string, title: string, challengeId: string | null) {
+    setTextChallengeTemplateKey(templateKey)
+    setTextChallengeTitle(title)
+    setTextChallengeId(challengeId)
+    setTextChallengeValue('')
+    setTextChallengeModalOpen(true)
+  }
+
+  function closeTextChallengeModal() {
+    setTextChallengeModalOpen(false)
+    setTextChallengeTemplateKey('')
+    setTextChallengeTitle('')
+    setTextChallengeId(null)
+    setTextChallengeValue('')
+  }
+
+  async function createContentChallengeLog(
+    templateKey: string,
+    options?: { detail?: string; durationMinutes?: number | null },
+  ) {
+    if (!token) return
+    const template = challengeLibrary.find((x) => x.template_key === templateKey)
+    if (!template) return
+    try {
+      const response = await fetch(`${API_BASE}/content-challenges/logs`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          challenge_name: template.title,
+          category: template.category_label,
+          performed_date: todayDateString(),
+          duration_minutes: options?.durationMinutes ?? null,
+          detail: options?.detail?.trim() || null,
+        }),
+      })
+      if (!response.ok) throw new Error(await extractApiError(response))
+    } catch (error) {
+      setMessage(`챌린지 기록 저장 오류: ${(error as Error).message}`)
     }
   }
 
@@ -2400,6 +2586,8 @@ function App() {
       if (!response.ok) throw new Error(await extractApiError(response))
 
       await loadActiveChallenges()
+      await loadChallengeWeeklyProgress()
+      await loadTodayCompletedChallenges()
       await loadContentLogs()
       setMessage(completedFlag ? '챌린지 완료 기록을 저장했습니다.' : '챌린지 완료 상태를 해제했습니다.')
     } catch (error) {
@@ -2422,6 +2610,46 @@ function App() {
     }
     if (!targetId) return
     await handleCompleteChallenge(targetId, true)
+  }
+
+  async function handleStartChallengeExecution(item: { templateKey: string; name: string; challengeId: string | null }) {
+    if (isTextInputChallenge(item.templateKey)) {
+      openTextChallengeModal(item.templateKey, item.name, item.challengeId)
+      return
+    }
+    if (isTimerChallenge(item.templateKey)) {
+      openTimerForChallenge(item.templateKey, item.name, { autoCompleteOnFinish: true, challengeId: item.challengeId })
+      return
+    }
+    await handleCompleteHomeChallenge(item.templateKey, item.challengeId)
+    await createContentChallengeLog(item.templateKey)
+    await loadContentLogs()
+  }
+
+  async function submitTextChallengeAndComplete() {
+    if (!textChallengeTemplateKey) return
+    const text = textChallengeValue.trim()
+    if (!text) {
+      setMessage('수행 내용을 입력해주세요.')
+      return
+    }
+
+    let targetId = textChallengeId
+    if (targetId && !isValidUuid(targetId)) targetId = null
+    if (!targetId) {
+      const started = await handleStartChallengeTemplate(textChallengeTemplateKey)
+      targetId = started?.id ?? null
+    }
+    if (!targetId) {
+      const refreshed = await loadActiveChallenges()
+      targetId = refreshed.find((x) => x.template_key === textChallengeTemplateKey)?.id ?? null
+    }
+    if (!targetId) return
+
+    await createContentChallengeLog(textChallengeTemplateKey, { detail: text })
+    await handleCompleteChallenge(targetId, true)
+    await loadContentLogs()
+    closeTextChallengeModal()
   }
 
   async function handleSaveJournalEntry() {
@@ -2712,76 +2940,80 @@ function App() {
   }, [checkinHistory])
 
   const todayJournalEntry = useMemo(() => journalEntries.find((x) => x.entry_date === todayDateString()) ?? null, [journalEntries])
-  const challengeWeekDays = useMemo(() => {
-    const start = startOfWeekMonday(new Date())
-    const labels = ['월', '화', '수', '목', '금', '토', '일']
-    return Array.from({ length: 7 }).map((_, idx) => {
-      const d = new Date(start)
-      d.setDate(start.getDate() + idx)
-      return { label: labels[idx], key: formatDateYYYYMMDD(d) }
-    })
-  }, [])
   useEffect(() => {
-    if (selectedChallengeKeys.length > 0) return
+    if (challengeSelectionHydratedRef.current) return
+    if (selectedChallengeKeys.length > 0) {
+      challengeSelectionHydratedRef.current = true
+      return
+    }
     const fromActive = activeChallenges
       .map((x) => x.template_key)
       .filter((x, idx, arr) => arr.indexOf(x) === idx)
       .slice(0, 4)
     if (fromActive.length > 0) setSelectedChallengeKeys(fromActive)
+    challengeSelectionHydratedRef.current = true
   }, [activeChallenges, selectedChallengeKeys.length])
 
-  const challengeWeeklyRows = useMemo(() => {
-    const selectedTemplates = challengeLibrary
-      .filter((x) => selectedChallengeKeys.includes(x.template_key))
-      .slice(0, 4)
-    const activeByTemplateKey = new Map(activeChallenges.map((x) => [x.template_key, x]))
-    return selectedTemplates.map((template) => {
-      const name = template.title
-      const category = template.category_label ?? '생활습관'
-      const active = activeByTemplateKey.get(template.template_key)
-      const done = new Set(
-        (active?.completions ?? [])
-          .filter((x) => x.completed_flag)
-          .map((x) => x.completed_date),
-      )
+  const challengeWeeklyBars = useMemo(() => (
+    challengeWeeklyProgress.map((item) => {
+      const date = new Date(`${item.date}T00:00:00`)
+      const dayLabel = date.toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit', weekday: 'short' })
       return {
-        name,
-        category,
-        icon: challengeEmoji(name),
-        tone: challengeCategoryTone(category, name),
-        cells: challengeWeekDays.map((w) => done.has(w.key)),
+        ...item,
+        dayLabel,
       }
     })
-  }, [challengeLibrary, activeChallenges, challengeWeekDays, selectedChallengeKeys])
+  ), [challengeWeeklyProgress])
+  const completedChallengeKeysToday = useMemo(() => new Set(todayCompletedChallengeKeys), [todayCompletedChallengeKeys])
+  const challengeLibrarySections = useMemo(() => {
+    const buckets: ChallengeDurationBucket[] = [7, 3, 1]
+    return buckets.map((bucket) => ({
+      bucket,
+      title: bucket === 7 ? '일주일 챌린지' : bucket === 3 ? '3일 챌린지' : '하루 챌린지',
+      items: challengeLibrary.filter((item) => challengeDurationBucket(item.default_duration_days) === bucket),
+    }))
+  }, [challengeLibrary])
   const challengeDailyMissions = useMemo(() => {
     const today = todayDateString()
-    return activeChallenges.slice(0, 5).map((item) => {
-      const doneToday = item.completions.some((x) => x.completed_date === today && x.completed_flag)
-      const fromCatalog = challengeLibrary.find((x) => x.template_key === item.template_key)
-      const tone = challengeCategoryTone(item.category_label, item.title)
+    const keyOrder = [...selectedChallengeKeys]
+    for (const key of todayCompletedChallengeKeys) {
+      if (!keyOrder.includes(key)) keyOrder.push(key)
+    }
+    return keyOrder.slice(0, 4).map((templateKey) => {
+      const fromCatalog = challengeLibrary.find((x) => x.template_key === templateKey)
+      if (!fromCatalog) return null
+      const active = activeChallenges.find((x) => x.template_key === templateKey)
+      const doneToday = completedChallengeKeysToday.has(templateKey) || Boolean(active?.completions.some((x) => x.completed_date === today && x.completed_flag))
+      const tone = challengeCategoryTone(fromCatalog.category_label, fromCatalog.title)
       return {
-        id: item.id,
-        templateKey: item.template_key,
-        name: item.title,
-        category: item.category_label,
+        challengeId: active?.id ?? null,
+        templateKey: fromCatalog.template_key,
+        name: fromCatalog.title,
+        category: fromCatalog.category_label,
         description: fromCatalog?.short_desc ?? '오늘의 작은 실천으로 마음 근육을 키워보세요.',
         completed: doneToday,
+        timerEnabled: isTimerChallenge(fromCatalog.template_key),
+        textInputEnabled: isTextInputChallenge(fromCatalog.template_key),
         tone,
       }
-    })
-  }, [activeChallenges, challengeLibrary])
+    }).filter((x): x is NonNullable<typeof x> => x !== null)
+  }, [selectedChallengeKeys, todayCompletedChallengeKeys, activeChallenges, challengeLibrary, completedChallengeKeysToday])
   const activeChallengeByTemplateKey = useMemo(() => (
     new Map(activeChallenges.map((item) => [item.template_key, item]))
   ), [activeChallenges])
   const homeSelectedChallengeCards = useMemo(() => {
     const today = todayDateString()
-    return selectedChallengeKeys
+    const keyOrder = [...selectedChallengeKeys]
+    for (const key of todayCompletedChallengeKeys) {
+      if (!keyOrder.includes(key)) keyOrder.push(key)
+    }
+    return keyOrder
       .slice(0, 4)
       .map((templateKey) => {
         const template = challengeLibrary.find((x) => x.template_key === templateKey)
         if (!template) return null
         const active = activeChallengeByTemplateKey.get(templateKey) ?? null
-        const completed = active ? active.completions.some((x) => x.completed_date === today && x.completed_flag) : false
+        const completed = completedChallengeKeysToday.has(templateKey) || (active ? active.completions.some((x) => x.completed_date === today && x.completed_flag) : false)
         const tone = challengeCategoryTone(template.category_label, template.title)
         return {
           templateKey,
@@ -2792,11 +3024,11 @@ function App() {
           ctaLabel: template.cta_label || '시작하기',
           completed,
           timerEnabled: isTimerChallenge(template.template_key),
+          textInputEnabled: isTextInputChallenge(template.template_key),
         }
       })
       .filter((x): x is NonNullable<typeof x> => x !== null)
-  }, [selectedChallengeKeys, challengeLibrary, activeChallengeByTemplateKey])
-  const selectedChallengeCount = useMemo(() => selectedChallengeKeys.length, [selectedChallengeKeys])
+  }, [selectedChallengeKeys, todayCompletedChallengeKeys, challengeLibrary, activeChallengeByTemplateKey, completedChallengeKeysToday])
   const challengeTodayLabel = useMemo(
     () => new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' }),
     [],
@@ -3089,21 +3321,23 @@ function App() {
                       <div className="actions">
                         {item.completed ? (
                           <span className="doneBadge doneBadgeCompact"><span aria-hidden>✅</span>완료</span>
-                        ) : item.timerEnabled ? (
-                          <button
-                            type="button"
-                            className="ghost fullWidth"
-                            onClick={() => openTimerForChallenge(item.templateKey, item.title, { autoCompleteOnFinish: true, challengeId: item.challengeId })}
-                          >
-                            타이머
-                          </button>
                         ) : (
                           <button
                             type="button"
                             className="ghost fullWidth"
-                            onClick={() => { void handleCompleteHomeChallenge(item.templateKey, item.challengeId) }}
+                            onClick={() => { void handleStartChallengeExecution({ templateKey: item.templateKey, name: item.title, challengeId: item.challengeId }) }}
                           >
-                            완료 체크
+                            {item.textInputEnabled ? '시작하기' : item.timerEnabled ? '시작하기' : '수행 완료'}
+                          </button>
+                        )}
+                        {!item.completed && (
+                          <button
+                            type="button"
+                            className="ghost fullWidth"
+                            onClick={() => removeSelectedChallenge(item.templateKey)}
+                            disabled={isSelectionLockedByProgress(item.templateKey)}
+                          >
+                            선택 해제
                           </button>
                         )}
                       </div>
@@ -3496,125 +3730,132 @@ function App() {
               <h2>모치AI 챌린지</h2>
               <p>오늘도 마음 근육을 키워볼까요? 당신의 성장을 응원해요.</p>
             </div>
-            <aside className="challengeCheerCard">
-              <div className="avatar">🐰</div>
-              <div>
-                <strong>모치의 응원</strong>
-                <p>작은 습관이 큰 변화를 만들어요!</p>
-              </div>
-            </aside>
           </header>
 
           <article className="challengeSectionCard">
             <div className="challengeSectionHead">
-              <h3>주간 챌린지 현황</h3>
+              <h3>주간 챌린지 현황 (월~일)</h3>
               <div className="legend">
-                <span><i className="waiting" /> 대기</span>
-                <span><i className="done" /> 완료</span>
+                <span><i className="done" /> 수행률</span>
               </div>
             </div>
-            <div className="challengeWeekTableWrap">
-              <table className="challengeWeekTable">
-                <thead>
-                  <tr>
-                    <th>미션</th>
-                    {challengeWeekDays.map((d) => <th key={`challenge-week-head-${d.key}`}>{d.label}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {challengeWeeklyRows.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="empty">챌린지 데이터가 아직 없습니다.</td>
-                    </tr>
-                  )}
-                  {challengeWeeklyRows.map((row) => (
-                    <tr key={`challenge-week-row-${row.name}`}>
-                      <td className="missionName"><span>{row.icon}</span>{row.name}</td>
-                      {row.cells.map((done, idx) => (
-                        <td key={`challenge-week-cell-${row.name}-${challengeWeekDays[idx].key}`}>
-                          <div className={`dot ${done ? `isDone tone-${row.tone}` : ''}`} />
-                        </td>
-                      ))}
-                    </tr>
+            <div className="challengeWeeklyProgressList">
+              {challengeWeeklyBars.length === 0 && (
+                <p className="small">주간 수행률 데이터가 아직 없습니다.</p>
+              )}
+              {challengeWeeklyBars.length > 0 && (
+                <div className="challengeWeeklyVerticalChart" role="img" aria-label="최근 7일 챌린지 수행률 세로 막대그래프">
+                  {challengeWeeklyBars.map((item) => (
+                    <article key={`challenge-weekly-bar-${item.date}`} className="challengeWeeklyVerticalItem">
+                      <strong>{item.completion_rate_percent}%</strong>
+                      <div className="barTrack">
+                        <b style={{ height: `${Math.max(0, Math.min(100, item.completion_rate_percent))}%` }} />
+                      </div>
+                      <span>{item.dayLabel}</span>
+                      <small>{item.completed_count}/{item.max_count}</small>
+                    </article>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              )}
             </div>
           </article>
 
           <section className="challengeLibrarySection">
             <div className="challengeSubHead">
               <h3>챌린지 라이브러리</h3>
-              <span>12가지 챌린지 탐색하기</span>
+              <span>{challengeLibrary.length}가지 챌린지 탐색하기</span>
             </div>
-            <div className="challengeLibraryRow">
-              {challengeLibrary.map((item) => {
-                const tone = challengeCategoryTone(item.category_label, item.title)
-                const selected = selectedChallengeKeys.includes(item.template_key)
-                const timerEnabled = isTimerChallenge(item.template_key)
-                return (
-                  <article
-                    key={`challenge-library-${item.template_key}`}
-                    className={`challengeLibraryCard tone-${tone} ${selected ? 'selected' : ''} ${timerEnabled ? 'hasTimer' : ''}`}
-                    onClick={() => toggleChallengeSelection(item.template_key)}
-                  >
-                    {selected && (
-                      <span className={`challengeSelectMark tone-${tone}`} aria-hidden>✓</span>
-                    )}
-                    <div className="emoji">{challengeEmoji(item.title)}</div>
-                    <h4>{item.title}</h4>
-                    <p>{item.short_desc}</p>
-                    <div className="tags">
-                      <span className={`categoryBadge ${challengeCategoryBadgeClass(item.category_label)}`}>{item.category_label}</span>
-                    </div>
-                    <div className="actions">
-                      {!timerEnabled ? (
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            void handleStartChallengeTemplate(item.template_key)
-                          }}
-                        >
-                          시작하기
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="ghost timerBtn"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            void handleStartChallengeTemplate(item.template_key)
-                            openTimerForChallenge(item.template_key, item.title)
-                          }}
-                        >
-                          타이머
-                        </button>
-                      )}
-                    </div>
-                  </article>
-                )
-              })}
+            <div className="challengeLibraryGuide">
+              <strong>선택/해제 규칙 안내</strong>
+              <ul>
+                <li>하루에 챌린지는 최대 4개까지 선택할 수 있어요.</li>
+                <li>유형별 선택 제한: 7일형 2개, 3일형 3개, 1일형 4개.</li>
+                <li>7일형/3일형은 선택만 한 상태(수행 0회)에서는 선택 해제가 가능해요.</li>
+                <li>7일형/3일형을 1회 이상 수행하면 해당 기간 동안 선택이 고정되어 취소할 수 없어요.</li>
+                <li>1일형은 당일 완료되면 라이브러리에서 완료 상태로 고정되고 다음 날 다시 선택할 수 있어요.</li>
+              </ul>
             </div>
+            {challengeLibrarySections.map((section) => (
+              <div key={`challenge-library-section-${section.bucket}`} className="challengeDurationBlock">
+                <h4>{section.title}</h4>
+                <div className="challengeLibraryRow">
+                  {section.items.map((item) => {
+                    const tone = challengeCategoryTone(item.category_label, item.title)
+                    const isCompletedToday = completedChallengeKeysToday.has(item.template_key)
+                    const selected = isCompletedToday || selectedChallengeKeys.includes(item.template_key)
+                    const timerEnabled = isTimerChallenge(item.template_key)
+                    return (
+                      <article
+                        key={`challenge-library-${item.template_key}`}
+                        className={`challengeLibraryCard tone-${tone} ${selected ? 'selected' : ''} ${timerEnabled ? 'hasTimer' : ''} ${isCompletedToday ? 'locked' : ''}`}
+                        onClick={() => {
+                          if (isCompletedToday) return
+                          setSelectedTemplateKey(item.template_key)
+                        }}
+                      >
+                        {selected && (
+                          <span className={`challengeSelectMark tone-${tone}`} aria-hidden>✓</span>
+                        )}
+                        <div className="emoji">{challengeEmoji(item.title)}</div>
+                        <h4>{item.title}</h4>
+                        <p>{item.short_desc}</p>
+                        <div className="tags">
+                          <span className={`categoryBadge ${challengeCategoryBadgeClass(item.category_label)}`}>{item.category_label}</span>
+                          <span className="categoryBadge">{challengeDurationBucket(item.default_duration_days)}일</span>
+                        </div>
+                        <div className="actions">
+                          {isCompletedToday ? (
+                            <button type="button" className="ghost completedBtn" disabled>완료</button>
+                          ) : selected ? (
+                            <button type="button" className="ghost completedBtn" disabled>추가됨</button>
+                          ) : !timerEnabled ? (
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                addChallengeSelection(item.template_key)
+                              }}
+                            >
+                              추가하기
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="ghost timerBtn"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                addChallengeSelection(item.template_key)
+                              }}
+                            >
+                              추가하기
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </section>
 
           <section>
             <div className="challengeSubHead">
-              <h3>오늘의 데일리 미션</h3>
+              <h3>챌린지 수행하기</h3>
               <span>{challengeTodayLabel}</span>
             </div>
             <div className="challengeDailyList">
               {challengeDailyMissions.length === 0 && (
                 <article className="challengeDailyItem">
                   <div className="main">
-                    <h4>오늘 미션이 아직 없습니다.</h4>
-                    <p>라이브러리에서 챌린지를 선택하고 기록을 남겨보세요.</p>
+                    <h4>추가된 챌린지가 아직 없습니다.</h4>
+                    <p>챌린지 라이브러리에서 추가하기를 눌러 목록을 구성해보세요.</p>
                   </div>
                 </article>
               )}
               {challengeDailyMissions.map((item) => (
-                <article key={`challenge-daily-${item.id}`} className="challengeDailyItem">
+                <article key={`challenge-daily-${item.templateKey}`} className="challengeDailyItem">
                   <div className="check">
                     <input type="checkbox" checked={item.completed} readOnly />
                   </div>
@@ -3623,37 +3864,32 @@ function App() {
                     <p>{item.description}</p>
                   </div>
                   {item.completed ? (
-                    <span className="doneBadge">완료</span>
+                    <div className="actions">
+                      <span className="doneBadge">완료</span>
+                    </div>
                   ) : (
                     <div className="actions">
                       <button
                         type="button"
                         className="ghost"
-                        onClick={() => void handleCompleteChallenge(item.id, true)}
+                        onClick={() => { void handleStartChallengeExecution({ templateKey: item.templateKey, name: item.name, challengeId: item.challengeId }) }}
                       >
-                        완료 체크
+                        {item.textInputEnabled ? '시작하기' : item.timerEnabled ? '시작하기' : '수행 완료'}
                       </button>
-                      {isTimerChallenge(item.templateKey) && (
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() => openTimerForChallenge(item.templateKey, item.name)}
-                        >
-                          타이머
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => removeSelectedChallenge(item.templateKey)}
+                        disabled={isSelectionLockedByProgress(item.templateKey)}
+                      >
+                        선택 해제
+                      </button>
                     </div>
                   )}
                 </article>
               ))}
             </div>
           </section>
-          <aside className="challengeCoachFloating" aria-hidden>
-            <div className="bubble">
-              <p><strong>모치</strong>님, 벌써 미션을 {selectedChallengeCount}개 진행했어요!</p>
-            </div>
-            <div className="avatar">🐰</div>
-          </aside>
         </section>
       )}
 
@@ -4108,6 +4344,25 @@ function App() {
               >
                 초기화
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {textChallengeModalOpen && (
+        <div className="timerOverlay" role="dialog" aria-modal="true">
+          <div className="timerCard">
+            <button type="button" className="timerCloseBtn" onClick={closeTextChallengeModal} aria-label="입력 창 닫기">✕</button>
+            <h3>{textChallengeTitle || '텍스트 챌린지'}</h3>
+            <p className="small">수행 내용을 작성하면 자동으로 완료 처리됩니다.</p>
+            <textarea
+              rows={8}
+              value={textChallengeValue}
+              onChange={(event) => setTextChallengeValue(event.target.value)}
+              placeholder={textChallengePlaceholder(textChallengeTemplateKey)}
+            />
+            <div className="actions">
+              <button type="button" onClick={() => { void submitTextChallengeAndComplete() }}>작성 완료</button>
             </div>
           </div>
         </div>

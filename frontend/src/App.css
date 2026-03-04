@@ -2704,6 +2704,62 @@ button:disabled {
   background: #9b8cff;
 }
 
+.challengeWeeklyProgressList {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.challengeWeeklyVerticalChart {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.45rem;
+  align-items: end;
+}
+
+.challengeWeeklyVerticalItem {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f8fafc;
+  padding: 0.52rem 0.36rem;
+  display: grid;
+  gap: 0.28rem;
+  justify-items: center;
+}
+
+.challengeWeeklyVerticalItem strong {
+  font-size: 0.74rem;
+  color: #0f172a;
+}
+
+.challengeWeeklyVerticalItem .barTrack {
+  width: 100%;
+  max-width: 42px;
+  height: 130px;
+  border: 1px solid #d1d9e0;
+  border-radius: 10px;
+  background: #ffffff;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+}
+
+.challengeWeeklyVerticalItem .barTrack b {
+  display: block;
+  width: 100%;
+  background: linear-gradient(180deg, #8b5cf6 0%, #bfff00 100%);
+}
+
+.challengeWeeklyVerticalItem span {
+  font-size: 0.7rem;
+  color: #334155;
+  font-weight: 700;
+}
+
+.challengeWeeklyVerticalItem small {
+  font-size: 0.66rem;
+  color: #64748b;
+}
+
 .challengeWeekTableWrap {
   overflow-x: auto;
 }
@@ -2794,6 +2850,46 @@ button:disabled {
   font-weight: 600;
 }
 
+.challengeLibraryGuide {
+  margin: 0 0 0.8rem;
+  font-size: 0.82rem;
+  color: #475569;
+  font-weight: 600;
+  border: 1px solid #dbe4ea;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 0.62rem 0.72rem;
+}
+
+.challengeLibraryGuide strong {
+  display: block;
+  color: #0f172a;
+  margin-bottom: 0.36rem;
+  font-size: 0.84rem;
+}
+
+.challengeLibraryGuide ul {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.16rem;
+}
+
+.challengeLibraryGuide li {
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.challengeDurationBlock {
+  margin-bottom: 1rem;
+}
+
+.challengeDurationBlock > h4 {
+  margin: 0 0 0.52rem;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
 .challengeLibraryRow {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2844,6 +2940,16 @@ button:disabled {
 .challengeLibraryCard.selected {
   border-color: #8b5cf6;
   box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.3);
+}
+
+.challengeLibraryCard.locked {
+  cursor: not-allowed;
+  opacity: 0.9;
+}
+
+.challengeLibraryCard.locked:hover {
+  transform: none;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.2);
 }
 
 .challengeSelectMark {
@@ -2952,6 +3058,13 @@ button:disabled {
   font-size: 0.72rem;
   padding: 0.28rem 0.62rem;
   justify-content: center;
+}
+
+.challengeLibraryCard .actions button.completedBtn {
+  background: #111827;
+  color: #ffffff;
+  border-color: #111827;
+  cursor: default;
 }
 
 .challengeLibraryCard.hasTimer .actions .timerBtn {
@@ -3096,6 +3209,19 @@ button:disabled {
   .challengeSectionCard {
     border-radius: 18px;
     padding: 0.85rem;
+  }
+
+  .challengeWeeklyVerticalChart {
+    gap: 0.32rem;
+  }
+
+  .challengeWeeklyVerticalItem {
+    padding: 0.42rem 0.2rem;
+  }
+
+  .challengeWeeklyVerticalItem .barTrack {
+    height: 92px;
+    max-width: 34px;
   }
 
   .challengeWeekTableWrap {
@@ -3247,6 +3373,15 @@ button:disabled {
 .timerCard h3 {
   margin: 0;
   font-size: 1.1rem;
+}
+
+.timerCard textarea {
+  width: 100%;
+  border: 1px solid #dbe3ea;
+  border-radius: 12px;
+  padding: 0.62rem 0.7rem;
+  resize: vertical;
+  min-height: 150px;
 }
 
 .timerDisplay {

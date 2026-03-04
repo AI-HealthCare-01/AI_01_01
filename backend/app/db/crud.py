@@ -565,6 +565,54 @@ async def create_challenge_history(
     return row
 
 
+async def list_challenge_histories_by_user(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    limit: int = 300,
+) -> list[ChallengeHistory]:
+    stmt: Select[tuple[ChallengeHistory]] = (
+        select(ChallengeHistory)
+        .where(ChallengeHistory.user_id == user_id)
+        .order_by(desc(ChallengeHistory.created_at))
+        .limit(limit)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def get_active_challenge_history_by_key(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    challenge_key: str,
+) -> ChallengeHistory | None:
+    stmt: Select[tuple[ChallengeHistory]] = (
+        select(ChallengeHistory)
+        .where(
+            ChallengeHistory.user_id == user_id,
+            ChallengeHistory.challenge_key == challenge_key,
+            ChallengeHistory.completed.is_(False),
+        )
+        .order_by(desc(ChallengeHistory.created_at))
+        .limit(1)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def get_challenge_history_by_id(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    challenge_id: uuid.UUID,
+) -> ChallengeHistory | None:
+    stmt: Select[tuple[ChallengeHistory]] = (
+        select(ChallengeHistory)
+        .where(ChallengeHistory.id == challenge_id, ChallengeHistory.user_id == user_id)
+        .limit(1)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
 async def list_recent_challenge_histories(
     db: AsyncSession,
     *,

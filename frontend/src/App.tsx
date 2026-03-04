@@ -1621,7 +1621,7 @@ function App() {
         setMessage('이미 추가된 챌린지예요.')
         return prev
       }
-      if (prev.length >= 4) {
+      if (effectiveChallengeCount >= 4) {
         setMessage('챌린지는 최대 4개까지 선택할 수 있어요.')
         return prev
       }
@@ -2401,7 +2401,7 @@ function App() {
       setMessage('오늘 완료한 챌린지는 내일 다시 시작할 수 있어요.')
       return null
     }
-    if (!selectedChallengeKeys.includes(key) && selectedChallengeKeys.length >= 4) {
+    if (!selectedChallengeKeys.includes(key) && effectiveChallengeCount >= 4) {
       setMessage('챌린지는 최대 4개까지 선택할 수 있어요.')
       return null
     }
@@ -2427,7 +2427,7 @@ function App() {
       const data = (await response.json()) as { challenge?: ActiveChallengeItem }
       setSelectedChallengeKeys((prev) => {
         if (prev.includes(key)) return prev
-        if (prev.length >= 4) return prev
+        if (effectiveChallengeCount >= 4) return prev
         return [...prev, key]
       })
       await loadActiveChallenges()
@@ -2967,6 +2967,14 @@ function App() {
     })
   ), [challengeWeeklyProgress])
   const completedChallengeKeysToday = useMemo(() => new Set(todayCompletedChallengeKeys), [todayCompletedChallengeKeys])
+  const effectiveChallengeKeys = useMemo(() => {
+    const merged = [...selectedChallengeKeys]
+    for (const key of todayCompletedChallengeKeys) {
+      if (!merged.includes(key)) merged.push(key)
+    }
+    return merged
+  }, [selectedChallengeKeys, todayCompletedChallengeKeys])
+  const effectiveChallengeCount = useMemo(() => effectiveChallengeKeys.length, [effectiveChallengeKeys])
   const challengeLibrarySections = useMemo(() => {
     const buckets: ChallengeDurationBucket[] = [7, 3, 1]
     return buckets.map((bucket) => ({
@@ -2977,11 +2985,7 @@ function App() {
   }, [challengeLibrary])
   const challengeDailyMissions = useMemo(() => {
     const today = todayDateString()
-    const keyOrder = [...selectedChallengeKeys]
-    for (const key of todayCompletedChallengeKeys) {
-      if (!keyOrder.includes(key)) keyOrder.push(key)
-    }
-    return keyOrder.slice(0, 4).map((templateKey) => {
+    return effectiveChallengeKeys.slice(0, 4).map((templateKey) => {
       const fromCatalog = challengeLibrary.find((x) => x.template_key === templateKey)
       if (!fromCatalog) return null
       const active = activeChallenges.find((x) => x.template_key === templateKey)
@@ -2999,7 +3003,7 @@ function App() {
         tone,
       }
     }).filter((x): x is NonNullable<typeof x> => x !== null)
-  }, [selectedChallengeKeys, todayCompletedChallengeKeys, activeChallenges, challengeLibrary, completedChallengeKeysToday])
+  }, [effectiveChallengeKeys, activeChallenges, challengeLibrary, completedChallengeKeysToday])
   const challengeTodayLabel = useMemo(
     () => new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' }),
     [],

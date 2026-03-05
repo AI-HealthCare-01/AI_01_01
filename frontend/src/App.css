@@ -1336,6 +1336,21 @@ button:disabled {
   gap: 0.28rem;
 }
 
+.aiRecoBundle .aiRecoList {
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.aiRecoBundle .aiRecoList li {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 0.45rem;
+  background: #fbfcff;
+}
+
 .cbtCardHead {
   display: flex;
   justify-content: space-between;

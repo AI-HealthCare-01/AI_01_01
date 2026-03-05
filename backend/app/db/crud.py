@@ -226,6 +226,28 @@ async def get_latest_chat_event_by_session(db: AsyncSession, user_id: uuid.UUID,
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
+async def list_chat_events_between(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    start_dt: datetime,
+    end_dt: datetime,
+    session_id: str | None = None,
+) -> list[ChatEvent]:
+    stmt: Select[tuple[ChatEvent]] = (
+        select(ChatEvent)
+        .where(
+            ChatEvent.user_id == user_id,
+            ChatEvent.created_at >= start_dt,
+            ChatEvent.created_at < end_dt,
+        )
+        .order_by(ChatEvent.created_at.asc())
+    )
+    if session_id:
+        stmt = stmt.where(ChatEvent.session_id == session_id)
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def create_checkin(db: AsyncSession, user_id: uuid.UUID, mood_score: int, sleep_hours: float | None, exercised: bool, note: str | None) -> CheckIn:
     row = CheckIn(user_id=user_id, mood_score=mood_score, sleep_hours=sleep_hours, exercised=exercised, note=note)
     db.add(row)

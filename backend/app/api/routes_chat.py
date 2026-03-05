@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any
 
@@ -130,6 +130,30 @@ CHALLENGE_CANDIDATE_RULES = {
     "LOW_ENERGY": ["SUNLIGHT_20MIN", "WALK_10MIN_3D", "EXERCISE_WALK_20"],
     "RELATION_SELFBLAME": ["GRATITUDE_LOTTERY", "SOCIAL_CONTACT_ONE", "JOURNAL_STREAK"],
 }
+KST = timezone(timedelta(hours=9))
+CHALLENGE_DISPLAY_NAMES = {
+    "MEDITATION_5MIN": "5분 명상",
+    "BREATHING_3MIN": "호흡 3분",
+    "MORNING_ROUTINE_VITAL": "활기찬 모닝 루틴",
+    "SLEEP_HYGIENE_ROUTINE": "수면 위생 루틴 지키기",
+    "JOURNAL_STREAK": "3일 마음기록(연속 일기)",
+    "GRATITUDE_LOTTERY": "감사 제비뽑기",
+    "GRATITUDE_3": "감사 3가지 기록",
+    "SOCIAL_CONTACT_ONE": "안부 연락 1회",
+    "SUNLIGHT_5MIN_3D": "햇빛 5분",
+    "SUNLIGHT_20MIN": "햇빛 20분",
+    "WALK_10MIN_3D": "산책 10분",
+    "EXERCISE_WALK_20": "걷기/운동 20분",
+}
+
+
+def _challenge_display_name(challenge_key_or_name: str | None) -> str | None:
+    if not challenge_key_or_name:
+        return None
+    raw = str(challenge_key_or_name).strip()
+    if not raw:
+        return None
+    return CHALLENGE_DISPLAY_NAMES.get(raw, raw)
 
 
 def _contains_any(text: str, words: list[str]) -> bool:
@@ -553,18 +577,11 @@ def _is_finish_edit_intent(message: str) -> bool:
 
 def _build_finish_reply(summary_card: dict[str, str], challenge_name: str | None = None) -> str:
     situation = (summary_card.get("situation") or "오늘 힘들었던 사건이 있었습니다.").strip()
-    reframe = (summary_card.get("reframe") or "상황을 전부 내 잘못으로 단정하지 않기로 했습니다.").strip()
-    next_action = (summary_card.get("next_action") or "호흡 2분 + 사실 1문장 기록").strip()
-    fallback = ["BREATHING_3MIN", "WALK_10MIN_3D", "JOURNAL_STREAK"]
-    fallback_idx = sum(ord(ch) for ch in situation) % len(fallback)
-    challenge_line = challenge_name or fallback[fallback_idx]
+    reframe = (summary_card.get("reframe") or "상황과 생각을 분리해본 점이 도움이 되었습니다.").strip()
     return (
-        "오늘 대화를 마무리할게요.\n"
-        f"1) 오늘 요약: {situation}\n"
-        f"2) 재정리: {reframe}\n"
-        f"3) 다음 행동(2~10분): {next_action}\n"
-        f"4) 권장 챌린지: {challenge_line}\n"
-        "이 요약으로 저장할까요? (저장/수정)"
+        f"오늘 요약: {situation}\n"
+        f"도움이 된 포인트: {reframe}\n"
+        "여기까지 하고, 추천 챌린지는 아래 박스에 띄울게요."
     )
 
 
@@ -659,6 +676,61 @@ async def recommend_challenges(
         repeatable_techniques=list(policy["repeatable_techniques"]),
     )
     return ChallengeRecommendResponse(suggested_challenges=suggested, window_days=days)
+
+
+@router.get("/today-session")
+async def get_today_chat_session(
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    await _ensure_chat_schema(db)
+    now_kst = datetime.now(KST)
+    day_start_kst = datetime(now_kst.year, now_kst.month, now_kst.day, tzinfo=KST)
+    day_end_kst = day_start_kst + timedelta(days=1)
+    start_utc = day_start_kst.astimezone(timezone.utc)
+    end_utc = day_end_kst.astimezone(timezone.utc)
+
+    rows = await crud.list_chat_events_between(
+        db=db,
+        user_id=current_user.id,
+        start_dt=start_utc,
+        end_dt=end_utc,
+    )
+    if not rows:
+        return {
+            "session_id": None,
+            "session_date": day_start_kst.date().isoformat(),
+            "turns": [],
+            "latest": None,
+        }
+
+    latest = rows[-1]
+    target_session_id = latest.session_id
+    if target_session_id:
+        rows = [row for row in rows if row.session_id == target_session_id]
+        if not rows:
+            rows = [latest]
+
+    turns: list[dict[str, Any]] = []
+    for row in rows:
+        user_text = str(row.user_message or "").strip()
+        assistant_text = str(row.assistant_reply or "").strip()
+        created_at = row.created_at.astimezone(timezone.utc).isoformat()
+        if user_text:
+            turns.append({"role": "user", "content": user_text, "created_at": created_at})
+        if assistant_text:
+            turns.append({"role": "assistant", "content": assistant_text, "created_at": created_at})
+
+    return {
+        "session_id": target_session_id,
+        "session_date": day_start_kst.date().isoformat(),
+        "turns": turns,
+        "latest": {
+            "extracted": latest.extracted if isinstance(latest.extracted, dict) else {},
+            "suggested_challenges": latest.suggested_challenges if isinstance(latest.suggested_challenges, list) else [],
+            "assistant_reply": latest.assistant_reply,
+        },
+    }
 
 
 @router.post("/cbt", response_model=ChatResponse)
@@ -1086,15 +1158,15 @@ async def chat_cbt(
     if not allow_challenge_recommendation:
         filtered_suggestions = []
     filtered_suggestions = _sanitize_challenge_candidates(filtered_suggestions)
-    if (moderate_plus or finish_candidate or (result.cbt_phase or "THOUGHT") == "ACTION") and not filtered_suggestions:
-        filtered_suggestions = challenge_candidates[:1]
     summary_card = dict(result.summary_card)
-    if finish_candidate and filtered_suggestions:
-        summary_card["next_action"] = f"{summary_card.get('next_action', '')} / 추천 챌린지: {filtered_suggestions[0]}".strip(" /")
+
     if finish_intent:
-        suggested = filtered_suggestions[0] if filtered_suggestions else (challenge_candidates[0] if challenge_candidates else None)
-        result.reply = _build_finish_reply(summary_card, suggested)
-        filtered_suggestions = [suggested] if suggested else []
+        if not filtered_suggestions:
+            filtered_suggestions = _sanitize_challenge_candidates(challenge_candidates[:3])
+        filtered_suggestions = filtered_suggestions[:3]
+        result.reply = _build_finish_reply(summary_card, filtered_suggestions[0] if filtered_suggestions else None)
+    else:
+        filtered_suggestions = []
 
     if result.challenge_completed and result.completed_challenge:
         done_name = result.completed_challenge.strip()[:200]

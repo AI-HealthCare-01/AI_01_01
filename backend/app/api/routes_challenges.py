@@ -383,6 +383,7 @@ CATALOG: list[dict[str, Any]] = [
 ]
 
 CATALOG_MAP = {item["template_key"]: item for item in CATALOG}
+KST = timezone(timedelta(hours=9))
 
 
 def _to_iso(value: datetime) -> str:
@@ -390,12 +391,27 @@ def _to_iso(value: datetime) -> str:
 
 
 def _today_kst_date() -> str:
-    return datetime.now(timezone(timedelta(hours=9))).date().isoformat()
+    return datetime.now(KST).date().isoformat()
 
 
 def _template_duration_days(challenge_key: str) -> int:
     template = CATALOG_MAP.get(challenge_key, {})
     return max(1, int(template.get("default_duration_days", 1)))
+
+
+def _is_active_row_now(row: Any) -> bool:
+    # Legacy 키는 현재 활성 목록/제한 카운트에서 제외한다.
+    if row.challenge_key not in CATALOG_MAP:
+        return False
+    duration_days = _template_duration_days(row.challenge_key)
+    created_kst = row.created_at.astimezone(KST)
+    now_kst = datetime.now(KST)
+
+    # 하루형은 "당일만" 활성로 본다 (24시간 롤링 아님).
+    if duration_days <= 1:
+        return created_kst.date() == now_kst.date()
+
+    return created_kst + timedelta(days=duration_days) > now_kst
 
 
 def _build_active_item(row, completions: list[dict[str, Any]]) -> dict[str, Any]:
@@ -487,15 +503,14 @@ async def get_active_challenges(
     rows = await crud.list_challenge_histories_by_user(db, user_id=current_user.id, limit=400)
     completion_rows_by_key: dict[str, list[Any]] = {}
     active_by_key: dict[str, Any] = {}
-    now_utc = datetime.now(timezone.utc)
-
     for row in rows:
         if row.completed:
             completion_rows_by_key.setdefault(row.challenge_key, []).append(row)
             continue
+        if row.challenge_key not in CATALOG_MAP:
+            continue
         if row.challenge_key not in active_by_key:
-            duration_days = _template_duration_days(row.challenge_key)
-            if row.created_at + timedelta(days=duration_days) < now_utc:
+            if not _is_active_row_now(row):
                 continue
             active_by_key[row.challenge_key] = row
 
@@ -547,7 +562,7 @@ async def start_challenge(
         )
 
     active_row = await crud.get_active_challenge_history_by_key(db, user_id=current_user.id, challenge_key=key)
-    if active_row is not None and active_row.created_at + timedelta(days=_template_duration_days(key)) < datetime.now(timezone.utc):
+    if active_row is not None and not _is_active_row_now(active_row):
         active_row = None
     if active_row is None:
         active_row = await crud.create_challenge_history(

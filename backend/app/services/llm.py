@@ -111,13 +111,53 @@ def _default_extracted() -> dict[str, Any]:
 
 def _default_summary_card(user_message: str) -> dict[str, str]:
     cleaned = user_message.strip().replace("\n", " ")
+    low = cleaned.lower()
     situation = cleaned[:120] if cleaned else "오늘 있었던 일을 아직 자세히 적지 않았습니다."
+
+    sleep_signal = any(k in low for k in ["잠", "수면", "불면", "깨", "뒤척", "sleep"])
+    anxiety_signal = any(k in low for k in ["불안", "초조", "긴장", "걱정", "anx"])
+    depression_signal = any(k in low for k in ["우울", "무기력", "지침", "의욕", "depress"])
+    self_blame_signal = any(k in low for k in ["내 탓", "나 때문", "내가 잘못", "가치없", "쓸모없"])
+    anger_signal = any(k in low for k in ["화", "짜증", "분노", "열받"])
+
+    if self_blame_signal:
+        thought_pattern = "자기비난/과잉책임 사고가 섞였는지 확인이 필요합니다."
+        reframe = "결과의 모든 원인을 나에게 돌리기보다, 통제 가능한 부분과 아닌 부분을 나눠보는 게 도움이 됩니다."
+        next_action = "사실 1개, 내 해석 1개, 더 균형 잡힌 대안 생각 1개를 3줄로 적어보세요."
+    elif anxiety_signal:
+        thought_pattern = "불확실성을 위협으로 크게 해석하는 불안 패턴이 보입니다."
+        reframe = "불안은 위험을 크게 보게 만들 수 있으니, 지금 확인 가능한 사실부터 작게 점검해보세요."
+        next_action = "4초 들숨-6초 날숨 10회 후, 지금 가장 현실적인 다음 행동 1가지를 적어보세요."
+    elif sleep_signal:
+        thought_pattern = "수면 부족이 생각의 경직성과 감정 반응을 키웠을 가능성이 있습니다."
+        reframe = "오늘 컨디션 저하는 의지 부족이 아니라 회복 자원이 부족한 신호일 수 있습니다."
+        next_action = "취침 1시간 전 화면을 줄이고, 불 끈 뒤 호흡 3분 루틴을 시도해보세요."
+    elif depression_signal:
+        thought_pattern = "무기력 상태에서 부정적 일반화가 강화되는 흐름이 관찰됩니다."
+        reframe = "지금의 낮은 에너지는 영구적인 상태가 아니라, 회복 가능한 일시적 구간일 수 있습니다."
+        next_action = "2~5분 안에 가능한 가장 작은 행동 1개(물 한 잔/창문 열기/가벼운 스트레칭)를 실행해보세요."
+    elif anger_signal:
+        thought_pattern = "분노가 높을 때는 상대 의도 단정이나 흑백 판단이 올라오기 쉽습니다."
+        reframe = "감정은 타당하지만, 해석은 조정할 수 있습니다. 반응 전에 사실과 추측을 분리해보세요."
+        next_action = "지금 떠오른 문장을 적고, 그 옆에 확인된 사실만 1문장으로 다시 써보세요."
+    else:
+        thought_pattern = "자동사고를 아직 단정하기 어렵지만 감정과 생각을 분리해 볼 필요가 있습니다."
+        reframe = "현재 감정은 자연스러운 반응이며, 해석을 조금 조정하면 부담을 줄일 수 있습니다."
+        next_action = "오늘 사건 1개를 기준으로 사실/생각/감정을 한 줄씩 정리해보세요."
+
+    encouragement_pool = [
+        "지금처럼 상태를 언어화하는 것 자체가 회복의 중요한 시작입니다.",
+        "짧게라도 정리하고 멈춰보는 행동이 악순환을 끊는 첫 단계가 됩니다.",
+        "완벽하게 하려 하지 않아도 괜찮습니다. 작은 실행 1개면 충분합니다.",
+    ]
+    encouragement = encouragement_pool[sum(ord(c) for c in cleaned) % len(encouragement_pool)] if cleaned else encouragement_pool[0]
+
     return {
         "situation": situation,
-        "self_blame_signal": "스스로를 탓하는 생각이 올라왔는지 함께 확인이 필요합니다.",
-        "reframe": "지금의 감정은 나의 부족함이 아니라, 과한 부담과 스트레스에 대한 자연스러운 반응일 수 있습니다.",
-        "next_action": "오늘은 사실 1개, 떠오른 생각 1개, 균형 잡힌 대안 생각 1개를 짧게 기록해보세요.",
-        "encouragement": "지금 이렇게 마음을 돌아보는 행동 자체가 회복을 위한 중요한 시작입니다.",
+        "self_blame_signal": thought_pattern,
+        "reframe": reframe,
+        "next_action": next_action,
+        "encouragement": encouragement,
     }
 
 
@@ -165,18 +205,109 @@ def _is_repetitive_against_last(reply: str, last_assistant: str) -> bool:
     return False
 
 
+def _normalize_spaces(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip())
+
+
+def _enforce_turn_reply_budget(reply: str, require_question: bool = True) -> str:
+    cleaned = _normalize_spaces(reply)
+    if not cleaned:
+        return cleaned
+
+    raw_parts = re.split(r"(?<=[.!?])\s+|\n+", cleaned)
+    sentences = [s.strip() for s in raw_parts if s and s.strip()]
+    if not sentences:
+        sentences = [cleaned]
+
+    normalized: list[str] = []
+    for raw_sent in sentences:
+        s = raw_sent[:90].strip()
+        has_question = "?" in s
+        if has_question and not require_question:
+            s = s.replace("?", ".")
+        elif has_question and require_question:
+            pass
+        elif has_question:
+            s = s.replace("?", ".")
+        normalized.append(s)
+
+    out = normalized[:4]
+    if require_question and out and not any("?" in s for s in out):
+        if len(out) == 4:
+            out[-1] = out[-1].rstrip(".! ") + "."
+        else:
+            out.append("지금은 1) 사실 정리 2) 대안 생각 3) 2분 행동 중 무엇부터 할까요?")
+
+    merged = " ".join(out).strip()
+    if len(merged) > 240:
+        merged = merged[:240].rstrip()
+    return merged
+
+
+def _enforce_finish_reply_shape(reply: str) -> str:
+    cleaned = _normalize_spaces(reply)
+    if not cleaned:
+        return "오늘 대화를 정리해보면, 부담이 커지며 생각과 감정이 함께 흔들렸습니다. 상황과 생각을 분리해 본 점이 특히 도움이 되었습니다. 여기까지 하고, 추천 챌린지는 아래 박스에 띄울게요."
+    cleaned = cleaned.replace("?", ".")
+    cleaned = re.sub(r"챌린지\s*제안[:：]?", "", cleaned)
+    cleaned = re.sub(r"추천\s*챌린지[:：]?", "", cleaned)
+    parts = [p.strip() for p in re.split(r"(?<=[.!])\s+|\n+", cleaned) if p.strip()]
+    if not parts:
+        parts = [cleaned]
+
+    summary = parts[0][:120]
+    helpful = (parts[1] if len(parts) > 1 else "상황과 생각을 분리해 본 점이 도움이 되었습니다.")[:90]
+    closing = "여기까지 하고, 추천 챌린지는 아래 박스에 띄울게요."
+    out = f"{summary} {helpful} {closing}".strip()
+    return out[:260]
+
+
 def _phase_followup_prompt(phase: str, user_message: str) -> str:
+    return _phase_followup_prompt_with_context(phase, user_message, None)
+
+
+def _recent_user_messages(conversation_history: list[dict[str, str]] | None, limit: int = 6) -> list[str]:
+    items = [str(t.get("content", "")).strip() for t in (conversation_history or []) if t.get("role") == "user"]
+    return [x for x in items[-limit:] if x]
+
+
+def _has_recent_intensity_score(conversation_history: list[dict[str, str]] | None) -> bool:
+    recent = " ".join(_recent_user_messages(conversation_history)).lower()
+    if not recent:
+        return False
+    if re.search(r"\b([0-9]|10)\b", recent):
+        return True
+    return any(k in recent for k in ["강도", "/10", "점수"])
+
+
+def _phase_followup_prompt_with_context(
+    phase: str,
+    user_message: str,
+    conversation_history: list[dict[str, str]] | None,
+) -> str:
     snippet = user_message.strip().replace("\n", " ")[:40]
+    low = user_message.lower()
+    recent = " ".join(_recent_user_messages(conversation_history)).lower()
+    merged = f"{recent} {low}".strip()
+
     if phase == "EMOTION":
+        if _has_recent_intensity_score(conversation_history):
+            return "감정 강도는 확인됐어요. 그 감정이 가장 커지는 순간(언제/어떤 일 직후) 1가지만 특정해볼까요?"
         return f"'{snippet}'라고 했을 때, 지금 감정 이름 1개와 강도(0~10)를 알려줄래요?"
     if phase == "SITUATION":
         return f"'{snippet}' 상황에서 실제로 확인된 사실 1가지만 먼저 적어볼까요?"
     if phase == "THOUGHT":
+        if any(k in merged for k in ["해야", "데드라인", "압박", "부담"]):
+            return "지금은 '반드시 해야 한다'는 자동사고가 압박을 키우는 흐름으로 보여요. 그 생각의 근거 1개와 반대 근거 1개를 적어볼까요?"
         return "그 순간 머리에 가장 먼저 떠오른 자동사고를 한 문장으로 적어볼까요?"
     if phase == "DISTORTION":
+        if any(k in merged for k in ["해야", "반드시", "무조건"]):
+            return "지금 문장에는 '당위문(should)' 패턴이 섞였을 수 있어요. '꼭 해야만 한다'를 더 유연한 문장으로 바꿔볼까요?"
         return "그 생각 안에 흑백논리/과장/독심추론 중 어떤 패턴이 있었는지 1개만 골라볼까요?"
     if phase == "REFRAME":
-        return "그 생각을 100% 사실로 단정하지 않는 대안 문장을 한 줄로 만들어볼까요?"
+        return "지금 상황을 100% 내 책임으로 단정하지 않는 균형 문장 1개를 함께 만들어볼까요?"
+    if any(k in merged for k in ["피곤", "무기력", "지침", "느려"]):
+        return "지금 상태를 고려해 10분짜리 행동 1개만 정해봅시다. '서류 1개만 처리' 또는 '호흡 3분 후 우선순위 1개 선택' 중 무엇이 더 가능할까요?"
     return "지금 당장 2~5분 안에 할 수 있는 행동 1개를 정해서 실행해볼까요?"
 
 
@@ -215,6 +346,10 @@ def _infer_cbt_phase(
     if history_len <= 2:
         return "EMOTION"
     return "THOUGHT"
+
+
+def _count_user_turns(conversation_history: list[dict[str, str]] | None) -> int:
+    return sum(1 for turn in (conversation_history or []) if turn.get("role") == "user")
 
 
 def _phase_instruction(phase: str) -> str:
@@ -751,6 +886,11 @@ def generate_cbt_reply(
         requested_phase=cbt_phase,
         active_challenge=active_challenge,
     )
+    user_turns = _count_user_turns(conversation_history) + 1
+    if user_turns >= 3 and resolved_phase in {"EMOTION", "SITUATION"}:
+        resolved_phase = "THOUGHT"
+    if moderate_plus and resolved_phase in {"EMOTION", "SITUATION"}:
+        resolved_phase = "ACTION"
     if crisis_mode:
         return _fallback_heuristic(
             user_message,
@@ -805,19 +945,21 @@ def generate_cbt_reply(
             "3) 인지왜곡 가능성 1~2개를 가설로 제시(단정/진단 금지) + extracted.distortions에도 동일 반영 "
             "4) 지금 가능한 2~5분 안정 행동 1개 "
             "5) 질문은 정확히 1개(다음 단계 연결). "
-            "사용자 핵심 문장을 짧게 인용하고, 조언은 1~2개로 제한하라."
+            "사용자 핵심 문장을 짧게 인용하고, 조언은 1~2개로 제한하라. "
+            "이 MODE에서도 TURN_POLICY는 항상 우선 적용된다."
         )
     finish_addendum = ""
     if finish_candidate:
         finish_addendum = (
             "[FINISH MODE] "
-            "이 턴은 대화를 마무리하는 턴이다. reply는 반드시 4블록으로 작성하라: "
-            "1) 1문장 요약(감정+핵심생각, 사용자 표현 짧은 인용 포함) "
-            "2) 현실적인 대안 생각 1문장 "
-            "3) 오늘 가능한 아주 작은 행동 1개(2~10분) "
-            "4) 챌린지 제안 + 선택지(지금 시작/나중에). "
-            "질문은 1개 이하, 강요 금지, 조언은 1~2개로 제한. "
-            "suggested_challenges는 challenge_candidates에서 1~2개만 선택해 반드시 채워라."
+            "이 턴은 대화 종료 턴이다. 사용자가 '대화 마침'을 누를 수 있게 한다. "
+            "reply는 3블록만 허용한다: "
+            "1) 오늘 요약(감정+상황+핵심생각 1~2문장) "
+            "2) 오늘 도움이 된 포인트 1문장 "
+            "3) 종료 안내 1문장('여기까지 하고, 추천 챌린지는 아래 박스에 띄울게요.'). "
+            "질문은 0개, 추가 행동/과제/연습 제안 금지. "
+            "suggested_challenges는 challenge_candidates에서 1~3개 선택해 채운다. challenge_rationale은 1문장. "
+            "이 MODE에서도 TURN_POLICY는 항상 우선 적용된다."
         )
     thought_web_addendum = ""
     if thought_web_mode:
@@ -828,7 +970,8 @@ def generate_cbt_reply(
             "intermediate_belief, core_belief, core_experience_hint(null 허용), "
             "cognitive_style(past_regret/future_worry/self_critical/control_fixation/over_responsibility), "
             "practice_point(오늘 연습 1줄). "
-            "reply에는 intermediate/core_belief를 단정적으로 말하지 말고 가능성으로만 부드럽게 다뤄라."
+            "reply에는 intermediate/core_belief를 단정적으로 말하지 말고 가능성으로만 부드럽게 다뤄라. "
+            "이 MODE에서도 TURN_POLICY는 항상 우선 적용된다."
         )
     candidate_text = ", ".join(challenge_candidates or [])
     crisis_addendum = ""
@@ -838,20 +981,38 @@ def generate_cbt_reply(
                 "[CRISIS MODE - STAGE B BRIDGE] "
                 "전화/연결 진행을 인정하고 대기 행동 2~3개만 짧게 제시하라. "
                 "번호 리스트(119/112/1393/1588-9191/1577-0199) 출력 금지. "
-                "확인 질문은 정확히 1개만 허용."
+                "확인 질문은 정확히 1개만 허용. "
+                "이 MODE에서도 TURN_POLICY는 항상 우선 적용된다."
             )
         elif (crisis_stage or "A").upper() == "C":
             crisis_addendum = (
                 "[CRISIS MODE - STAGE C AFTERCARE] "
                 "안전 확인 + 1~2시간 단기 계획(혼자 있지 않기/의료진에게 그대로 말하기/연락할 사람 1명 정하기)을 제시하라. "
-                "번호 리스트 출력 금지. CBT 분석 재개 금지(사용자 명시 요청 전까지)."
+                "번호 리스트 출력 금지. CBT 분석 재개 금지(사용자 명시 요청 전까지). "
+                "이 MODE에서도 TURN_POLICY는 항상 우선 적용된다."
             )
         else:
             crisis_addendum = (
                 "[CRISIS MODE - STAGE A CONNECT] "
                 "안전 확보 최우선. 도움 연결 안내(119/112/1393/1588-9191/1577-0199), "
-                "직접 위험 질문 1~2개, 즉시 행동 1개를 제시."
+                "직접 위험 질문 1~2개, 즉시 행동 1개를 제시. "
+                "이 MODE에서도 TURN_POLICY는 항상 우선 적용된다."
             )
+
+    turn_policy_block = (
+        "[TURN_POLICY] reply는 최대 4문장, 각 문장은 짧고 명확하게 작성한다. "
+        "감정반영은 최대 1문장. 설명/조언은 최대 1개. 질문은 정확히 1개만 허용하며 선택형(2~3 옵션)으로 작성한다. "
+        "같은 문장/표현 반복 금지.\n"
+        "[PHASE_POLICY] 현재 cbt_phase 작업만 수행하고 다른 단계는 다음 턴으로 미룬다.\n"
+        "[BUDGET_POLICY] EMOTION/SITUATION 탐색은 최대 2턴. 3턴째부터 THOUGHT 또는 ACTION으로 진행한다. "
+        "distress가 높은 경우(또는 moderate_plus) 먼저 2분 안정 행동 1개를 제시하고 질문 1개로 끝낸다.\n"
+        "[CHALLENGE_DELIVERY_POLICY] 챌린지는 대화 중 수행이 아니라 종료 후 UI 박스용 추천 목록이다. "
+        "FINISH MODE가 아니면 suggested_challenges는 반드시 빈 배열 []로 반환한다. "
+        "reply 본문에는 '챌린지 제안:' 같은 문구를 넣지 않는다.\n"
+        "[FINISH_MODE_EXIT_POLICY] FINISH MODE에서는 질문 0개, 추가 행동/과제/연습 제안 금지. "
+        "reply는 3블록(오늘 요약/도움 포인트/종료 안내)만 허용한다.\n"
+        "[OUTPUT_POLICY] JSON only. suggested_challenges는 FINISH MODE에서만 1~3개 허용, 그 외는 반드시 0개."
+    )
 
     system_prompt = (
         "너는 CBT(인지행동치료) 기반의 전문 심리상담 파트너다. "
@@ -862,7 +1023,7 @@ def generate_cbt_reply(
         "같은 시작 문장을 반복하지 말고, 직전 assistant 문장을 그대로 재사용하지 않는다. "
         "매 턴에는 반드시 사용자 최신 발화에 맞춘 구체 질문 1개를 포함한다. "
         "질문은 포괄형 대신 관찰 가능한 사실/감정/자동사고를 묻는 CBT형 질문만 사용한다. "
-        "문제 해결을 서두르지 말고, 정보가 부족하면 탐색 질문을 먼저 한다. "
+        "탐색은 길게 끌지 말고 단계 완료 기준 충족 즉시 다음 phase로 이동한다. "
         "사용자가 자책하면 먼저 정상화(normalization) 후 사실과 해석을 분리하도록 돕는다. "
         "응답은 반드시 엄격한 JSON으로만 반환한다. "
         "JSON keys: reply, extracted, suggested_challenges, challenge_rationale, summary_card, active_challenge, challenge_step_prompt, challenge_completed, completed_challenge, completion_message, cbt_phase, next_phase. "
@@ -876,7 +1037,7 @@ def generate_cbt_reply(
         "At least one distortion count must be >= 1 and aligned with extracted.distortions. "
         "summary_card must include 5 keys: situation, self_blame_signal, reframe, next_action, encouragement. "
         "reframe은 비난 없이 균형적 사고를 제시하고, next_action은 오늘 바로 가능한 1개 행동으로 작성한다. "
-        "When challenges are relevant, suggested_challenges must be 1 or 2 IDs only from the fixed catalog IDs. "
+        "suggested_challenges must be 1~3 IDs only in FINISH MODE, and must be [] in non-finish turns. "
         "challenge_completed must be true only when there is clear textual evidence of completion. "
         "When challenge_completed is true, completion_message should be '챌린지 수행을 완료하였습니다.'. "
         "If challenge_candidates are provided, suggested_challenges must choose from those IDs only. "
@@ -888,7 +1049,8 @@ def generate_cbt_reply(
         f"{finish_addendum} "
         f"{thought_web_addendum} "
         f"challenge_candidates={candidate_text}. "
-        f"{challenge_instruction}"
+        f"{challenge_instruction} "
+        f"{turn_policy_block}"
     )
 
     messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
@@ -920,6 +1082,7 @@ def generate_cbt_reply(
             crisis_level="none",
             crisis_stage=None,
         )
+    fallback.reply = _enforce_turn_reply_budget(fallback.reply, require_question=not finish_candidate)
     try:
         response = client.responses.create(
             model=settings.openai_model,
@@ -933,6 +1096,7 @@ def generate_cbt_reply(
     parsed = _extract_json_block(text)
     if not parsed:
         partial_reply = (text or "").strip()[:1500] or fallback.reply
+        partial_reply = _enforce_turn_reply_budget(partial_reply, require_question=not finish_candidate)
         return CBTLLMResult(
             reply=partial_reply,
             extracted=fallback.extracted,
@@ -951,7 +1115,8 @@ def generate_cbt_reply(
     reply = str(parsed.get("reply", "")).strip()[:1500] or ((text or "").strip()[:1500] or fallback.reply)
     last_assistant = _last_assistant_message(conversation_history)
     if _is_repetitive_against_last(reply, last_assistant):
-        reply = _phase_followup_prompt(resolved_phase, user_message)
+        reply = _phase_followup_prompt_with_context(resolved_phase, user_message, conversation_history)
+    reply = _enforce_turn_reply_budget(reply, require_question=not finish_candidate)
     try:
         extracted = _normalize_extracted(
             parsed.get("extracted", {}),
@@ -991,14 +1156,25 @@ def generate_cbt_reply(
     resolved_phase = _normalize_cbt_phase(parsed.get("cbt_phase")) or resolved_phase
     next_phase = _normalize_cbt_phase(parsed.get("next_phase")) or _next_phase(resolved_phase)
 
-    if not active_challenge and _should_defer_challenge(user_message, conversation_history):
+    if finish_candidate:
+        if not challenges:
+            challenges = candidate_ids[:3] if candidate_ids else (fallback.suggested_challenges[:3] or [])
+        challenges = challenges[:3]
+    else:
         challenges = []
+
+    if not active_challenge and _should_defer_challenge(user_message, conversation_history):
+        if not finish_candidate:
+            challenges = []
         if not step_prompt:
             step_prompt = "먼저 사건-감정-생각 흐름을 조금 더 들려주세요. 이후 맞춤 챌린지를 추천할게요."
-    if (resolved_phase == "ACTION" or moderate_plus or finish_candidate) and not challenges:
-        challenges = candidate_ids[:1] if candidate_ids else (fallback.suggested_challenges[:1] or [])
+    if finish_candidate and not challenges:
+        challenges = candidate_ids[:3] if candidate_ids else (fallback.suggested_challenges[:3] or [])
     if not challenge_rationale and challenges:
         challenge_rationale = "지금 상태에서 가장 부담이 적고 바로 실행 가능한 행동이라서 선택했습니다."
+
+    if finish_candidate:
+        reply = _enforce_finish_reply_shape(reply)
 
     return CBTLLMResult(
         reply=reply,

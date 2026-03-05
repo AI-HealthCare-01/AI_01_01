@@ -27,16 +27,17 @@ logger = logging.getLogger(__name__)
 CHALLENGE_POLICY_CONFIG_KEY = "challenge_policy_v1"
 CHALLENGE_CATALOG_IDS = [
     "MEDITATION_5MIN",
-    "SENSORY_MEDITATION",
-    "RHYTHM_GAME",
-    "MORNING_PATTERN",
+    "BREATHING_3MIN",
+    "MORNING_ROUTINE_VITAL",
     "SLEEP_HYGIENE_ROUTINE",
     "JOURNAL_STREAK",
     "GRATITUDE_LOTTERY",
-    "IPT_SUPPORTERS_MAP",
+    "GRATITUDE_3",
+    "SOCIAL_CONTACT_ONE",
     "SUNLIGHT_5MIN_3D",
+    "SUNLIGHT_20MIN",
     "WALK_10MIN_3D",
-    "WEEKLY_MINI_CHALLENGE",
+    "EXERCISE_WALK_20",
 ]
 HIGH_RISK_KEYWORDS = [
     "자살", "자해", "죽고 싶", "죽고싶", "죽는 게", "목숨", "해치고 싶", "kill myself", "suicide", "self-harm",
@@ -124,10 +125,10 @@ MODERATE_PLUS_KEYWORDS = [
 ]
 
 CHALLENGE_CANDIDATE_RULES = {
-    "ANXIETY": ["SENSORY_MEDITATION", "MEDITATION_5MIN", "RHYTHM_GAME"],
-    "SLEEP": ["SLEEP_HYGIENE_ROUTINE", "MORNING_PATTERN", "JOURNAL_STREAK"],
-    "LOW_ENERGY": ["SUNLIGHT_5MIN_3D", "WALK_10MIN_3D", "WEEKLY_MINI_CHALLENGE"],
-    "RELATION_SELFBLAME": ["GRATITUDE_LOTTERY", "IPT_SUPPORTERS_MAP", "JOURNAL_STREAK"],
+    "ANXIETY": ["BREATHING_3MIN", "MEDITATION_5MIN", "GRATITUDE_3"],
+    "SLEEP": ["SLEEP_HYGIENE_ROUTINE", "MORNING_ROUTINE_VITAL", "JOURNAL_STREAK"],
+    "LOW_ENERGY": ["SUNLIGHT_20MIN", "WALK_10MIN_3D", "EXERCISE_WALK_20"],
+    "RELATION_SELFBLAME": ["GRATITUDE_LOTTERY", "SOCIAL_CONTACT_ONE", "JOURNAL_STREAK"],
 }
 
 
@@ -554,7 +555,7 @@ def _build_finish_reply(summary_card: dict[str, str], challenge_name: str | None
     situation = (summary_card.get("situation") or "오늘 힘들었던 사건이 있었습니다.").strip()
     reframe = (summary_card.get("reframe") or "상황을 전부 내 잘못으로 단정하지 않기로 했습니다.").strip()
     next_action = (summary_card.get("next_action") or "호흡 2분 + 사실 1문장 기록").strip()
-    fallback = ["SENSORY_MEDITATION", "WALK_10MIN_3D", "JOURNAL_STREAK"]
+    fallback = ["BREATHING_3MIN", "WALK_10MIN_3D", "JOURNAL_STREAK"]
     fallback_idx = sum(ord(ch) for ch in situation) % len(fallback)
     challenge_line = challenge_name or fallback[fallback_idx]
     return (

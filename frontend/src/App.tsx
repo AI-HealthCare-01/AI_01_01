@@ -2412,11 +2412,38 @@ function App() {
     setChatHistory((prev) => [...prev, { role: 'assistant', content: `좋아요. '${challenge}'를 함께 진행해볼게요. 먼저 상황에서 확인 가능한 사실 1가지를 적어주세요. 그 다음 감정과 생각을 함께 정리해볼게요.`, createdAt: Date.now() }])
   }
 
-  function startSuggestedChallengeNow() {
+  function resolveChatSuggestedTemplateKey(rawSuggestion: string): string | null {
+    const normalized = rawSuggestion.trim().toUpperCase()
+    if (!normalized) return null
+    if (challengeLibrary.some((item) => item.template_key === normalized)) return normalized
+    const aliasMap: Record<string, string> = {
+      SENSORY_MEDITATION: 'MEDITATION_5MIN',
+      RHYTHM_GAME: 'BREATHING_3MIN',
+      MORNING_PATTERN: 'MORNING_ROUTINE_VITAL',
+      IPT_SUPPORTERS_MAP: 'SOCIAL_CONTACT_ONE',
+      WEEKLY_MINI_CHALLENGE: 'EXERCISE_WALK_20',
+    }
+    const mapped = aliasMap[normalized]
+    if (!mapped) return null
+    if (!challengeLibrary.some((item) => item.template_key === mapped)) return null
+    return mapped
+  }
+
+  async function startSuggestedChallengeNow() {
     const first = (chatResult?.suggested_challenges ?? [])[0]
     if (!first) return
-    startChallenge(first)
+    const templateKey = resolveChatSuggestedTemplateKey(first)
+    if (!templateKey) {
+      setMessage('추천 챌린지를 현재 라이브러리와 연결하지 못했습니다. 챌린지 탭에서 직접 선택해주세요.')
+      return
+    }
+    const started = await handleStartChallengeTemplate(templateKey)
+    if (!started) return
+    startChallenge(templateKey)
+    setSelectedTemplateKey(templateKey)
+    setPage('challenge')
     setChatChallengeCtaDismissed(true)
+    setMessage('추천 챌린지를 추가했고, 바로 시작할 수 있게 반영했어요.')
   }
 
   function dismissSuggestedChallengeCta() {
@@ -3112,10 +3139,25 @@ function App() {
   const sleepFallbackRisk = todayCheckinRecord?.sleep_hours != null
     ? Math.max(0, Math.min(100, (Math.abs(Number(todayCheckinRecord.sleep_hours) - 7.5) / 4.5) * 100))
     : null
-  const diaryDep = Math.round(latestWeekly?.dep_week_pred_0_100 ?? moodFallbackRisk ?? 55)
-  const diaryAnx = Math.round(latestWeekly?.anx_week_pred_0_100 ?? moodFallbackRisk ?? 55)
-  const diaryIns = Math.round(latestWeekly?.ins_week_pred_0_100 ?? sleepFallbackRisk ?? 55)
-  const diaryRiskLabel = (latestWeekly?.alert_level ?? 'low') === 'high' ? 'HIGH RISK' : (latestWeekly?.alert_level ?? 'low') === 'medium' ? 'MEDIUM RISK' : 'LOW RISK'
+  const diaryDep = latestWeekly?.dep_week_pred_0_100 != null
+    ? Math.round(latestWeekly.dep_week_pred_0_100)
+    : (moodFallbackRisk != null ? Math.round(moodFallbackRisk) : null)
+  const diaryAnx = latestWeekly?.anx_week_pred_0_100 != null
+    ? Math.round(latestWeekly.anx_week_pred_0_100)
+    : (moodFallbackRisk != null ? Math.round(moodFallbackRisk) : null)
+  const diaryIns = latestWeekly?.ins_week_pred_0_100 != null
+    ? Math.round(latestWeekly.ins_week_pred_0_100)
+    : (sleepFallbackRisk != null ? Math.round(sleepFallbackRisk) : null)
+  const diaryRiskLabel = latestWeekly
+    ? ((latestWeekly.alert_level ?? 'low') === 'high' ? 'HIGH RISK' : (latestWeekly.alert_level ?? 'low') === 'medium' ? 'MEDIUM RISK' : 'LOW RISK')
+    : 'CHECKIN BASED'
+  const hasWellnessData = diaryDep != null && diaryAnx != null && diaryIns != null
+  const mochiTipText = (challengeHintText || chatResult?.challenge_step_prompt || '').trim()
+  const activeChallengeLabel = useMemo(() => {
+    if (!activeChallenge) return ''
+    const item = challengeLibrary.find((x) => x.template_key === activeChallenge)
+    return item?.title ?? activeChallenge
+  }, [activeChallenge, challengeLibrary])
 
   const topMenuItems = useMemo<MenuItem[]>(() => {
     if (!token) {
@@ -3592,8 +3634,8 @@ function App() {
                     )}
                     {challenges.length > 0 && !chatChallengeCtaDismissed && (
                       <div className="actions">
-                        <button type="button" onClick={startSuggestedChallengeNow}>지금 시작</button>
-                        <button type="button" className="ghost" onClick={dismissSuggestedChallengeCta}>나중에</button>
+                        <button type="button" onClick={() => void startSuggestedChallengeNow()}>이 챌린지 할래요</button>
+                        <button type="button" className="ghost" onClick={dismissSuggestedChallengeCta}>나중에 할게요</button>
                       </div>
                     )}
                   </div>
@@ -3619,7 +3661,7 @@ function App() {
             <aside className="cbtRefinedSide">
               <article className="cbtRefinedCard">
                 <div className="cbtSearchWrap">
-                  <span>search</span>
+                  <span>대화 내 검색</span>
                   <input
                     aria-label="현재 세션 내 상담 기록 검색"
                     placeholder="현재 세션 내 검색 (공백 무시)"
@@ -3630,58 +3672,41 @@ function App() {
                 <p className="cbtSearchHint">현재 탭에 로드된 대화에서만 찾습니다. 예: ‘잠못자’ = ‘잠 못 자’</p>
               </article>
 
-              <article className="cbtRefinedCard">
-                <div className="cbtCardHead">
-                  <div>
-                    <h4>위험도 분석</h4>
-                    <p>30일 건강 트렌드</p>
+              {hasWellnessData && (
+                <article className="cbtRefinedCard">
+                  <div className="cbtCardHead">
+                    <h4>웰니스 지수</h4>
+                    <button type="button" disabled>실데이터</button>
                   </div>
-                </div>
-                <div className="cbtTrendChart">
-                  <svg viewBox="0 0 310 128" role="img" aria-label="risk trend line">
-                    <path d="M0,100 Q30,110 60,80 T120,60 T180,30 T240,50 T310,20" />
-                    <circle cx="180" cy="30" r="4" />
-                    <circle cx="310" cy="20" r="5" />
-                  </svg>
-                </div>
-                <div className="cbtTrendAxis">
-                  <span>1일차</span><span>15일차</span><span>오늘</span>
-                </div>
-              </article>
-
-              <article className="cbtRefinedCard">
-                <div className="cbtCardHead">
-                  <h4>웰니스 지수</h4>
-                  <button type="button">상세보기</button>
-                </div>
-                <div className="cbtWellnessBox">
-                  <div className="cbtStatusHead">
-                    <div>
-                      <p>현재 상태</p>
-                      <h5>{liveEmotionSummary.moodLabel}</h5>
+                  <div className="cbtWellnessBox">
+                    <div className="cbtStatusHead">
+                      <div>
+                        <p>현재 상태</p>
+                        <h5>{liveEmotionSummary.moodLabel}</h5>
+                      </div>
+                      <span>{diaryRiskLabel}</span>
                     </div>
-                    <span>{diaryRiskLabel}</span>
+                    <div className="cbtMetricRow">
+                      <div><span>우울 (DEP)</span><strong>{diaryDep}%</strong></div>
+                      <div className="cbtMetricBar peach"><b style={{ width: `${Math.max(4, diaryDep ?? 0)}%` }} /></div>
+                    </div>
+                    <div className="cbtMetricRow">
+                      <div><span>불안 (ANX)</span><strong>{diaryAnx}%</strong></div>
+                      <div className="cbtMetricBar lavender"><b style={{ width: `${Math.max(4, diaryAnx ?? 0)}%` }} /></div>
+                    </div>
+                    <div className="cbtMetricRow">
+                      <div><span>불면 (INS)</span><strong>{diaryIns}%</strong></div>
+                      <div className="cbtMetricBar neon"><b style={{ width: `${Math.max(4, diaryIns ?? 0)}%` }} /></div>
+                    </div>
                   </div>
-                  <div className="cbtMetricRow">
-                    <div><span>우울 (DEP)</span><strong>{diaryDep}%</strong></div>
-                    <div className="cbtMetricBar peach"><b style={{ width: `${Math.max(4, diaryDep)}%` }} /></div>
-                  </div>
-                  <div className="cbtMetricRow">
-                    <div><span>불안 (ANX)</span><strong>{diaryAnx}%</strong></div>
-                    <div className="cbtMetricBar lavender"><b style={{ width: `${Math.max(4, diaryAnx)}%` }} /></div>
-                  </div>
-                  <div className="cbtMetricRow">
-                    <div><span>불면 (INS)</span><strong>{diaryIns}%</strong></div>
-                    <div className="cbtMetricBar neon"><b style={{ width: `${Math.max(4, diaryIns)}%` }} /></div>
-                  </div>
-                </div>
-              </article>
+                </article>
+              )}
 
               <article className="cbtRefinedCard">
                 <h4>진행 중 생각 정리</h4>
                 {activeChallengeInProgress ? (
                   <>
-                    <p><strong>{activeChallenge}</strong></p>
+                    <p><strong>{activeChallengeLabel}</strong></p>
                     <p className="small">현재 단계: {challengePhase === 'start' ? '시작' : challengePhase === 'continue' ? '진행' : '정리'}</p>
                     <p className="small">{challengeHintText || chatResult?.challenge_step_prompt || '사실 1개, 감정 1개, 자동사고 1개를 순서대로 적어보세요.'}</p>
                   </>
@@ -3691,10 +3716,12 @@ function App() {
                 <p className="small">완료 {completedChallenges}/{challenges.length}</p>
               </article>
 
-              <article className="cbtRefinedCard cbtTipCard">
-                <h4>오늘의 모치 팁</h4>
-                <p>{challengeHintText || chatResult?.challenge_step_prompt || '압박감이 느껴질 때는 5분만 눈을 감고 주변 소리에 집중해보세요.'}</p>
-              </article>
+              {mochiTipText && (
+                <article className="cbtRefinedCard cbtTipCard">
+                  <h4>오늘의 모치 팁</h4>
+                  <p>{mochiTipText}</p>
+                </article>
+              )}
             </aside>
           </div>
 

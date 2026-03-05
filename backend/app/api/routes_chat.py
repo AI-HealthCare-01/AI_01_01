@@ -1024,6 +1024,13 @@ async def chat_cbt(
         recent_user_text=recent_user_text,
         prior_distress=prior_distress,
     )
+    user_turn_count = len(history_user_texts) + 1
+    allow_challenge_recommendation = bool(
+        payload.active_challenge
+        or finish_candidate
+        or (payload.cbt_phase == "ACTION")
+        or user_turn_count >= 5
+    )
     incoming_candidates = _sanitize_challenge_candidates(payload.challenge_candidates)
     challenge_candidates = incoming_candidates or _build_challenge_candidates(
         payload.message,
@@ -1034,6 +1041,8 @@ async def chat_cbt(
         sleep_hours=latest_checkin.sleep_hours if latest_checkin else None,
         recent_distortions=prior_distortions if isinstance(prior_distortions, list) else [],
     )
+    if not allow_challenge_recommendation:
+        challenge_candidates = []
     if (payload.cbt_phase == "ACTION" or payload.active_challenge or finish_candidate) and not challenge_candidates:
         challenge_candidates = []
 
@@ -1074,6 +1083,8 @@ async def chat_cbt(
         if result.suggested_challenges
         else []
     )
+    if not allow_challenge_recommendation:
+        filtered_suggestions = []
     filtered_suggestions = _sanitize_challenge_candidates(filtered_suggestions)
     if (moderate_plus or finish_candidate or (result.cbt_phase or "THOUGHT") == "ACTION") and not filtered_suggestions:
         filtered_suggestions = challenge_candidates[:1]

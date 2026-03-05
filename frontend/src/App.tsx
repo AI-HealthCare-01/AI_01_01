@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent, RefObject } from 'react'
 import './App.css'
 import AdminPage from './pages/admin/AdminPage'
@@ -1164,7 +1164,6 @@ function App() {
 
   const [chatMessage, setChatMessage] = useState('')
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([])
-  const [chatSearchQuery, setChatSearchQuery] = useState('')
   const [chatResult, setChatResult] = useState<ChatResponse | null>(null)
   const [chatSessionId, setChatSessionId] = useState<string>(() => {
     const saved = typeof window !== 'undefined' ? window.sessionStorage.getItem(CHAT_SESSION_STORAGE_KEY) : ''
@@ -1175,9 +1174,7 @@ function App() {
   const [challengePhase, setChallengePhase] = useState<'start' | 'continue' | 'reflect'>('continue')
   const [challengeStatus, setChallengeStatus] = useState<Record<string, boolean>>({})
   const [chatGenerating, setChatGenerating] = useState(false)
-  const [challengeHintText, setChallengeHintText] = useState('')
-  const [chatChallengeCtaDismissed, setChatChallengeCtaDismissed] = useState(false)
-  const [dialogueFinishedOpen, setDialogueFinishedOpen] = useState(false)
+  const [cbtFinished, setCbtFinished] = useState(false)
   const [crisisActionChecked, setCrisisActionChecked] = useState<Record<string, boolean>>({})
   const [boardFocusPostId, setBoardFocusPostId] = useState<string | null>(null)
 
@@ -1412,7 +1409,6 @@ function App() {
 
   useEffect(() => {
     if (!chatResult) return
-    setChatChallengeCtaDismissed(false)
     setChallengeStatus((prev) => {
       const next = { ...prev }
       for (const c of chatResult.suggested_challenges) {
@@ -2251,6 +2247,7 @@ function App() {
     ].filter(Boolean).join(', ')
 
     setPage('diary')
+    setCbtFinished(false)
     if (autoCbtStarted) return
 
     setLoading(true)
@@ -2270,7 +2267,6 @@ function App() {
       if (data.session_id) setChatSessionId(data.session_id)
       setChatResult(data)
       setChatHistory([{ role: 'assistant', content: data.reply, createdAt: Date.now() }])
-      setChallengeHintText(data.challenge_step_prompt ?? '')
       setAutoCbtStarted(true)
       setMessage('인지행동치료 대화를 시작했습니다.')
     } catch (error) {
@@ -2318,6 +2314,7 @@ function App() {
     }
 
     chatSubmitLockRef.current = true
+    setCbtFinished(false)
     const history = toChatHistoryPayload(chatHistory.filter((turn) => !turn.loading))
     const userTurnTime = Date.now()
     setChatHistory((prev) => [
@@ -2380,9 +2377,7 @@ function App() {
       const difficultyWords = ['어렵', '모르겠', '막혀', '힘들', 'confused', 'stuck']
       const isStuck = difficultyWords.some((w) => text.toLowerCase().includes(w))
       if (isStuck || (data.extracted?.distress_0_10 ?? 0) >= 7) {
-        setChallengeHintText(data.challenge_step_prompt ?? '지금 단계가 어렵다면 사실 1개, 생각 1개, 감정 1개만 짧게 적어보세요.')
-      } else if (data.challenge_step_prompt) {
-        setChallengeHintText(data.challenge_step_prompt)
+        setMessage(data.challenge_step_prompt ?? '지금 단계가 어렵다면 사실 1개, 생각 1개, 감정 1개만 짧게 적어보세요.')
       }
 
       setMessage('')
@@ -2408,7 +2403,6 @@ function App() {
     setActiveChallenge(challenge)
     setChallengePhase('start')
     setChallengeStatus((prev) => ({ ...prev, [challenge]: prev[challenge] ?? false }))
-    setChallengeHintText('선택한 생각 정리 도구를 단계별로 진행합니다. 사실-감정-생각 순서로 적어주세요.')
     setChatHistory((prev) => [...prev, { role: 'assistant', content: `좋아요. '${challenge}'를 함께 진행해볼게요. 먼저 상황에서 확인 가능한 사실 1가지를 적어주세요. 그 다음 감정과 생각을 함께 정리해볼게요.`, createdAt: Date.now() }])
   }
 
@@ -2429,10 +2423,9 @@ function App() {
     return mapped
   }
 
-  async function startSuggestedChallengeNow() {
-    const first = (chatResult?.suggested_challenges ?? [])[0]
-    if (!first) return
-    const templateKey = resolveChatSuggestedTemplateKey(first)
+  async function startSuggestedChallengeNow(templateKeyOverride?: string) {
+    const suggestedFirst = (chatResult?.suggested_challenges ?? [])[0]
+    const templateKey = templateKeyOverride ?? (suggestedFirst ? resolveChatSuggestedTemplateKey(suggestedFirst) : null)
     if (!templateKey) {
       setMessage('추천 챌린지를 현재 라이브러리와 연결하지 못했습니다. 챌린지 탭에서 직접 선택해주세요.')
       return
@@ -2442,13 +2435,25 @@ function App() {
     startChallenge(templateKey)
     setSelectedTemplateKey(templateKey)
     setPage('challenge')
-    setChatChallengeCtaDismissed(true)
-    setMessage('추천 챌린지를 추가했고, 바로 시작할 수 있게 반영했어요.')
+    setMessage('추천 챌린지가 추가되었습니다. 챌린지 탭에서 바로 수행할 수 있어요.')
   }
 
-  function dismissSuggestedChallengeCta() {
-    setChatChallengeCtaDismissed(true)
-    setMessage('지금은 보류하고, 원할 때 챌린지를 시작할 수 있어요.')
+  async function acceptAllAiRecommendations() {
+    if (!cbtFinished || aiChallengeRecommendations.length === 0) {
+      setMessage('대화를 마친 뒤 추천 챌린지를 확인해주세요.')
+      return
+    }
+    let added = 0
+    for (const item of aiChallengeRecommendations) {
+      const started = await handleStartChallengeTemplate(item.templateKey)
+      if (started) added += 1
+    }
+    if (added > 0) {
+      setPage('challenge')
+      setMessage(`${added}개의 추천 챌린지가 추가되었습니다.`)
+    } else {
+      setMessage('추가 가능한 추천 챌린지가 없습니다.')
+    }
   }
 
   async function handleFinishDialogue() {
@@ -2486,9 +2491,8 @@ function App() {
       if (!response.ok) throw new Error(await extractApiError(response))
       await loadMyDashboard()
       await loadCheckinHistory()
-      setDialogueFinishedOpen(true)
-      setPage('journal')
-      setMessage('대화를 마치고 일기 작성 단계로 이동합니다.')
+      setCbtFinished(true)
+      setMessage('대화를 마쳤습니다. 오른쪽 AI 기반 맞춤형 챌린지를 확인해보세요.')
     } catch (error) {
       setMessage(`대화 마치기 오류: ${(error as Error).message}`)
     } finally {
@@ -2976,13 +2980,6 @@ function App() {
   }, [chatResult])
 
   const challenges = (chatResult?.suggested_challenges ?? [])
-  const thoughtWeb = chatResult?.extracted?.thought_web ?? null
-  const normalizeSearchText = useCallback((text: string) => text.toLowerCase().replace(/\s+/g, ''), [])
-  const filteredChatHistory = useMemo(() => {
-    const q = normalizeSearchText(chatSearchQuery.trim())
-    if (!q) return chatHistory
-    return chatHistory.filter((turn) => normalizeSearchText(turn.content).includes(q))
-  }, [chatHistory, chatSearchQuery, normalizeSearchText])
   const todayCheckinRecord = useMemo(() => {
     const today = todayDateString()
     return checkinHistory.find((x) => x.timestamp.slice(0, 10) === today) ?? null
@@ -3001,8 +2998,6 @@ function App() {
       { key: 'screen', label: '스크린 균형', valueText: `${Number.isFinite(screen) ? screen : 0}m`, percent: clampPercent(100 - (((Number.isFinite(screen) ? screen : 0) / 240) * 100)), color: '#4b5563' },
     ]
   }, [todayCheckinRecord, checkin])
-  const completedChallenges = challenges.filter((c) => challengeStatus[c]).length
-  const activeChallengeInProgress = Boolean(activeChallenge) && !Boolean(challengeStatus[activeChallenge])
   const liveEmotionSummary = useMemo(() => {
     const recentUserText = [...chatHistory].reverse().find((t) => t.role === 'user')?.content ?? chatMessage
     const label = (chatResult?.extracted?.distress_0_10 ?? 0) >= 7 ? '고긴장' : (chatResult?.extracted?.distress_0_10 ?? 0) >= 4 ? '중간 긴장' : '비교적 안정'
@@ -3015,6 +3010,11 @@ function App() {
       nextAction: chatResult?.summary_card?.next_action ?? '-',
     }
   }, [chatHistory, chatMessage, chatResult])
+  const userTurnCount = useMemo(
+    () => chatHistory.filter((turn) => turn.role === 'user' && turn.content.trim().length > 0).length,
+    [chatHistory],
+  )
+  const shouldNudgeFinish = userTurnCount >= 6 && !(chatResult?.crisis_mode ?? false)
 
   const monthlyAttendance = useMemo(() => {
     const now = new Date()
@@ -3152,12 +3152,36 @@ function App() {
     ? ((latestWeekly.alert_level ?? 'low') === 'high' ? 'HIGH RISK' : (latestWeekly.alert_level ?? 'low') === 'medium' ? 'MEDIUM RISK' : 'LOW RISK')
     : 'CHECKIN BASED'
   const hasWellnessData = diaryDep != null && diaryAnx != null && diaryIns != null
-  const mochiTipText = (challengeHintText || chatResult?.challenge_step_prompt || '').trim()
-  const activeChallengeLabel = useMemo(() => {
-    if (!activeChallenge) return ''
-    const item = challengeLibrary.find((x) => x.template_key === activeChallenge)
-    return item?.title ?? activeChallenge
-  }, [activeChallenge, challengeLibrary])
+  const aiChallengeRecommendations = useMemo(() => {
+    if (diaryDep == null || diaryAnx == null || diaryIns == null) return [] as Array<{ templateKey: string; title: string; reason: string }>
+    const sorted = [
+      { group: '우울', score: diaryDep, candidates: ['EXERCISE_WALK_20', 'SUNLIGHT_20MIN', 'JOURNAL_STREAK_7D', 'GRATITUDE_3'] },
+      { group: '불안', score: diaryAnx, candidates: ['BREATHING_3MIN', 'MEDITATION_5MIN', 'BREATHING_3MIN_7D', 'GRATITUDE_3'] },
+      { group: '불면', score: diaryIns, candidates: ['SLEEP_HYGIENE_ROUTINE', 'NO_CAFFEINE_AFTER_2PM', 'MORNING_ROUTINE_VITAL', 'SUNLIGHT_20MIN'] },
+    ].sort((a, b) => b.score - a.score)
+    const top = sorted[0]
+    const second = sorted[1]
+    const isMixed = top.score - second.score < 8
+    const wellnessCandidates = isMixed
+      ? ['MORNING_ROUTINE_VITAL', 'SUNLIGHT_20MIN', 'BREATHING_3MIN', 'JOURNAL_STREAK_7D']
+      : top.candidates
+    const wellnessReason = isMixed
+      ? `우울/불안/불면 지표가 비슷하게 높아 복합 조절이 필요합니다.`
+      : `${top.group} 지표(${top.score}%)가 가장 높아 우선 조절이 필요합니다.`
+    const chatKeys = challenges
+      .map((raw) => resolveChatSuggestedTemplateKey(raw))
+      .filter((x): x is string => Boolean(x))
+    const merged = [...wellnessCandidates, ...chatKeys].filter((key, idx, arr) => arr.indexOf(key) === idx)
+    return merged
+      .map((key) => challengeLibrary.find((item) => item.template_key === key))
+      .filter((item): item is ChallengeTemplateItem => Boolean(item))
+      .slice(0, 3)
+      .map((item, idx) => ({
+        templateKey: item.template_key,
+        title: item.title,
+        reason: idx === 0 ? wellnessReason : '대화 맥락과 현재 상태를 함께 반영한 추천입니다.',
+      }))
+  }, [diaryDep, diaryAnx, diaryIns, challengeLibrary, challenges])
 
   const topMenuItems = useMemo<MenuItem[]>(() => {
     if (!token) {
@@ -3604,10 +3628,7 @@ function App() {
                   />
                 )}
                 {chatHistory.length === 0 && <div className="chatEmpty">오늘 있었던 사건, 감정, 생각의 흐름을 천천히 이야기해 주세요.</div>}
-                {chatHistory.length > 0 && filteredChatHistory.length === 0 && (
-                  <div className="chatEmpty">검색 결과가 없습니다.</div>
-                )}
-                {filteredChatHistory.map((turn, idx) => (
+                {chatHistory.map((turn, idx) => (
                   <div key={`turn-${idx}`} className={`cbtRefinedRow ${turn.role === 'user' ? 'user' : 'assistant'}`}>
                     <div className="cbtRefinedAvatar">{turn.role === 'user' ? 'U' : 'M'}</div>
                     <div className="cbtRefinedBubbleWrap">
@@ -3623,23 +3644,6 @@ function App() {
                   </div>
                 ))}
 
-                {(thoughtWeb || challenges.length > 0) && !(chatResult?.crisis_mode && chatResult?.crisis_stage === 'B') && (
-                  <div className="cbtRefinedThoughtWeb">
-                    <h4>생각그물 요약</h4>
-                    {thoughtWeb && (
-                      <>
-                        <p><strong>자동사고:</strong> {thoughtWeb.thought}</p>
-                        <p><strong>연습 포인트:</strong> {thoughtWeb.practice_point}</p>
-                      </>
-                    )}
-                    {challenges.length > 0 && !chatChallengeCtaDismissed && (
-                      <div className="actions">
-                        <button type="button" onClick={() => void startSuggestedChallengeNow()}>이 챌린지 할래요</button>
-                        <button type="button" className="ghost" onClick={dismissSuggestedChallengeCta}>나중에 할게요</button>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
 
               <form onSubmit={handleChatSubmit} className="cbtRefinedComposer">
@@ -3655,22 +3659,22 @@ function App() {
                   <button type="submit" className="cbtRefinedSend" disabled={loading || chatGenerating}>send</button>
                 </div>
                 <button type="button" className="chatFinishBtn" onClick={() => void handleFinishDialogue()} disabled={loading || chatGenerating}>대화 마치기</button>
+                {shouldNudgeFinish && (
+                  <p className="small">핵심 정리가 되었다면 `대화 마치기`로 저장 단계로 넘어가세요.</p>
+                )}
               </form>
             </article>
 
             <aside className="cbtRefinedSide">
-              <article className="cbtRefinedCard">
-                <div className="cbtSearchWrap">
-                  <span>대화 내 검색</span>
-                  <input
-                    aria-label="현재 세션 내 상담 기록 검색"
-                    placeholder="현재 세션 내 검색 (공백 무시)"
-                    value={chatSearchQuery}
-                    onChange={(e) => setChatSearchQuery(e.target.value)}
-                  />
-                </div>
-                <p className="cbtSearchHint">현재 탭에 로드된 대화에서만 찾습니다. 예: ‘잠못자’ = ‘잠 못 자’</p>
-              </article>
+              {(chatResult?.summary_card || aiChallengeRecommendations.length > 0 || challenges.length > 0) && (
+                <article className="cbtRefinedCard cbtSummaryDock">
+                  <h4>CBT 요약 노트</h4>
+                  <p><strong>상황:</strong> {liveEmotionSummary.situation || '-'}</p>
+                  <p><strong>생각 패턴:</strong> {liveEmotionSummary.selfBlameSignal || '-'}</p>
+                  <p><strong>균형 시각:</strong> {liveEmotionSummary.reframe || '-'}</p>
+                  <p><strong>다음 행동:</strong> {liveEmotionSummary.nextAction || '-'}</p>
+                </article>
+              )}
 
               {hasWellnessData && (
                 <article className="cbtRefinedCard">
@@ -3702,40 +3706,26 @@ function App() {
                 </article>
               )}
 
-              <article className="cbtRefinedCard">
-                <h4>진행 중 생각 정리</h4>
-                {activeChallengeInProgress ? (
-                  <>
-                    <p><strong>{activeChallengeLabel}</strong></p>
-                    <p className="small">현재 단계: {challengePhase === 'start' ? '시작' : challengePhase === 'continue' ? '진행' : '정리'}</p>
-                    <p className="small">{challengeHintText || chatResult?.challenge_step_prompt || '사실 1개, 감정 1개, 자동사고 1개를 순서대로 적어보세요.'}</p>
-                  </>
-                ) : (
-                  <p className="small">진행 중인 챌린지가 없습니다.</p>
-                )}
-                <p className="small">완료 {completedChallenges}/{challenges.length}</p>
-              </article>
-
-              {mochiTipText && (
-                <article className="cbtRefinedCard cbtTipCard">
-                  <h4>오늘의 모치 팁</h4>
-                  <p>{mochiTipText}</p>
+              {cbtFinished && aiChallengeRecommendations.length > 0 && (
+                <article className="cbtRefinedCard cbtChallengeRecommendation">
+                  <div className="cbtCardHead">
+                    <h4>AI 기반 맞춤형 챌린지 추천</h4>
+                    <button type="button" onClick={() => void acceptAllAiRecommendations()}>3개 한번에 수락</button>
+                  </div>
+                  {aiChallengeRecommendations.map((item) => (
+                    <div key={`ai-reco-${item.templateKey}`} className="miniCard">
+                      <p className="small"><strong>{item.title}</strong></p>
+                      <p className="small">{item.reason}</p>
+                      <div className="actions">
+                        <button type="button" onClick={() => void startSuggestedChallengeNow(item.templateKey)}>수락</button>
+                      </div>
+                    </div>
+                  ))}
                 </article>
               )}
             </aside>
           </div>
 
-          {dialogueFinishedOpen && (
-            <div className="dialogueDoneOverlay" role="dialog" aria-modal="true">
-              <div className="dialogueDoneCard">
-                <h3>대화를 마칩니다</h3>
-                <p>오늘도 수고하셨습니다. 기록해주신 내용은 대시보드와 리포트에 반영되었어요.</p>
-                <div className="actions">
-                  <button type="button" onClick={() => setDialogueFinishedOpen(false)}>확인</button>
-                </div>
-              </div>
-            </div>
-          )}
         </section>
       )}
 

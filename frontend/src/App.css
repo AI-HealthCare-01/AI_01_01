@@ -1107,10 +1107,13 @@ button:disabled {
   border-radius: 18px;
   background: #fff;
   overflow: hidden;
+  height: calc(100vh - 130px);
+  min-height: 620px;
 }
 
 .cbtRefinedGrid {
-  min-height: calc(100vh - 210px);
+  height: 100%;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
 }
@@ -1119,6 +1122,7 @@ button:disabled {
   display: grid;
   grid-template-rows: auto minmax(300px, 1fr) auto;
   border-right: 1px solid rgba(0, 0, 0, 0.12);
+  min-height: 0;
 }
 
 .cbtRefinedMainHead {
@@ -1176,6 +1180,7 @@ button:disabled {
   padding: 1.2rem;
   display: grid;
   gap: 0.85rem;
+  min-height: 0;
 }
 
 .cbtRefinedRow {
@@ -1290,6 +1295,7 @@ button:disabled {
   display: grid;
   gap: 0.85rem;
   align-content: start;
+  min-height: 0;
 }
 
 .cbtRefinedCard {
@@ -1302,6 +1308,32 @@ button:disabled {
 .cbtRefinedCard > h4 {
   margin: 0 0 0.45rem;
   font-size: 0.88rem;
+}
+
+.cbtSummaryDock {
+  position: relative;
+  background: #f6fff2;
+}
+
+.cbtSummaryDock p {
+  margin: 0.22rem 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.cbtChallengeRecommendation {
+  background: #fffdf1;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.cbtChallengeRecommendation .miniCard {
+  border: 1px solid #d7dfc8;
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.28rem;
 }
 
 .cbtCardHead {
@@ -3234,6 +3266,10 @@ button:disabled {
 }
 
 @media (max-width: 720px) {
+  .cbtSummaryDock {
+    position: relative;
+  }
+
   .checkinChallengeCardGrid {
     grid-template-columns: 1fr;
   }
@@ -3478,7 +3514,13 @@ svg {
 }
 
 @media (max-width: 1100px) {
+  .cbtRefinedPage {
+    height: auto;
+    min-height: 0;
+  }
+
   .cbtRefinedGrid {
+    height: auto;
     grid-template-columns: 1fr;
   }
 

@@ -1282,6 +1282,10 @@ function App() {
   const [reportStartDate, setReportStartDate] = useState(() => new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))
   const [reportEndDate, setReportEndDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [clinicalReport, setClinicalReport] = useState<ClinicalReport | null>(null)
+  const noticeShouldRouteAssessment = useMemo(
+    () => noticeText.includes('종합심리검사'),
+    [noticeText],
+  )
 
   const [profile, setProfile] = useState<ProfileOut | null>(null)
   const [profileNickname, setProfileNickname] = useState('')
@@ -2322,7 +2326,8 @@ function App() {
   }
 
   function isTestCompleted(key: TestKey): boolean {
-    return assessmentFlow[key].answers.every((v) => v != null)
+    const state = assessmentFlow[key]
+    return state.index >= state.answers.length - 1
   }
 
   function validateAssessmentFlow(): string | null {
@@ -3192,7 +3197,7 @@ function App() {
   const gadTotal = assessmentFlow.GAD.answers.reduce<number>((acc, v) => acc + Number(v ?? 0), 0)
   const sleepTotal = assessmentFlow.ISI.answers.reduce<number>((acc, v) => acc + Number(v ?? 0), 0)
   const assessmentTotalQuestions = PHQ9_QUESTIONS.length + GAD7_QUESTIONS.length + SLEEP_QUESTIONS.length
-  const assessmentAnswered = [...assessmentFlow.PHQ.answers, ...assessmentFlow.GAD.answers, ...assessmentFlow.ISI.answers].filter((v) => v != null).length
+  const assessmentAnswered = (assessmentFlow.PHQ.index + 1) + (assessmentFlow.GAD.index + 1) + (assessmentFlow.ISI.index + 1)
   const assessmentProgress = Math.round((assessmentAnswered / Math.max(1, assessmentTotalQuestions)) * 100)
   const assessmentAllCompleted = isTestCompleted('PHQ') && isTestCompleted('GAD') && isTestCompleted('ISI')
   const assessmentGuideText = !isTestCompleted('PHQ')
@@ -4727,11 +4732,12 @@ function App() {
               <button
                 type="button"
                 onClick={() => {
+                  if (noticeShouldRouteAssessment) setPage('assessment')
                   setNoticeOpen(false)
                   setMessage('')
                 }}
               >
-                확인
+                {noticeShouldRouteAssessment ? '이동하기' : '확인'}
               </button>
             </div>
           </div>

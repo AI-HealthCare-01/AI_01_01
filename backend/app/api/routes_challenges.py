@@ -399,19 +399,12 @@ def _template_duration_days(challenge_key: str) -> int:
     return max(1, int(template.get("default_duration_days", 1)))
 
 
-def _is_active_row_now(row: Any) -> bool:
-    # Legacy 키는 현재 활성 목록/제한 카운트에서 제외한다.
+def _is_active_row_today(row: Any) -> bool:
     if row.challenge_key not in CATALOG_MAP:
         return False
-    duration_days = _template_duration_days(row.challenge_key)
     created_kst = row.created_at.astimezone(KST)
     now_kst = datetime.now(KST)
-
-    # 하루형은 "당일만" 활성로 본다 (24시간 롤링 아님).
-    if duration_days <= 1:
-        return created_kst.date() == now_kst.date()
-
-    return created_kst + timedelta(days=duration_days) > now_kst
+    return created_kst.date() == now_kst.date()
 
 
 def _build_active_item(row, completions: list[dict[str, Any]]) -> dict[str, Any]:
@@ -510,7 +503,8 @@ async def get_active_challenges(
         if row.challenge_key not in CATALOG_MAP:
             continue
         if row.challenge_key not in active_by_key:
-            if not _is_active_row_now(row):
+            # 오늘 시작한 챌린지만 "진행 중"으로 노출/카운트한다.
+            if not _is_active_row_today(row):
                 continue
             active_by_key[row.challenge_key] = row
 
@@ -562,7 +556,8 @@ async def start_challenge(
         )
 
     active_row = await crud.get_active_challenge_history_by_key(db, user_id=current_user.id, challenge_key=key)
-    if active_row is not None and not _is_active_row_now(active_row):
+    # 과거 날짜에 시작된 미완료 레코드는 재시작 시 충돌하지 않도록 신규로 생성한다.
+    if active_row is not None and not _is_active_row_today(active_row):
         active_row = None
     if active_row is None:
         active_row = await crud.create_challenge_history(
@@ -594,6 +589,16 @@ async def complete_challenge(
     if payload.completed_flag:
         if payload.date != _today_kst_date():
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="하루 챌린지는 당일 기록만 허용됩니다.")
+        rows = await crud.list_challenge_histories_by_user(db, user_id=current_user.id, limit=1000)
+        today = _today_kst_date()
+        already_completed_today = any(
+            row.completed
+            and row.challenge_key == challenge.challenge_key
+            and row.created_at.astimezone(KST).date().isoformat() == today
+            for row in rows
+        )
+        if already_completed_today:
+            return {"ok": True}
         await crud.create_challenge_history(
             db,
             user_id=current_user.id,

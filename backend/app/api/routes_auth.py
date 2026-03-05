@@ -1,4 +1,5 @@
 from datetime import timedelta
+from time import monotonic
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -32,6 +33,54 @@ from app.services.admin_service import get_admin_email_set, is_email_blocked
 router = APIRouter(prefix="/auth", tags=["auth"])
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 _AUTH_SCHEMA_READY = False
+_AUTH_RATE_STATE: dict[str, dict[str, float | list[float]]] = {}
+_AUTH_FAIL_WINDOW_SEC = 300.0
+_AUTH_FAIL_MAX = 7
+_AUTH_BLOCK_SEC = 300.0
+
+
+def _auth_rate_key(kind: str, *, email: str | None = None, ip: str | None = None) -> str:
+    return f"{kind}:{(email or '').strip().lower()}:{(ip or '').strip()}"
+
+
+def _auth_rate_gc(now: float) -> None:
+    expired_keys = [
+        key
+        for key, state in _AUTH_RATE_STATE.items()
+        if float(state.get("blocked_until", 0.0)) <= now and not state.get("fails")
+    ]
+    for key in expired_keys:
+        _AUTH_RATE_STATE.pop(key, None)
+
+
+def _auth_rate_check(key: str) -> None:
+    now = monotonic()
+    state = _AUTH_RATE_STATE.get(key)
+    if not state:
+        return
+    blocked_until = float(state.get("blocked_until", 0.0))
+    if blocked_until > now:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="요청이 너무 많습니다. 잠시 후 다시 시도해주세요.")
+    fails = [ts for ts in list(state.get("fails", [])) if (now - float(ts)) <= _AUTH_FAIL_WINDOW_SEC]
+    state["fails"] = fails
+    if len(fails) >= _AUTH_FAIL_MAX:
+        state["fails"] = []
+        state["blocked_until"] = now + _AUTH_BLOCK_SEC
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="요청이 너무 많습니다. 잠시 후 다시 시도해주세요.")
+    _auth_rate_gc(now)
+
+
+def _auth_rate_fail(key: str) -> None:
+    now = monotonic()
+    state = _AUTH_RATE_STATE.setdefault(key, {"fails": [], "blocked_until": 0.0})
+    fails = [ts for ts in list(state.get("fails", [])) if (now - float(ts)) <= _AUTH_FAIL_WINDOW_SEC]
+    fails.append(now)
+    state["fails"] = fails
+    _auth_rate_gc(now)
+
+
+def _auth_rate_success(key: str) -> None:
+    _AUTH_RATE_STATE.pop(key, None)
 
 
 async def _is_admin_email(db: AsyncSession, email: str) -> bool:
@@ -184,21 +233,27 @@ async def signup(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> Use
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: UserLogin, request: Request, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     await _ensure_auth_schema(db)
+    ip = _extract_client_ip(request)
+    key = _auth_rate_key("login", email=payload.email, ip=ip)
+    _auth_rate_check(key)
 
     if await is_email_blocked(db, payload.email):
+        _auth_rate_fail(key)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="차단된 계정입니다. 관리자에게 문의하세요.")
 
     user = await crud.authenticate_user(db, payload.email, payload.password)
     if not user:
+        _auth_rate_fail(key)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
 
-    ip = _extract_client_ip(request)
     if ip and await crud.is_ip_blocked(db, ip):
         if not await _is_admin_email(db, user.email):
+            _auth_rate_fail(key)
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="차단된 IP입니다. 관리자에게 문의하세요.")
 
     expires_delta = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     token = create_access_token(subject=str(user.id), expires_delta=expires_delta)
+    _auth_rate_success(key)
     try:
         await crud.create_login_event(db, user.id, login_ip=ip)
     except Exception:
@@ -228,9 +283,13 @@ async def password_recovery_verify(
     payload: PasswordRecoveryVerifyRequest,
     db: AsyncSession = Depends(get_db),
 ) -> PasswordRecoveryVerifyResponse:
+    key = _auth_rate_key("recovery-verify", email=payload.email, ip=None)
+    _auth_rate_check(key)
     matched = await crud.verify_security_answer(db, payload.email, payload.security_answer)
     if not matched:
+        _auth_rate_fail(key)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="보안 질문 답변이 일치하지 않습니다.")
+    _auth_rate_success(key)
     return PasswordRecoveryVerifyResponse(matched=True)
 
 
@@ -239,6 +298,8 @@ async def password_recovery_reset(
     payload: PasswordRecoveryResetRequest,
     db: AsyncSession = Depends(get_db),
 ) -> PasswordRecoveryResetResponse:
+    key = _auth_rate_key("recovery-reset", email=payload.email, ip=None)
+    _auth_rate_check(key)
     ok = await crud.reset_password_by_security_answer(
         db,
         payload.email,
@@ -246,7 +307,9 @@ async def password_recovery_reset(
         payload.new_password,
     )
     if not ok:
+        _auth_rate_fail(key)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="비밀번호 재설정에 실패했습니다.")
+    _auth_rate_success(key)
     return PasswordRecoveryResetResponse(message="비밀번호가 변경되었습니다.")
 
 

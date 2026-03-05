@@ -232,11 +232,6 @@ def _enforce_turn_reply_budget(reply: str, require_question: bool = True) -> str
         normalized.append(s)
 
     out = normalized[:4]
-    if require_question and out and not any("?" in s for s in out):
-        if len(out) == 4:
-            out[-1] = out[-1].rstrip(".! ") + "."
-        else:
-            out.append("지금은 1) 사실 정리 2) 대안 생각 3) 2분 행동 중 무엇부터 할까요?")
 
     merged = " ".join(out).strip()
     if len(merged) > 240:
@@ -1009,6 +1004,8 @@ def generate_cbt_reply(
         "[CHALLENGE_DELIVERY_POLICY] 챌린지는 대화 중 수행이 아니라 종료 후 UI 박스용 추천 목록이다. "
         "FINISH MODE가 아니면 suggested_challenges는 반드시 빈 배열 []로 반환한다. "
         "reply 본문에는 '챌린지 제안:' 같은 문구를 넣지 않는다.\n"
+        "[CHAT_STAGE_POLICY] 이 chat 단계에서는 UI 안내(아래 박스/대화 마치기/대화 마침) 문구를 절대 쓰지 않는다. "
+        "종료 유도 질문(마칠까요/끝낼까요)도 금지한다.\n"
         "[FINISH_MODE_EXIT_POLICY] FINISH MODE에서는 질문 0개, 추가 행동/과제/연습 제안 금지. "
         "reply는 3블록(오늘 요약/도움 포인트/종료 안내)만 허용한다.\n"
         "[OUTPUT_POLICY] JSON only. suggested_challenges는 FINISH MODE에서만 1~3개 허용, 그 외는 반드시 0개."

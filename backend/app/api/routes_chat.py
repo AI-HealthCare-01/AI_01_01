@@ -1,9 +1,10 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
+import hashlib
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -12,7 +13,13 @@ from app.api.routes_auth import get_current_user
 from app.db import crud
 from app.db.session import get_db
 from app.schemas.auth import UserOut
-from app.schemas.chat import ChallengeRecommendResponse, ChatRequest, ChatResponse
+from app.schemas.chat import (
+    ChallengeRecommendResponse,
+    ChatCloseRequest,
+    ChatCloseResponse,
+    ChatRequest,
+    ChatResponse,
+)
 from app.services.challenge_recommend import (
     default_challenge_policy,
     detect_technique,
@@ -585,6 +592,143 @@ def _build_finish_reply(summary_card: dict[str, str], challenge_name: str | None
     )
 
 
+def _strip_ui_or_close_nudges(reply: str) -> str:
+    text = (reply or "").strip()
+    banned_tokens = [
+        "아래 박스",
+        "대화 마치기",
+        "대화 마침",
+        "마칠까요",
+        "끝낼까요",
+        "챌린지 제안",
+        "추천 챌린지",
+    ]
+    for token in banned_tokens:
+        text = text.replace(token, "")
+    return " ".join(text.split())
+
+
+def _seeded_order(pool: list[str], *, seed: str | None = None) -> list[str]:
+    raw_seed = str(seed or "").strip()
+    if not raw_seed:
+        return list(pool)
+    ordered = sorted(
+        pool,
+        key=lambda item: hashlib.sha256(f"{raw_seed}:{item}".encode("utf-8")).hexdigest(),
+    )
+    return ordered
+
+
+def _rotate_pick(pool: list[str], *, size: int, seed: str | None = None) -> list[str]:
+    ordered = _seeded_order(pool, seed=seed)
+    picked: list[str] = []
+    for item in ordered:
+        if item not in picked:
+            picked.append(item)
+        if len(picked) >= size:
+            break
+    return picked
+
+
+def _choose_close_recommendations(challenge_candidates: list[str], dep: int, anx: int, ins: int, *, seed: str | None = None) -> list[str]:
+    cleaned = [c.strip() for c in challenge_candidates if c and c.strip() in CHALLENGE_CATALOG_IDS]
+    if cleaned:
+        return _rotate_pick(cleaned, size=3, seed=seed)
+    ranked = sorted(
+        [("dep", dep), ("anx", anx), ("ins", ins)],
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    top = ranked[0][0]
+    mixed_seed = f"{seed}:{dep}:{anx}:{ins}"
+    if top == "anx":
+        pool = ["BREATHING_3MIN", "MEDITATION_5MIN", "GRATITUDE_3", "SUNLIGHT_20MIN", "WALK_10MIN_3D"]
+        return _rotate_pick(pool, size=3, seed=mixed_seed)
+    if top == "ins":
+        pool = ["SLEEP_HYGIENE_ROUTINE", "MORNING_ROUTINE_VITAL", "SUNLIGHT_20MIN", "BREATHING_3MIN", "MEDITATION_5MIN"]
+        return _rotate_pick(pool, size=3, seed=mixed_seed)
+    pool = ["EXERCISE_WALK_20", "SUNLIGHT_20MIN", "JOURNAL_STREAK", "MORNING_ROUTINE_VITAL", "GRATITUDE_3"]
+    return _rotate_pick(pool, size=3, seed=mixed_seed)
+
+
+_LOW_INFO_UTTERANCES = {
+    "넵", "네", "응", "ㅇㅇ", "ok", "오케이", "좋아요", "그래요", "맞아요", "알겠어요", "알겠습니다",
+}
+
+
+def _is_low_info_utterance(text: str) -> bool:
+    t = str(text or "").strip().lower()
+    if not t:
+        return True
+    if t in _LOW_INFO_UTTERANCES:
+        return True
+    return len(t) <= 3
+
+
+def _pick_close_situation(history_user_texts: list[str]) -> str:
+    for text in reversed(history_user_texts):
+        if not _is_low_info_utterance(text):
+            return text.strip()[:160]
+    for text in reversed(history_user_texts):
+        if str(text).strip():
+            return str(text).strip()[:160]
+    return "오늘의 부담 상황을 짧게 정리하는 대화를 진행했습니다."
+
+
+def _build_dynamic_close_summary(
+    *,
+    history_user_texts: list[str],
+    extracted: dict[str, Any],
+    dep: int,
+    anx: int,
+    ins: int,
+) -> dict[str, str]:
+    situation = _pick_close_situation(history_user_texts)
+    distortions = extracted.get("distortions") if isinstance(extracted, dict) else []
+    distortions = distortions if isinstance(distortions, list) else []
+    top_metric, top_score = max([("우울", dep), ("불안", anx), ("불면", ins)], key=lambda x: x[1])
+
+    if "should_statements" in distortions:
+        thought_pattern = "‘반드시 해야 한다’는 당위 사고가 부담을 키운 흐름이 보입니다."
+    elif "catastrophizing" in distortions:
+        thought_pattern = "결과를 최악으로 예측하는 파국화 사고가 긴장을 키운 흐름이 보입니다."
+    elif "mind_reading" in distortions:
+        thought_pattern = "상대 반응을 단정하는 독심추론이 불안을 키웠을 가능성이 있습니다."
+    elif "all_or_nothing" in distortions:
+        thought_pattern = "흑백사고로 기준이 과도하게 높아지며 피로가 커진 흐름이 보입니다."
+    elif "overgeneralization" in distortions:
+        thought_pattern = "한 번의 부담을 전체 실패로 확대해석하는 패턴이 관찰됩니다."
+    elif "personalization_overresponsibility" in distortions:
+        thought_pattern = "과잉책임/자기비난 사고가 부담을 키우는 흐름이 보입니다."
+    else:
+        thought_pattern = "부담 상황에서 생각이 빠르게 확대되는 패턴을 점검할 필요가 있습니다."
+
+    if top_metric == "불안":
+        reframe = "지금의 긴장은 실제 위협 그 자체라기보다 과부하 반응일 수 있어, 사실과 예측을 분리하면 부담이 줄어듭니다."
+        next_action = "오늘 장면 1개에서 ‘확인된 사실 1줄’과 ‘머릿속 예측 1줄’을 나눠 적어보세요."
+    elif top_metric == "불면":
+        reframe = "피로와 수면 영향으로 생각이 더 비관적으로 기울 수 있으니, 컨디션 요인을 함께 고려해 해석을 조정해보는 게 좋습니다."
+        next_action = "취침 전 10분만 화면을 줄이고, 내일 걱정할 항목 1개를 메모한 뒤 마무리해보세요."
+    elif top_metric == "우울":
+        reframe = "지금의 무거운 감정은 의지 부족이 아니라 과부하 신호일 수 있으며, 작은 단위로 나누면 실행 가능성이 올라갑니다."
+        next_action = "오늘 해야 할 일에서 가장 작은 단위 1개만 정해 10분 타이머로 시작해보세요."
+    else:
+        reframe = "현재 감정은 과부하 상황에 대한 자연스러운 반응일 수 있으며, 해석을 조정하면 부담을 줄일 수 있습니다."
+        next_action = "오늘 있었던 사건 1개에 대해 사실/생각/감정을 한 줄씩 짧게 기록해보세요."
+
+    if top_score <= 0:
+        reframe = "현재 상태를 점검하고 말로 정리한 과정 자체가 감정 조절에 도움이 됩니다."
+        next_action = "오늘 대화에서 도움이 된 문장 1개를 기록해 두고 필요할 때 다시 확인해보세요."
+
+    return {
+        "situation": situation,
+        "self_blame_signal": thought_pattern,
+        "reframe": reframe,
+        "next_action": next_action,
+        "encouragement": "핵심을 정리하고 멈춘 선택 자체가 회복에 도움이 됩니다.",
+    }
+
+
 def _build_challenge_candidates(
     message: str,
     *,
@@ -705,32 +849,141 @@ async def get_today_chat_session(
         }
 
     latest = rows[-1]
+    closed_rows = [
+        row
+        for row in rows
+        if str(row.user_message or "").strip() == "[close]"
+        or (isinstance(row.extracted, dict) and isinstance(row.extracted.get("close_summary_card"), dict))
+    ]
+    if closed_rows:
+        latest = closed_rows[-1]
+
     target_session_id = latest.session_id
     if target_session_id:
         rows = [row for row in rows if row.session_id == target_session_id]
         if not rows:
             rows = [latest]
+    latest = rows[-1]
 
     turns: list[dict[str, Any]] = []
     for row in rows:
         user_text = str(row.user_message or "").strip()
         assistant_text = str(row.assistant_reply or "").strip()
         created_at = row.created_at.astimezone(timezone.utc).isoformat()
-        if user_text:
+        if user_text and user_text != "[close]":
             turns.append({"role": "user", "content": user_text, "created_at": created_at})
         if assistant_text:
             turns.append({"role": "assistant", "content": assistant_text, "created_at": created_at})
+
+    latest_extracted = latest.extracted if isinstance(latest.extracted, dict) else {}
+    close_summary_card = latest_extracted.get("close_summary_card") if isinstance(latest_extracted.get("close_summary_card"), dict) else None
+    close_recommendations = latest_extracted.get("close_recommendations") if isinstance(latest_extracted.get("close_recommendations"), list) else []
+    is_closed = bool(latest.user_message == "[close]" or close_summary_card)
 
     return {
         "session_id": target_session_id,
         "session_date": day_start_kst.date().isoformat(),
         "turns": turns,
         "latest": {
-            "extracted": latest.extracted if isinstance(latest.extracted, dict) else {},
+            "extracted": latest_extracted,
             "suggested_challenges": latest.suggested_challenges if isinstance(latest.suggested_challenges, list) else [],
             "assistant_reply": latest.assistant_reply,
+            "close_summary_card": close_summary_card,
+            "close_recommendations": close_recommendations,
+            "is_closed": is_closed,
         },
     }
+
+
+@router.post("/cbt/close", response_model=ChatCloseResponse)
+async def close_cbt_session(
+    payload: ChatCloseRequest,
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ChatCloseResponse:
+    await _ensure_chat_schema(db)
+
+    latest_event = await crud.get_latest_chat_event_by_session(
+        db=db,
+        user_id=current_user.id,
+        session_id=payload.session_id,
+    )
+    if latest_event is None:
+        raise HTTPException(status_code=404, detail="진행 중 CBT 세션을 찾을 수 없습니다. 먼저 대화를 시작해주세요.")
+    history_user_texts = [
+        str(turn.content).strip()
+        for turn in payload.conversation_history
+        if turn.role == "user" and str(turn.content).strip() and str(turn.content).strip() != "[close]"
+    ]
+    extracted = latest_event.extracted if latest_event and isinstance(latest_event.extracted, dict) else {}
+
+    dep = int(payload.wellness.dep or 0) if payload.wellness else 0
+    anx = int(payload.wellness.anx or 0) if payload.wellness else 0
+    ins = int(payload.wellness.ins or 0) if payload.wellness else 0
+
+    summary_card = _build_dynamic_close_summary(
+        history_user_texts=history_user_texts,
+        extracted=extracted if isinstance(extracted, dict) else {},
+        dep=dep,
+        anx=anx,
+        ins=ins,
+    )
+
+    picked = _choose_close_recommendations(
+        payload.challenge_candidates,
+        dep,
+        anx,
+        ins,
+        seed=str(current_user.id),
+    )
+    policy = await _load_challenge_policy(db)
+    recent = await crud.list_recent_challenge_histories(db=db, user_id=current_user.id, days=int(policy["window_days"]))
+    recent_keys = {str(h.challenge_key or "").strip().upper() for h in recent if str(h.challenge_key or "").strip()}
+    deduped = [key for key in picked if key not in recent_keys]
+    if len(deduped) < 3:
+        fallback_pool = [key for key in _seeded_order(CHALLENGE_CATALOG_IDS, seed=f"{current_user.id}:{dep}:{anx}:{ins}") if key not in recent_keys]
+        for key in fallback_pool:
+            if key not in deduped:
+                deduped.append(key)
+            if len(deduped) >= 3:
+                break
+    picked = deduped[:3]
+    top_metric = max([("우울", dep), ("불안", anx), ("불면", ins)], key=lambda x: x[1])
+    recommendations: list[dict[str, str]] = []
+    for idx, key in enumerate(picked):
+        title = _challenge_display_name(key) or key
+        if idx == 0 and top_metric[1] > 0:
+            reason = f"{top_metric[0]} 지표({top_metric[1]}%)와 대화 흐름을 반영해 우선 추천합니다."
+        else:
+            reason = "대화 내용과 웰니스 상태를 함께 반영한 맞춤 추천입니다."
+        recommendations.append({"template_key": key, "title": title, "reason": reason})
+
+    reply = (
+        f"오늘 요약: {summary_card['situation']}\n"
+        f"도움이 된 포인트: {summary_card['reframe']}\n"
+        "여기까지 정리하고 대화를 마칩니다."
+    )
+    persisted_extracted = dict(extracted) if isinstance(extracted, dict) else {}
+    persisted_extracted["close_summary_card"] = summary_card
+    persisted_extracted["close_recommendations"] = recommendations
+    persisted_extracted["is_closed"] = True
+    await crud.create_chat_event(
+        db=db,
+        user_id=current_user.id,
+        user_message="[close]",
+        assistant_reply=reply,
+        extracted=persisted_extracted,
+        suggested_challenges=picked,
+        session_id=payload.session_id,
+    )
+    return ChatCloseResponse(
+        session_id=payload.session_id,
+        summary_card=summary_card,
+        suggested_challenges=picked,
+        recommendations=recommendations,
+        challenge_rationale="대화 맥락과 웰니스 지표를 함께 반영해 우선순위를 정했습니다.",
+        message="세션 저장이 완료되었습니다.",
+    )
 
 
 @router.post("/cbt", response_model=ChatResponse)
@@ -739,6 +992,8 @@ async def chat_cbt(
     current_user: UserOut = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ChatResponse:
+    if not str(payload.message or "").strip():
+        raise HTTPException(status_code=400, detail="대화 내용을 입력해주세요.")
     await _ensure_chat_schema(db)
     policy = await _load_challenge_policy(db)
     risk_level = _classify_risk_level(payload.message)
@@ -753,8 +1008,8 @@ async def chat_cbt(
         latest_event = await crud.get_latest_chat_event(db=db, user_id=current_user.id)
     latest_extracted = latest_event.extracted if latest_event and isinstance(latest_event.extracted, dict) else {}
     last_assistant_reply = str(latest_event.assistant_reply or "") if latest_event else ""
-    finish_intent = _is_finish_intent(payload.message)
-    waiting_finish_confirm = "이 요약으로 저장할까요? (저장/수정)" in last_assistant_reply
+    finish_intent = False
+    waiting_finish_confirm = False
     if waiting_finish_confirm and _is_finish_save_confirm(payload.message):
         extracted = dict(latest_extracted) if isinstance(latest_extracted, dict) else {
             "distress_0_10": 4,
@@ -1078,12 +1333,7 @@ async def chat_cbt(
             crisis_actions=[],
         )
     latest_checkin = await crud.get_latest_checkin(db=db, user_id=current_user.id)
-    finish_candidate = finish_intent or _is_finish_candidate(
-        payload.message,
-        cbt_phase=payload.cbt_phase,
-        active_challenge=payload.active_challenge,
-        history_user_texts=history_user_texts,
-    )
+    finish_candidate = False
     thought_web_mode = _is_thought_web_mode(
         message=payload.message,
         cbt_phase=payload.cbt_phase,
@@ -1097,12 +1347,7 @@ async def chat_cbt(
         prior_distress=prior_distress,
     )
     user_turn_count = len(history_user_texts) + 1
-    allow_challenge_recommendation = bool(
-        payload.active_challenge
-        or finish_candidate
-        or (payload.cbt_phase == "ACTION")
-        or user_turn_count >= 5
-    )
+    allow_challenge_recommendation = False
     incoming_candidates = _sanitize_challenge_candidates(payload.challenge_candidates)
     challenge_candidates = incoming_candidates or _build_challenge_candidates(
         payload.message,
@@ -1143,30 +1388,9 @@ async def chat_cbt(
     )
 
     recent = await crud.list_recent_challenge_histories(db=db, user_id=current_user.id, days=int(policy["window_days"]))
-    filtered_suggestions = (
-        pick_non_duplicate_challenges(
-            llm_suggestions=result.suggested_challenges,
-            recent_challenge_names=[h.challenge_name for h in recent],
-            recent_techniques=[h.technique for h in recent],
-            size=3,
-            similarity_threshold=float(policy["similarity_threshold"]),
-            repeatable_techniques=list(policy["repeatable_techniques"]),
-        )
-        if result.suggested_challenges
-        else []
-    )
-    if not allow_challenge_recommendation:
-        filtered_suggestions = []
-    filtered_suggestions = _sanitize_challenge_candidates(filtered_suggestions)
+    filtered_suggestions: list[str] = []
     summary_card = dict(result.summary_card)
-
-    if finish_intent:
-        if not filtered_suggestions:
-            filtered_suggestions = _sanitize_challenge_candidates(challenge_candidates[:3])
-        filtered_suggestions = filtered_suggestions[:3]
-        result.reply = _build_finish_reply(summary_card, filtered_suggestions[0] if filtered_suggestions else None)
-    else:
-        filtered_suggestions = []
+    result.reply = _strip_ui_or_close_nudges(result.reply)
 
     if result.challenge_completed and result.completed_challenge:
         done_name = result.completed_challenge.strip()[:200]

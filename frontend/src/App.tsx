@@ -123,7 +123,24 @@ type TodayChatSessionResponse = {
     extracted?: ChatResponse['extracted']
     suggested_challenges?: string[]
     assistant_reply?: string
+    close_summary_card?: ChatCloseResponse['summary_card'] | null
+    close_recommendations?: Array<{ template_key: string; title: string; reason: string }>
+    is_closed?: boolean
   } | null
+}
+type ChatCloseResponse = {
+  session_id: string
+  summary_card: {
+    situation: string
+    self_blame_signal: string
+    reframe: string
+    next_action: string
+    encouragement: string
+  }
+  suggested_challenges: string[]
+  recommendations: Array<{ template_key: string; title: string; reason: string }>
+  challenge_rationale?: string | null
+  message: string
 }
 
 type WeeklyDashboardRow = {
@@ -399,6 +416,7 @@ const defaultCheckin: LifestyleCheckinState = {
 }
 
 const CHAT_SESSION_STORAGE_KEY = 'mh_chat_session_id'
+const CBT_CLOSE_SNAPSHOT_KEY = 'mh_cbt_close_snapshot_v1'
 
 function createChatSessionId(): string {
   if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -1177,6 +1195,7 @@ function App() {
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([])
   const [chatResult, setChatResult] = useState<ChatResponse | null>(null)
   const [chatSessionDate, setChatSessionDate] = useState('')
+  const [closeRecommendations, setCloseRecommendations] = useState<Array<{ templateKey: string; title: string; reason: string }>>([])
   const [chatSessionId, setChatSessionId] = useState<string>(() => {
     const saved = typeof window !== 'undefined' ? window.sessionStorage.getItem(CHAT_SESSION_STORAGE_KEY) : ''
     if (saved && /^[0-9a-fA-F-]{36}$/.test(saved)) return saved
@@ -1257,6 +1276,53 @@ function App() {
     window.sessionStorage.setItem(CHAT_SESSION_STORAGE_KEY, chatSessionId)
   }, [chatSessionId])
 
+  function clearCbtCloseSnapshot() {
+    if (typeof window === 'undefined') return
+    window.localStorage.removeItem(CBT_CLOSE_SNAPSHOT_KEY)
+  }
+
+  function saveCbtCloseSnapshot(payload: {
+    sessionDate: string
+    sessionId: string
+    summaryCard: ChatCloseResponse['summary_card']
+    recommendations: Array<{ templateKey: string; title: string; reason: string }>
+    suggestedChallenges: string[]
+  }) {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(CBT_CLOSE_SNAPSHOT_KEY, JSON.stringify(payload))
+  }
+
+  function loadCbtCloseSnapshot() {
+    if (typeof window === 'undefined') return null as null | {
+      sessionDate: string
+      sessionId: string
+      summaryCard: ChatCloseResponse['summary_card']
+      recommendations: Array<{ templateKey: string; title: string; reason: string }>
+      suggestedChallenges: string[]
+    }
+    const raw = window.localStorage.getItem(CBT_CLOSE_SNAPSHOT_KEY)
+    if (!raw) return null
+    try {
+      const parsed = JSON.parse(raw) as {
+        sessionDate?: string
+        sessionId?: string
+        summaryCard?: ChatCloseResponse['summary_card']
+        recommendations?: Array<{ templateKey: string; title: string; reason: string }>
+        suggestedChallenges?: string[]
+      }
+      if (!parsed.sessionDate || !parsed.sessionId || !parsed.summaryCard) return null
+      return {
+        sessionDate: parsed.sessionDate,
+        sessionId: parsed.sessionId,
+        summaryCard: parsed.summaryCard,
+        recommendations: parsed.recommendations ?? [],
+        suggestedChallenges: parsed.suggestedChallenges ?? [],
+      }
+    } catch {
+      return null
+    }
+  }
+
   useEffect(() => {
     setCrisisActionChecked({})
   }, [crisisActionKey])
@@ -1278,6 +1344,7 @@ function App() {
       setChatSessionDate('')
       setChatHistory([])
       setChatResult(null)
+      setCloseRecommendations([])
       setPage('account')
       return
     }
@@ -1287,6 +1354,7 @@ function App() {
     setChallengeWeeklyProgress([])
     setTodayCompletedChallengeKeys([])
     setContentLogs([])
+    setCloseRecommendations([])
     challengeSelectionHydratedRef.current = false
     void loadProfile()
     void loadMyProfile()
@@ -1624,28 +1692,84 @@ function App() {
       if (data.session_id) setChatSessionId(data.session_id)
 
       const turns = (data.turns ?? []).filter((turn) => turn.content?.trim().length > 0)
+      const latest = data.latest ?? null
+      const extracted = latest?.extracted
+      const fallbackSummaryFromReply = (() => {
+        const reply = latest?.assistant_reply ?? ''
+        if (!reply) return null
+        const situationMatch = reply.match(/오늘 요약:\s*(.+)/)
+        const reframeMatch = reply.match(/도움이 된 포인트:\s*(.+)/)
+        if (!situationMatch && !reframeMatch) return null
+        return {
+          situation: (situationMatch?.[1] ?? '').trim() || '오늘 대화를 바탕으로 요약했습니다.',
+          self_blame_signal: '대화 내용 기반으로 확인이 필요합니다.',
+          reframe: (reframeMatch?.[1] ?? '').trim() || '상황과 생각을 분리해 본 점이 도움이 되었습니다.',
+          next_action: '오늘 있었던 사실/생각/감정을 한 줄씩 정리해보세요.',
+          encouragement: '오늘 대화를 이어간 것만으로도 충분히 의미 있는 진전입니다.',
+        } satisfies ChatCloseResponse['summary_card']
+      })()
+      const restoredSummaryCard = latest?.close_summary_card ?? fallbackSummaryFromReply
+      const restoredRecommendations = (latest?.close_recommendations ?? []).map((item) => ({
+        templateKey: item.template_key,
+        title: item.title,
+        reason: item.reason,
+      }))
+      const fallbackRecommendations = (latest?.suggested_challenges ?? []).slice(0, 3).map((key) => ({
+        templateKey: key,
+        title: challengeLibrary.find((item) => item.template_key === key)?.title ?? key,
+        reason: '대화 맥락과 웰니스 상태를 함께 반영한 맞춤 추천입니다.',
+      }))
+      const restoredClosed = Boolean(
+        latest?.is_closed
+        || restoredSummaryCard
+        || restoredRecommendations.length > 0
+        || fallbackRecommendations.length > 0,
+      )
       setChatHistory(turns.map((turn) => ({
         role: turn.role,
         content: turn.content,
         createdAt: turn.created_at ? Date.parse(turn.created_at) : Date.now(),
       })))
 
-      const extracted = data.latest?.extracted
-      if (extracted) {
+      if (extracted || restoredSummaryCard) {
         setChatResult((prev) => ({
           ...(prev ?? ({} as ChatResponse)),
-          reply: data.latest?.assistant_reply ?? prev?.reply ?? '',
+          reply: latest?.assistant_reply ?? prev?.reply ?? '',
           session_id: data.session_id ?? prev?.session_id ?? chatSessionId,
           disclaimer: prev?.disclaimer ?? '이 정보는 참고용이며, 진단 아님 안내입니다.',
           timestamp: new Date().toISOString(),
-          extracted,
-          suggested_challenges: data.latest?.suggested_challenges ?? [],
+          extracted: extracted ?? prev?.extracted ?? {
+            distress_0_10: 0,
+            rumination_0_10: 0,
+            avoidance_0_10: 0,
+            sleep_difficulty_0_10: 0,
+            distortion: {},
+          },
+          suggested_challenges: latest?.suggested_challenges ?? [],
           cbt_phase: prev?.cbt_phase ?? null,
           next_phase: prev?.next_phase ?? null,
-          summary_card: prev?.summary_card,
+          summary_card: restoredSummaryCard ?? prev?.summary_card,
         }))
       } else if (turns.length === 0) {
         setChatResult(null)
+      }
+      setCbtFinished(restoredClosed)
+      if (restoredClosed) {
+        setCloseRecommendations(restoredRecommendations.length > 0 ? restoredRecommendations : fallbackRecommendations)
+      } else {
+        const snapshot = loadCbtCloseSnapshot()
+        if (snapshot && snapshot.sessionDate === today) {
+          if (snapshot.sessionId) setChatSessionId(snapshot.sessionId)
+          setCbtFinished(true)
+          setCloseRecommendations(snapshot.recommendations)
+          setChatResult((prev) => ({
+            ...(prev ?? ({} as ChatResponse)),
+            summary_card: snapshot.summaryCard,
+            suggested_challenges: snapshot.suggestedChallenges,
+          }))
+        } else {
+          setCloseRecommendations([])
+        }
       }
       setAutoCbtStarted(turns.length > 0)
     } catch (error) {
@@ -2298,6 +2422,7 @@ function App() {
   async function startCbtFromCheckinSummary() {
     if (!token) return
     const today = todayDateString()
+    const hasTodaySession = chatHistory.length > 0 && (!chatSessionDate || chatSessionDate === today)
     if (chatSessionDate && chatSessionDate !== today) {
       const nextSessionId = createChatSessionId()
       setChatSessionId(nextSessionId)
@@ -2308,6 +2433,8 @@ function App() {
       setChallengePhase('continue')
       setChallengeStatus({})
       setCbtFinished(false)
+      setCloseRecommendations([])
+      clearCbtCloseSnapshot()
       setAutoCbtStarted(false)
     }
     const summary = checkinSummaryText || [
@@ -2316,11 +2443,13 @@ function App() {
     ].filter(Boolean).join(', ')
 
     setPage('diary')
-    setCbtFinished(false)
-    if (chatHistory.length > 0 && (!chatSessionDate || chatSessionDate === today)) {
+    if (hasTodaySession) {
       setMessage('당일 CBT 대화를 이어서 확인할 수 있어요.')
       return
     }
+    setCbtFinished(false)
+    setCloseRecommendations([])
+    clearCbtCloseSnapshot()
     if (autoCbtStarted) return
 
     setLoading(true)
@@ -2389,6 +2518,8 @@ function App() {
 
     chatSubmitLockRef.current = true
     setCbtFinished(false)
+    setCloseRecommendations([])
+    clearCbtCloseSnapshot()
     const history = toChatHistoryPayload(chatHistory.filter((turn) => !turn.loading))
     const userTurnTime = Date.now()
     setChatHistory((prev) => [
@@ -2474,65 +2605,76 @@ function App() {
     void submitChatMessage()
   }
 
-  function resolveChatSuggestedTemplateKey(rawSuggestion: string): string | null {
-    const normalized = rawSuggestion.trim().toUpperCase()
-    if (!normalized) return null
-    if (challengeLibrary.some((item) => item.template_key === normalized)) return normalized
-    const aliasMap: Record<string, string> = {
-      SENSORY_MEDITATION: 'MEDITATION_5MIN',
-      RHYTHM_GAME: 'BREATHING_3MIN',
-      MORNING_PATTERN: 'MORNING_ROUTINE_VITAL',
-      IPT_SUPPORTERS_MAP: 'SOCIAL_CONTACT_ONE',
-      WEEKLY_MINI_CHALLENGE: 'EXERCISE_WALK_20',
-    }
-    const mapped = aliasMap[normalized]
-    if (!mapped) return null
-    if (!challengeLibrary.some((item) => item.template_key === mapped)) return null
-    return mapped
-  }
-
   async function acceptAllAiRecommendations() {
     if (!cbtFinished || aiChallengeRecommendations.length === 0) {
       setMessage('대화를 마친 뒤 추천 챌린지를 확인해주세요.')
       return
     }
     const latestActive = await loadActiveChallenges()
-    const latestActiveKeySet = new Set(latestActive.map((x) => x.template_key))
+    const catalogKeySet = new Set(challengeLibrary.map((item) => item.template_key))
+    const latestActiveKeySet = new Set(latestActive.map((x) => x.template_key).filter((key) => catalogKeySet.has(key)))
+    const todayCompletedSet = new Set(todayCompletedChallengeKeys.filter((key) => catalogKeySet.has(key)))
+    const presentKeySet = new Set<string>([
+      ...selectedChallengeKeys.filter((key) => catalogKeySet.has(key)),
+      ...Array.from(latestActiveKeySet),
+      ...Array.from(todayCompletedSet),
+    ])
+    if (presentKeySet.size === 0) {
+      setSelectedChallengeKeys([])
+    }
     let added = 0
     let already = 0
     let blocked = 0
     for (const item of aiChallengeRecommendations) {
       const key = item.templateKey
-      const alreadySelected = selectedChallengeKeys.includes(key)
+      const alreadySelected = presentKeySet.has(key)
       const alreadyActive = latestActiveKeySet.has(key)
-      if (alreadySelected || alreadyActive) {
+      if (alreadySelected) {
+        setSelectedChallengeKeys((prev) => (prev.includes(key) ? prev : [...prev, key]))
         already += 1
+        continue
+      }
+      // 선택 해제 후에도 백엔드에 오늘 active가 남아있을 수 있다.
+      // 이 경우 사용자가 다시 수락하면 "추가"로 간주해 수행 목록에 재노출한다.
+      if (alreadyActive) {
+        setSelectedChallengeKeys((prev) => (prev.includes(key) ? prev : [...prev, key]))
+        presentKeySet.add(key)
+        added += 1
+        continue
+      }
+      if (presentKeySet.size >= 4) {
+        blocked += 1
         continue
       }
       const started = await handleStartChallengeTemplate(key, { ignoreCompletedTodayCheck: true })
       if (started) {
         added += 1
         latestActiveKeySet.add(key)
+        presentKeySet.add(key)
+        setSelectedChallengeKeys((prev) => (prev.includes(key) ? prev : [...prev, key]))
       } else {
         blocked += 1
       }
     }
-    if (added > 0 || already > 0) {
+    const syncedActive = await loadActiveChallenges()
+    const syncedKeys = syncedActive
+      .map((item) => item.template_key)
+      .filter((key) => catalogKeySet.has(key))
+      .slice(0, 4)
+    if (syncedKeys.length > 0) {
+      setSelectedChallengeKeys(syncedKeys)
+    }
+    if (added > 0) {
       setPage('challenge')
-      if (blocked > 0) {
-        setMessage(`추천 반영 완료: 새로 추가 ${added}개, 이미 반영 ${already}개, 제한/완료로 미반영 ${blocked}개`)
-      } else {
-        setMessage(`추천 반영 완료: 새로 추가 ${added}개, 이미 반영 ${already}개`)
-      }
+      setMessage('추천 챌린지가 추가되었습니다.')
+    } else if (blocked > 0) {
+      setPage('challenge')
+      setMessage('일일 최대 4개 제한으로 일부 챌린지를 추가하지 못했습니다.')
+    } else if (already > 0) {
+      setPage('challenge')
+      setMessage('이미 추가된 챌린지입니다.')
     } else {
-      const activeCount = latestActiveKeySet.size
-      if (activeCount >= 4) {
-        setMessage(`추천 챌린지를 반영하지 못했습니다. 현재 진행 중인 챌린지가 ${activeCount}개라서 새로 추가할 수 없습니다.`)
-      } else if (blocked > 0) {
-        setMessage('추천 챌린지를 반영하지 못했습니다. 오늘 완료했거나 기간별 선택 제한에 걸렸을 수 있어요.')
-      } else {
-        setMessage('추천 챌린지를 반영하지 못했습니다. 잠시 후 다시 시도해주세요.')
-      }
+      setMessage('추천 챌린지 추가에 실패했습니다. 잠시 후 다시 시도해주세요.')
     }
   }
 
@@ -2571,8 +2713,61 @@ function App() {
       if (!response.ok) throw new Error(await extractApiError(response))
       await loadMyDashboard()
       await loadCheckinHistory()
+      const closeResponse = await fetch(`${API_BASE}/chat/cbt/close`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          session_id: chatSessionId,
+          conversation_history: toChatHistoryPayload(chatHistory.filter((turn) => !turn.loading)),
+          challenge_candidates: challengeLibrary.map((item) => item.template_key).slice(0, 12),
+          wellness: {
+            dep: diaryDep ?? 0,
+            anx: diaryAnx ?? 0,
+            ins: diaryIns ?? 0,
+            risk_label: diaryRiskLabel,
+          },
+        }),
+      })
+      if (!closeResponse.ok) throw new Error(await extractApiError(closeResponse))
+      const closeData = (await closeResponse.json()) as ChatCloseResponse
+      if (closeData.session_id) setChatSessionId(closeData.session_id)
+      setChatSessionDate(todayDateString())
+      setCloseRecommendations(
+        (closeData.recommendations ?? []).map((item) => ({
+          templateKey: item.template_key,
+          title: item.title,
+          reason: item.reason,
+        })),
+      )
+      saveCbtCloseSnapshot({
+        sessionDate: todayDateString(),
+        sessionId: closeData.session_id || chatSessionId,
+        summaryCard: closeData.summary_card,
+        recommendations: (closeData.recommendations ?? []).map((item) => ({
+          templateKey: item.template_key,
+          title: item.title,
+          reason: item.reason,
+        })),
+        suggestedChallenges: closeData.suggested_challenges ?? [],
+      })
+      setChatResult((prev) => ({
+        ...(prev ?? ({} as ChatResponse)),
+        reply: closeData.message || prev?.reply || '',
+        session_id: closeData.session_id || prev?.session_id || chatSessionId,
+        disclaimer: prev?.disclaimer ?? '이 정보는 참고용이며, 진단 아님 안내입니다.',
+        timestamp: new Date().toISOString(),
+        extracted: prev?.extracted ?? {
+          distress_0_10: 0,
+          rumination_0_10: 0,
+          avoidance_0_10: 0,
+          sleep_difficulty_0_10: 0,
+          distortion: {},
+        } as ChatResponse['extracted'],
+        suggested_challenges: closeData.suggested_challenges ?? [],
+        summary_card: closeData.summary_card,
+      }))
       setCbtFinished(true)
-      setMessage('대화를 마쳤습니다. 오른쪽 AI 기반 맞춤형 챌린지를 확인해보세요.')
+      setMessage('대화를 마쳤습니다. 요약 노트와 AI 추천 박스를 확인해주세요.')
     } catch (error) {
       setMessage(`대화 마치기 오류: ${(error as Error).message}`)
     } finally {
@@ -3049,7 +3244,6 @@ function App() {
       .map(([k, v]) => ({ key: k, label: labelMap[k] ?? k, value: v, guide: guideMap[k] ?? '현재 패턴을 무리 없이 조정할 수 있도록 작은 단위 실천을 권장합니다.' }))
   }, [chatResult])
 
-  const challenges = (chatResult?.suggested_challenges ?? [])
   const todayCheckinRecord = useMemo(() => {
     const today = todayDateString()
     return checkinHistory.find((x) => x.timestamp.slice(0, 10) === today) ?? null
@@ -3089,7 +3283,7 @@ function App() {
     () => chatHistory.filter((turn) => turn.role === 'user' && turn.content.trim().length > 0).length,
     [chatHistory],
   )
-  const shouldNudgeFinish = userTurnCount >= 6 && !(chatResult?.crisis_mode ?? false)
+  const shouldNudgeFinish = userTurnCount >= 3 && !cbtFinished && !(chatResult?.crisis_mode ?? false)
 
   const monthlyAttendance = useMemo(() => {
     const now = new Date()
@@ -3126,6 +3320,11 @@ function App() {
 
   const todayJournalEntry = useMemo(() => journalEntries.find((x) => x.entry_date === todayDateString()) ?? null, [journalEntries])
   useEffect(() => {
+    if (challengeLibrary.length === 0) return
+    const allowed = new Set(challengeLibrary.map((item) => item.template_key))
+    setSelectedChallengeKeys((prev) => prev.filter((key) => allowed.has(key)))
+  }, [challengeLibrary])
+  useEffect(() => {
     if (challengeSelectionHydratedRef.current) return
     if (selectedChallengeKeys.length > 0) {
       challengeSelectionHydratedRef.current = true
@@ -3150,13 +3349,19 @@ function App() {
     })
   ), [challengeWeeklyProgress])
   const completedChallengeKeysToday = useMemo(() => new Set(todayCompletedChallengeKeys), [todayCompletedChallengeKeys])
+  const challengeCatalogKeySet = useMemo(() => new Set(challengeLibrary.map((item) => item.template_key)), [challengeLibrary])
   const effectiveChallengeKeys = useMemo(() => {
-    const merged = [...selectedChallengeKeys]
+    const merged: string[] = []
+    for (const key of selectedChallengeKeys) {
+      if (!challengeCatalogKeySet.has(key)) continue
+      if (!merged.includes(key)) merged.push(key)
+    }
     for (const key of todayCompletedChallengeKeys) {
+      if (!challengeCatalogKeySet.has(key)) continue
       if (!merged.includes(key)) merged.push(key)
     }
     return merged
-  }, [selectedChallengeKeys, todayCompletedChallengeKeys])
+  }, [activeChallenges, selectedChallengeKeys, todayCompletedChallengeKeys, challengeCatalogKeySet])
   const effectiveChallengeCount = useMemo(() => effectiveChallengeKeys.length, [effectiveChallengeKeys])
   const challengeSetSections = useMemo(() => {
     const sections: Array<{ bucket: 7; title: string; items: ChallengeSetPreset[] }> = [
@@ -3228,35 +3433,15 @@ function App() {
     : 'CHECKIN BASED'
   const hasWellnessData = diaryDep != null && diaryAnx != null && diaryIns != null
   const aiChallengeRecommendations = useMemo(() => {
-    if (diaryDep == null || diaryAnx == null || diaryIns == null) return [] as Array<{ templateKey: string; title: string; reason: string }>
-    const sorted = [
-      { group: '우울', score: diaryDep, candidates: ['EXERCISE_WALK_20', 'SUNLIGHT_20MIN', 'JOURNAL_STREAK_7D', 'GRATITUDE_3'] },
-      { group: '불안', score: diaryAnx, candidates: ['BREATHING_3MIN', 'MEDITATION_5MIN', 'BREATHING_3MIN_7D', 'GRATITUDE_3'] },
-      { group: '불면', score: diaryIns, candidates: ['SLEEP_HYGIENE_ROUTINE', 'NO_CAFFEINE_AFTER_2PM', 'MORNING_ROUTINE_VITAL', 'SUNLIGHT_20MIN'] },
-    ].sort((a, b) => b.score - a.score)
-    const top = sorted[0]
-    const second = sorted[1]
-    const isMixed = top.score - second.score < 8
-    const wellnessCandidates = isMixed
-      ? ['MORNING_ROUTINE_VITAL', 'SUNLIGHT_20MIN', 'BREATHING_3MIN', 'JOURNAL_STREAK_7D']
-      : top.candidates
-    const wellnessReason = isMixed
-      ? `우울/불안/불면 지표가 비슷하게 높아 복합 조절이 필요합니다.`
-      : `${top.group} 지표(${top.score}%)가 가장 높아 우선 조절이 필요합니다.`
-    const chatKeys = challenges
-      .map((raw) => resolveChatSuggestedTemplateKey(raw))
-      .filter((x): x is string => Boolean(x))
-    const merged = [...wellnessCandidates, ...chatKeys].filter((key, idx, arr) => arr.indexOf(key) === idx)
-    return merged
-      .map((key) => challengeLibrary.find((item) => item.template_key === key))
-      .filter((item): item is ChallengeTemplateItem => Boolean(item))
-      .slice(0, 3)
-      .map((item, idx) => ({
-        templateKey: item.template_key,
-        title: item.title,
-        reason: idx === 0 ? wellnessReason : '대화 맥락과 현재 상태를 함께 반영한 추천입니다.',
-      }))
-  }, [diaryDep, diaryAnx, diaryIns, challengeLibrary, challenges])
+    if (!cbtFinished) return [] as Array<{ templateKey: string; title: string; reason: string }>
+    if (closeRecommendations.length > 0) return closeRecommendations
+    const fallback = (chatResult?.suggested_challenges ?? []).slice(0, 3).map((key) => ({
+      templateKey: key,
+      title: challengeLibrary.find((item) => item.template_key === key)?.title ?? key,
+      reason: '대화 내용과 웰니스 상태를 함께 반영한 맞춤 추천입니다.',
+    }))
+    return fallback
+  }, [cbtFinished, closeRecommendations, chatResult?.suggested_challenges, challengeLibrary])
 
   const topMenuItems = useMemo<MenuItem[]>(() => {
     if (!token) {
@@ -3730,12 +3915,14 @@ function App() {
                     onChange={(e) => setChatMessage(e.target.value)}
                     onKeyDown={handleChatTextareaKeyDown}
                     placeholder="당신의 생각을 속삭여주세요..."
+                    disabled={cbtFinished}
                   />
-                  <button type="submit" className="cbtRefinedSend" disabled={loading || chatGenerating}>send</button>
+                  <button type="submit" className="cbtRefinedSend" disabled={loading || chatGenerating || cbtFinished}>send</button>
                 </div>
                 <button type="button" className="chatFinishBtn" onClick={() => void handleFinishDialogue()} disabled={loading || chatGenerating}>대화 마치기</button>
+                {cbtFinished && <p className="small">세션이 저장되었습니다. 새 대화는 체크인 후 다시 시작해주세요.</p>}
                 {shouldNudgeFinish && (
-                  <p className="small">핵심 정리가 되었다면 `대화 마치기`로 저장 단계로 넘어가세요.</p>
+                  <p className="small">대화가 충분히 정리되었다면 `대화 마치기`를 눌러 요약과 추천을 저장하세요.</p>
                 )}
               </form>
             </article>

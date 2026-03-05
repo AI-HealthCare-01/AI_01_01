@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, conint, constr
+from pydantic import BaseModel, ConfigDict, Field, conint, constr, model_validator
 
 MessageStr = constr(min_length=1, max_length=1200)
 ChallengeStr = constr(min_length=1, max_length=160)
@@ -89,6 +89,16 @@ class ChatTurn(BaseModel):
     content: MessageStr
 
 
+def _validate_history_alternation(turns: list[ChatTurn]) -> None:
+    if not turns:
+        return
+    if turns[0].role != "user":
+        raise ValueError("conversation_history는 user 턴으로 시작해야 합니다.")
+    for idx in range(1, len(turns)):
+        if turns[idx].role == turns[idx - 1].role:
+            raise ValueError("conversation_history는 user/assistant가 번갈아야 합니다.")
+
+
 class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -99,6 +109,40 @@ class ChatRequest(BaseModel):
     cbt_phase: CbtPhase | None = None
     challenge_candidates: list[ChallengeStr] | None = None
     conversation_history: list[ChatTurn] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_history(self) -> "ChatRequest":
+        if len(self.conversation_history) > 60:
+            raise ValueError("대화 기록은 최대 60턴까지 전송할 수 있습니다.")
+        _validate_history_alternation(self.conversation_history)
+        if self.conversation_history and self.conversation_history[-1].role != "assistant":
+            raise ValueError("chat 요청의 conversation_history 마지막 턴은 assistant여야 합니다.")
+        return self
+
+
+class CloseWellnessSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    dep: conint(ge=0, le=100) | None = None
+    anx: conint(ge=0, le=100) | None = None
+    ins: conint(ge=0, le=100) | None = None
+    risk_label: str | None = None
+
+
+class ChatCloseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    session_id: SessionIdStr
+    conversation_history: list[ChatTurn] = Field(default_factory=list)
+    challenge_candidates: list[ChallengeStr] = Field(default_factory=list)
+    wellness: CloseWellnessSnapshot | None = None
+
+    @model_validator(mode="after")
+    def _validate_history(self) -> "ChatCloseRequest":
+        if len(self.conversation_history) > 60:
+            raise ValueError("대화 기록은 최대 60턴까지 전송할 수 있습니다.")
+        _validate_history_alternation(self.conversation_history)
+        return self
 
 
 class SummaryCard(BaseModel):
@@ -134,6 +178,25 @@ class ChatResponse(BaseModel):
     crisis_level: CrisisLevel = "none"
     crisis_stage: CrisisStage | None = None
     crisis_actions: list[str] = Field(default_factory=list)
+
+
+class CloseRecommendationItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    template_key: str
+    title: str
+    reason: str
+
+
+class ChatCloseResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    session_id: SessionIdStr
+    summary_card: SummaryCard
+    suggested_challenges: list[str]
+    recommendations: list[CloseRecommendationItem]
+    challenge_rationale: str | None = None
+    message: str
 
 
 class ChallengeRecommendResponse(BaseModel):

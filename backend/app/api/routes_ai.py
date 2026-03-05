@@ -59,10 +59,22 @@ async def predict_monitor_trend(payload: MonitorPredictRequest) -> MonitorPredic
 
 
 @router.post("/nowcast/predict", response_model=NowcastPredictResponse)
-async def predict_nowcast(payload: NowcastPredictRequest) -> NowcastPredictResponse:
+async def predict_nowcast(
+    payload: NowcastPredictRequest,
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> NowcastPredictResponse:
+    admin_emails = await get_admin_email_set(db)
+    is_admin = current_user.email.lower() in admin_emails
+    requested_user_id = payload.user_id.strip()
+    if not requested_user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id는 비어 있을 수 없습니다.")
+    if requested_user_id != str(current_user.id) and not is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="조회 권한이 없습니다.")
+
     try:
         result = predict_nowcast_for_user_day(
-            user_id=payload.user_id,
+            user_id=requested_user_id,
             date=payload.date,
             distortion_overrides=(payload.distortion_override.model_dump() if payload.distortion_override else None),
         )

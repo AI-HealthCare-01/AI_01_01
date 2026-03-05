@@ -5,7 +5,7 @@ import AdminPage from './pages/admin/AdminPage'
 import BoardPage from './pages/board/BoardPage'
 import CbtCrisisBanner from './components/CbtCrisisBanner'
 
-type PageKey = 'landing' | 'account' | 'checkin' | 'dashboard' | 'diary' | 'journal' | 'challenge' | 'assessment' | 'board' | 'mypage' | 'admin'
+type PageKey = 'account' | 'checkin' | 'dashboard' | 'diary' | 'journal' | 'challenge' | 'assessment' | 'board' | 'mypage' | 'admin'
 type AccountMode = 'login' | 'signup' | 'reset'
 type MyPageTab = 'profile' | 'report' | 'bookmarks'
 type DashboardTab = 'today' | 'risk' | 'weekly' | 'monthly'
@@ -1142,13 +1142,36 @@ function normalizeNoticeMessage(raw: string): string | null {
   return mapped[msg] ?? msg
 }
 
+const VALID_PAGES: PageKey[] = ['account', 'checkin', 'dashboard', 'diary', 'journal', 'challenge', 'assessment', 'board', 'mypage', 'admin']
+
+function normalizePageKey(raw: unknown, hasToken: boolean): PageKey {
+  if (typeof raw === 'string' && VALID_PAGES.includes(raw as PageKey)) {
+    if (!hasToken && raw !== 'account') return 'account'
+    return raw as PageKey
+  }
+  return hasToken ? 'checkin' : 'account'
+}
+
+function emptyExtractedState(): ChatResponse['extracted'] {
+  return {
+    distress_0_10: 0,
+    rumination_0_10: 0,
+    avoidance_0_10: 0,
+    sleep_difficulty_0_10: 0,
+    distortion: {},
+  }
+}
+
 function App() {
   const [page, setPage] = useState<PageKey>('account')
   const [accountMode, setAccountMode] = useState<AccountMode>('login')
   const [myTab, setMyTab] = useState<MyPageTab>('profile')
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>('today')
 
-  const [token, setToken] = useState<string>('')
+  const [token, setToken] = useState<string>(() => {
+    if (typeof window === 'undefined') return ''
+    return window.localStorage.getItem('access_token') ?? ''
+  })
   const [me, setMe] = useState<UserOut | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
 
@@ -1284,6 +1307,7 @@ function App() {
   function saveCbtCloseSnapshot(payload: {
     sessionDate: string
     sessionId: string
+    userId: string | null
     summaryCard: ChatCloseResponse['summary_card']
     recommendations: Array<{ templateKey: string; title: string; reason: string }>
     suggestedChallenges: string[]
@@ -1296,6 +1320,7 @@ function App() {
     if (typeof window === 'undefined') return null as null | {
       sessionDate: string
       sessionId: string
+      userId?: string
       summaryCard: ChatCloseResponse['summary_card']
       recommendations: Array<{ templateKey: string; title: string; reason: string }>
       suggestedChallenges: string[]
@@ -1306,6 +1331,7 @@ function App() {
       const parsed = JSON.parse(raw) as {
         sessionDate?: string
         sessionId?: string
+        userId?: string
         summaryCard?: ChatCloseResponse['summary_card']
         recommendations?: Array<{ templateKey: string; title: string; reason: string }>
         suggestedChallenges?: string[]
@@ -1314,6 +1340,7 @@ function App() {
       return {
         sessionDate: parsed.sessionDate,
         sessionId: parsed.sessionId,
+        userId: parsed.userId,
         summaryCard: parsed.summaryCard,
         recommendations: parsed.recommendations ?? [],
         suggestedChallenges: parsed.suggestedChallenges ?? [],
@@ -1329,6 +1356,7 @@ function App() {
 
   useEffect(() => {
     if (!token) {
+      clearCbtCloseSnapshot()
       setMe(null)
       setProfile(null)
       setIsAdmin(false)
@@ -1382,7 +1410,16 @@ function App() {
   }, [message])
 
   useEffect(() => {
-    window.history.replaceState({ appPage: page, accountMode }, '')
+    if (typeof window === 'undefined') return
+    if (!token) {
+      window.localStorage.removeItem('access_token')
+      return
+    }
+    window.localStorage.setItem('access_token', token)
+  }, [token])
+
+  useEffect(() => {
+    window.history.replaceState({ appPage: normalizePageKey(page, Boolean(token)), accountMode }, '')
     pageHistorySyncReadyRef.current = true
   }, [])
 
@@ -1392,22 +1429,21 @@ function App() {
       isPopNavigatingRef.current = false
       return
     }
-    const current = window.history.state as { appPage?: PageKey; accountMode?: AccountMode } | null
+    const current = window.history.state as { appPage?: string; accountMode?: AccountMode } | null
     if (current?.appPage === page && current?.accountMode === accountMode) return
-    window.history.pushState({ appPage: page, accountMode }, '')
-  }, [page, accountMode])
+    window.history.pushState({ appPage: normalizePageKey(page, Boolean(token)), accountMode }, '')
+  }, [page, accountMode, token])
 
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
-      const next = event.state as { appPage?: PageKey; accountMode?: AccountMode } | null
-      if (!next?.appPage) return
+      const next = event.state as { appPage?: string; accountMode?: AccountMode } | null
       isPopNavigatingRef.current = true
-      setPage(next.appPage)
-      if (next.accountMode) setAccountMode(next.accountMode)
+      setPage(normalizePageKey(next?.appPage, Boolean(token)))
+      if (next?.accountMode) setAccountMode(next.accountMode)
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
-  }, [])
+  }, [token])
 
   useEffect(() => {
     const handleResize = () => setIsDesktopMenu(window.innerWidth >= 768)
@@ -1579,9 +1615,7 @@ function App() {
     try {
       const response = await fetch(`${API_BASE}/auth/me`, { headers: authHeaders })
       if (response.status === 401) {
-        setToken('')
-        localStorage.removeItem('access_token')
-        setPage('landing')
+        setMessage('프로필 세션 확인에 실패했습니다. 잠시 후 다시 시도해주세요.')
         return
       }
       if (!response.ok) throw new Error(await extractApiError(response))
@@ -1615,8 +1649,7 @@ function App() {
       const data = (await response.json()) as PHQ9AssessmentSummary[]
       setPhqHistory(data)
       if (data.length === 0) {
-        setPage('assessment')
-        setMessage('첫 로그인 후에는 종합심리검사를 먼저 1회 진행해주세요.')
+        setMessage('종합심리검사를 아직 완료하지 않았습니다. 필요할 때 검사 탭에서 진행해주세요.')
       }
     } catch (error) {
       setMessage(`검사 이력 조회 오류: ${(error as Error).message}`)
@@ -1738,13 +1771,7 @@ function App() {
           session_id: data.session_id ?? prev?.session_id ?? chatSessionId,
           disclaimer: prev?.disclaimer ?? '이 정보는 참고용이며, 진단 아님 안내입니다.',
           timestamp: new Date().toISOString(),
-          extracted: extracted ?? prev?.extracted ?? {
-            distress_0_10: 0,
-            rumination_0_10: 0,
-            avoidance_0_10: 0,
-            sleep_difficulty_0_10: 0,
-            distortion: {},
-          },
+          extracted: extracted ?? prev?.extracted ?? emptyExtractedState(),
           suggested_challenges: latest?.suggested_challenges ?? [],
           cbt_phase: prev?.cbt_phase ?? null,
           next_phase: prev?.next_phase ?? null,
@@ -1758,12 +1785,13 @@ function App() {
         setCloseRecommendations(restoredRecommendations.length > 0 ? restoredRecommendations : fallbackRecommendations)
       } else {
         const snapshot = loadCbtCloseSnapshot()
-        if (snapshot && snapshot.sessionDate === today) {
+        if (snapshot && snapshot.sessionDate === today && (!snapshot.userId || snapshot.userId === me?.id)) {
           if (snapshot.sessionId) setChatSessionId(snapshot.sessionId)
           setCbtFinished(true)
           setCloseRecommendations(snapshot.recommendations)
           setChatResult((prev) => ({
             ...(prev ?? ({} as ChatResponse)),
+            extracted: prev?.extracted ?? emptyExtractedState(),
             summary_card: snapshot.summaryCard,
             suggested_challenges: snapshot.suggestedChallenges,
           }))
@@ -2131,7 +2159,6 @@ function App() {
       if (!response.ok) throw new Error(await extractApiError(response))
       const data = (await response.json()) as TokenResponse
       setToken(data.access_token)
-      setMessage('로그인 성공')
     } catch (error) {
       setMessage(`로그인 오류: ${(error as Error).message}`)
     } finally {
@@ -2742,6 +2769,7 @@ function App() {
       saveCbtCloseSnapshot({
         sessionDate: todayDateString(),
         sessionId: closeData.session_id || chatSessionId,
+        userId: me?.id ?? null,
         summaryCard: closeData.summary_card,
         recommendations: (closeData.recommendations ?? []).map((item) => ({
           templateKey: item.template_key,
@@ -2756,13 +2784,7 @@ function App() {
         session_id: closeData.session_id || prev?.session_id || chatSessionId,
         disclaimer: prev?.disclaimer ?? '이 정보는 참고용이며, 진단 아님 안내입니다.',
         timestamp: new Date().toISOString(),
-        extracted: prev?.extracted ?? {
-          distress_0_10: 0,
-          rumination_0_10: 0,
-          avoidance_0_10: 0,
-          sleep_difficulty_0_10: 0,
-          distortion: {},
-        } as ChatResponse['extracted'],
+        extracted: prev?.extracted ?? emptyExtractedState(),
         suggested_challenges: closeData.suggested_challenges ?? [],
         summary_card: closeData.summary_card,
       }))
@@ -3221,7 +3243,10 @@ function App() {
 
   const topRisk = useMemo(() => {
     if (!chatResult) return [] as Array<{ key: string; label: string; value: number; guide: string }>
-    const d = chatResult.extracted.distortion
+    const d =
+      chatResult.extracted && typeof chatResult.extracted === 'object' && typeof chatResult.extracted.distortion === 'object'
+        ? chatResult.extracted.distortion
+        : {}
     const labelMap: Record<string, string> = {
       catastrophizing_count: '파국화 경향',
       all_or_nothing_count: '흑백사고 경향',
@@ -3442,6 +3467,8 @@ function App() {
     }))
     return fallback
   }, [cbtFinished, closeRecommendations, chatResult?.suggested_challenges, challengeLibrary])
+  const knownPageSet = useMemo(() => new Set<PageKey>(VALID_PAGES), [])
+  const hasRenderablePage = useMemo(() => knownPageSet.has(page), [knownPageSet, page])
 
   const topMenuItems = useMemo<MenuItem[]>(() => {
     if (!token) {
@@ -4661,6 +4688,16 @@ function App() {
       {page === 'admin' && (
         <section className="panel">
           {!token ? <p>로그인을 먼저 해주세요.</p> : !isAdmin ? <p>관리자 계정이 아닙니다.</p> : <AdminPage token={token} onOpenBoardPost={(postId) => { setBoardFocusPostId(postId); setPage('board') }} />}
+        </section>
+      )}
+
+      {!hasRenderablePage && (
+        <section className="panel accountPanel">
+          <h2>화면 복구 안내</h2>
+          <p>비정상 페이지 상태를 감지했습니다. 홈으로 이동합니다.</p>
+          <div className="actions">
+            <button type="button" onClick={() => setPage(token ? 'checkin' : 'account')}>홈으로 이동</button>
+          </div>
         </section>
       )}
 

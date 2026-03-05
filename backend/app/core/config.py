@@ -108,5 +108,13 @@ class Settings:
         True,
     )
 
+    def __post_init__(self) -> None:
+        raw = (self.secret_key or "").strip()
+        blocked = {"", "dev-only-change-me", "change-this-to-a-long-random-secret"}
+        if raw in blocked:
+            raise RuntimeError(
+                "SECRET_KEY is not configured securely. Set a long random value in environment variables."
+            )
+
 
 settings = Settings()

@@ -1228,6 +1228,7 @@ function App() {
   const [challengePhase, setChallengePhase] = useState<'start' | 'continue' | 'reflect'>('continue')
   const [challengeStatus, setChallengeStatus] = useState<Record<string, boolean>>({})
   const [chatGenerating, setChatGenerating] = useState(false)
+  const [cbtBootstrapping, setCbtBootstrapping] = useState(false)
   const [cbtFinished, setCbtFinished] = useState(false)
   const [crisisActionChecked, setCrisisActionChecked] = useState<Record<string, boolean>>({})
   const [boardFocusPostId, setBoardFocusPostId] = useState<string | null>(null)
@@ -2286,12 +2287,6 @@ function App() {
     setMessage('로그아웃되었습니다.')
   }
 
-  function getTestMeta(key: TestKey) {
-    if (key === 'PHQ') return { title: 'PHQ-9', questions: PHQ9_QUESTIONS }
-    if (key === 'GAD') return { title: 'GAD-7', questions: GAD7_QUESTIONS }
-    return { title: 'ISI', questions: SLEEP_QUESTIONS }
-  }
-
   function setTestAnswer(key: TestKey, value: number) {
     setAssessmentFlow((prev) => {
       const current = prev[key]
@@ -2314,10 +2309,15 @@ function App() {
   function handleNextQuestion(key: TestKey) {
     const current = assessmentFlow[key]
     if (current.answers[current.index] == null) {
-      setAssessmentErrors((prev) => ({ ...prev, [key]: true }))
-      setMessage(`${getTestMeta(key).title} 현재 문항 점수를 먼저 선택해주세요.`)
-      return
+      // Slider UI default(0)를 실제 응답으로 확정해 다음으로 이동한다.
+      setAssessmentFlow((prev) => {
+        const state = prev[key]
+        const nextAnswers = [...state.answers]
+        nextAnswers[state.index] = 0
+        return { ...prev, [key]: { ...state, answers: nextAnswers } }
+      })
     }
+    setAssessmentErrors((prev) => ({ ...prev, [key]: false }))
     moveTestIndex(key, 1)
   }
 
@@ -2448,6 +2448,7 @@ function App() {
 
   async function startCbtFromCheckinSummary() {
     if (!token) return
+    if (cbtBootstrapping) return
     const today = todayDateString()
     const hasTodaySession = chatHistory.length > 0 && (!chatSessionDate || chatSessionDate === today)
     if (chatSessionDate && chatSessionDate !== today) {
@@ -2479,6 +2480,7 @@ function App() {
     clearCbtCloseSnapshot()
     if (autoCbtStarted) return
 
+    setCbtBootstrapping(true)
     setLoading(true)
     setChatGenerating(true)
     try {
@@ -2502,6 +2504,7 @@ function App() {
     } catch (error) {
       setMessage(`인지행동치료 시작 오류: ${(error as Error).message}`)
     } finally {
+      setCbtBootstrapping(false)
       setLoading(false)
       setChatGenerating(false)
     }
@@ -2534,6 +2537,10 @@ function App() {
     if (chatSubmitLockRef.current) return
     if (!token) {
       setMessage('로그인 후 인지행동치료 대화를 사용할 수 있습니다.')
+      return
+    }
+    if (cbtBootstrapping) {
+      setMessage('체크인 데이터 로딩중입니다. 잠시만 기다려주세요.')
       return
     }
 
@@ -3777,9 +3784,9 @@ function App() {
                 <div className="miniGrid">
                   <label>오늘의 기분 점수(1~10)<input inputMode="numeric" value={checkin.mood_score} onChange={(e) => handleCheckinInput('mood_score', e.target.value)} /></label>
                   <label>수면 시간(시간)<input inputMode="decimal" value={checkin.sleep_hours} onChange={(e) => handleCheckinInput('sleep_hours', e.target.value)} /></label>
-                  <label>운동 시간(분)<input inputMode="numeric" value={checkin.exercise_minutes_today} onChange={(e) => handleCheckinInput('exercise_minutes_today', e.target.value)} /></label>
-                  <label>햇빛 노출 시간(분)<input inputMode="numeric" value={checkin.daylight_minutes_today} onChange={(e) => handleCheckinInput('daylight_minutes_today', e.target.value)} /></label>
-                  <label>스크린 타임(분)<input inputMode="numeric" value={checkin.screen_time_min_today} onChange={(e) => handleCheckinInput('screen_time_min_today', e.target.value)} /></label>
+                  <label>운동 시간(분)<input inputMode="decimal" value={checkin.exercise_minutes_today} onChange={(e) => handleCheckinInput('exercise_minutes_today', e.target.value)} /></label>
+                  <label>햇빛 노출 시간(분)<input inputMode="decimal" value={checkin.daylight_minutes_today} onChange={(e) => handleCheckinInput('daylight_minutes_today', e.target.value)} /></label>
+                  <label>스크린 타임(분)<input inputMode="decimal" value={checkin.screen_time_min_today} onChange={(e) => handleCheckinInput('screen_time_min_today', e.target.value)} /></label>
                   <label>오후 2시 이후 카페인
                     <select value={checkin.caffeine_after_2pm_flag_today} onChange={(e) => setCheckin((prev) => ({ ...prev, caffeine_after_2pm_flag_today: e.target.value as 'yes' | 'no' }))}>
                       <option value="no">없음</option>
@@ -3810,7 +3817,7 @@ function App() {
                   ))}
                 </div>
                 <p className="small">{checkinSummaryText || '입력한 체크인 데이터가 시각화되었습니다.'}</p>
-                <button onClick={() => void startCbtFromCheckinSummary()} disabled={loading || chatGenerating}>인지행동치료로 이동</button>
+                <button onClick={() => void startCbtFromCheckinSummary()} disabled={loading || chatGenerating || cbtBootstrapping}>인지행동치료로 이동</button>
               </div>
             )}
           </div>
@@ -3820,14 +3827,14 @@ function App() {
               <div className="diaryLibraryHead">
                 <h3>일기 보관함</h3>
                 <button
-                  className="diaryArrowBtn"
+                  className="ghost diaryWriteBtn"
                   aria-label="일기 쓰기로 이동"
                   onClick={() => {
                     setJournalLibraryOpen(false)
                     setPage('journal')
                   }}
                 >
-                  →
+                  일기 쓰기
                 </button>
               </div>
               {latestJournalTitles.length === 0 ? (
@@ -3865,25 +3872,6 @@ function App() {
               )}
             </article>
           </div>
-
-          <div className="challengeTileGrid">
-            {challengeLibrary.slice(0, 3).map((item) => (
-              <article key={item.template_key} className="panel challengeTile">
-                <h3>챌린지</h3>
-                <p><strong>{item.title}</strong></p>
-                <p className="small">{item.short_desc}</p>
-                <button
-                  className="ghost"
-                  onClick={() => {
-                    setSelectedTemplateKey(item.template_key)
-                    setPage('challenge')
-                  }}
-                >
-                  시작하기
-                </button>
-              </article>
-            ))}
-          </div>
         </section>
       )}
 
@@ -3914,7 +3902,7 @@ function App() {
                     onSendSupporterMessage={() => void sendSupporterCrisisMessage()}
                   />
                 )}
-                {chatHistory.length === 0 && <div className="chatEmpty">오늘 있었던 사건, 감정, 생각의 흐름을 천천히 이야기해 주세요.</div>}
+                {chatHistory.length === 0 && <div className="chatEmpty">{cbtBootstrapping ? '체크인 데이터 로딩중... 잠시만 기다려주세요.' : '오늘 있었던 사건, 감정, 생각의 흐름을 천천히 이야기해 주세요.'}</div>}
                 {filteredChatHistory.map((turn, idx) => (
                   <div key={`turn-${idx}`} className={`cbtRefinedRow ${turn.role === 'user' ? 'user' : 'assistant'}`}>
                     <div className="cbtRefinedAvatar">{turn.role === 'user' ? 'U' : 'M'}</div>
@@ -3941,12 +3929,13 @@ function App() {
                     value={chatMessage}
                     onChange={(e) => setChatMessage(e.target.value)}
                     onKeyDown={handleChatTextareaKeyDown}
-                    placeholder="당신의 생각을 속삭여주세요..."
-                    disabled={cbtFinished}
+                    placeholder={cbtBootstrapping ? '체크인 데이터 로딩중...' : '당신의 생각을 속삭여주세요...'}
+                    disabled={cbtFinished || cbtBootstrapping || chatGenerating}
                   />
-                  <button type="submit" className="cbtRefinedSend" disabled={loading || chatGenerating || cbtFinished}>send</button>
+                  <button type="submit" className="cbtRefinedSend" disabled={loading || chatGenerating || cbtFinished || cbtBootstrapping}>send</button>
                 </div>
-                <button type="button" className="chatFinishBtn" onClick={() => void handleFinishDialogue()} disabled={loading || chatGenerating}>대화 마치기</button>
+                <button type="button" className="chatFinishBtn" onClick={() => void handleFinishDialogue()} disabled={loading || chatGenerating || cbtBootstrapping}>대화 마치기</button>
+                {cbtBootstrapping && <p className="small">체크인 데이터를 기반으로 CBT 시작 메시지를 준비중입니다.</p>}
                 {cbtFinished && <p className="small">세션이 저장되었습니다. 새 대화는 체크인 후 다시 시작해주세요.</p>}
                 {shouldNudgeFinish && (
                   <p className="small">대화가 충분히 정리되었다면 `대화 마치기`를 눌러 요약과 추천을 저장하세요.</p>
@@ -4343,8 +4332,6 @@ function App() {
               const currentQuestion = test.questions[state.index]
               const currentAnswer = state.answers[state.index]
               const completed = isTestCompleted(test.key)
-              const canNext = currentAnswer != null
-
               return (
                 <article key={`assessment-${test.key}`} className={`assessmentSection ${test.sectionClass} ${assessmentErrors[test.key] ? 'assessmentSectionError' : ''}`}>
                   <div className="assessmentSectionHead assessmentSectionHeadWide">
@@ -4377,7 +4364,7 @@ function App() {
                             <button
                               key={`${test.key}-label-${idx}`}
                               type="button"
-                              className={currentAnswer === idx ? 'active' : ''}
+                              className={(currentAnswer === idx || (currentAnswer == null && idx === 0)) ? 'active' : ''}
                               onClick={() => setTestAnswer(test.key, idx)}
                             >
                               {label}
@@ -4400,7 +4387,7 @@ function App() {
                     <button
                       type="button"
                       onClick={() => handleNextQuestion(test.key)}
-                      disabled={state.index >= test.questions.length - 1 || !canNext}
+                      disabled={state.index >= test.questions.length - 1}
                     >
                       다음
                     </button>

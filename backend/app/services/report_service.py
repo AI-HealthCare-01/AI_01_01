@@ -137,11 +137,11 @@ def _lifestyle_fact_text(checkins: list[CheckIn]) -> str:
                 continue
             life=parsed.get("lifestyle") if isinstance(parsed.get("lifestyle"),dict) else {}
             if life.get("exercise_minutes_today") is not None:
-                exercise_vals.append(int(life.get("exercise_minutes_today")))
+                exercise_vals.append(float(life.get("exercise_minutes_today")))
             if life.get("daylight_minutes_today") is not None:
-                daylight_vals.append(int(life.get("daylight_minutes_today")))
+                daylight_vals.append(float(life.get("daylight_minutes_today")))
             if life.get("screen_time_min_today") is not None:
-                screen_vals.append(int(life.get("screen_time_min_today")))
+                screen_vals.append(float(life.get("screen_time_min_today")))
         except Exception:
             continue
 

@@ -18,13 +18,13 @@ class CheckinCreateRequest(BaseModel):
     challenge_total_count: conint(ge=0, le=20) = 0
 
     steps_today: conint(ge=0, le=100000) | None = None
-    exercise_minutes_today: conint(ge=0, le=600) | None = None
-    daylight_minutes_today: conint(ge=0, le=720) | None = None
-    screen_time_min_today: conint(ge=0, le=1440) | None = None
+    exercise_minutes_today: confloat(ge=0, le=600) | None = None
+    daylight_minutes_today: confloat(ge=0, le=720) | None = None
+    screen_time_min_today: confloat(ge=0, le=1440) | None = None
     meal_regularity_0_10_today: conint(ge=0, le=10) | None = None
     caffeine_after_2pm_flag_today: bool | None = None
     alcohol_flag_today: bool | None = None
-    sleep_onset_latency_min_today: conint(ge=0, le=300) | None = None
+    sleep_onset_latency_min_today: confloat(ge=0, le=300) | None = None
     awakenings_count_today: conint(ge=0, le=20) | None = None
     sleep_quality_0_10_today: conint(ge=0, le=10) | None = None
 
@@ -58,12 +58,12 @@ class CheckinHistoryItem(BaseModel):
     mood_score: int
     sleep_hours: float | None = None
     steps_today: int | None = None
-    exercise_minutes_today: int | None = None
-    daylight_minutes_today: int | None = None
-    screen_time_min_today: int | None = None
+    exercise_minutes_today: float | None = None
+    daylight_minutes_today: float | None = None
+    screen_time_min_today: float | None = None
     meal_regularity_0_10_today: int | None = None
     caffeine_after_2pm_flag_today: bool | None = None
     alcohol_flag_today: bool | None = None
-    sleep_onset_latency_min_today: int | None = None
+    sleep_onset_latency_min_today: float | None = None
     awakenings_count_today: int | None = None
     sleep_quality_0_10_today: int | None = None

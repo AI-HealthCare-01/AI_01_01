@@ -2414,21 +2414,13 @@ button:disabled {
   gap: 0.6rem;
 }
 
-.diaryArrowBtn {
-  width: 32px;
-  height: 32px;
+.diaryWriteBtn {
+  min-width: 90px;
+  padding: 0.38rem 0.72rem;
   border-radius: 999px;
-  border: 1px solid #d4dbe3;
-  background: #fff;
-  color: #1f2937;
-  font-size: 1rem;
+  font-size: 0.82rem;
   font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.diaryArrowBtn:hover {
-  background: #f8fafc;
+  line-height: 1.2;
 }
 
 .diaryRecentList {

@@ -1,0 +1,119 @@
+{
+  "type": "object",
+  "properties": {
+    "sleep_total_min_today": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "wake_time_min_today": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "sleep_latency_min_today": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "mood_1_5_today": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "anxiety_1_5_today": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "energy_1_5_today": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "daylight_bucket_today": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "exercise_bucket_today": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "alcohol_bucket_today": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "caffeine_after_2pm_flag_today": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "checkin_present_today_flag": {
+      "type": "integer"
+    },
+    "sleep_total_mean_7d": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "sleep_total_std_7d": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "wake_time_std_7d": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "mood_mean_7d": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "anxiety_mean_7d": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "energy_mean_7d": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "daylight_days_ge_10m_7d": {
+      "type": "integer"
+    },
+    "exercise_days_ge_10m_7d": {
+      "type": "integer"
+    },
+    "late_caffeine_days_7d": {
+      "type": "integer"
+    },
+    "checkin_missing_cnt_7d": {
+      "type": "integer"
+    },
+    "days_since_prev_checkin": {
+      "type": "integer"
+    }
+  }
+}

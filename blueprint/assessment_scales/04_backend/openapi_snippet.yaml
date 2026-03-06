@@ -1,0 +1,64 @@
+openapi: 3.0.3
+info:
+  title: MindLab Assessments API (Snippet)
+  version: 0.1.0
+paths:
+  /v1/assessments/start:
+    post:
+      summary: Start an assessment session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source]
+              properties:
+                source: { type: string, enum: [onboarding, 28day_reminder, manual_start, clinician_request, other] }
+                scheduled_for: { type: string, format: date }
+      responses:
+        "200":
+          description: assessment_id + next item
+  /v1/assessments/{assessment_id}/answer:
+    post:
+      summary: Submit an answer for a single item
+      parameters:
+        - in: path
+          name: assessment_id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instrument, item_code, response_score]
+              properties:
+                instrument: { type: string, enum: [phq9, gad7, isi] }
+                item_code: { type: string }
+                response_score: { type: integer }
+      responses:
+        "200":
+          description: next item or completion prompt
+  /v1/assessments/{assessment_id}/complete:
+    post:
+      summary: Finalize assessment and compute totals/bands
+      parameters:
+        - in: path
+          name: assessment_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: AssessmentSessionContract JSON (scores included)
+  /v1/assessments/history:
+    get:
+      summary: List assessment sessions for a user
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          description: list of periodic_assessment + assessment_score

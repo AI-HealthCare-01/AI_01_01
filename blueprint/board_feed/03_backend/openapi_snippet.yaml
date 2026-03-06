@@ -1,0 +1,45 @@
+openapi: 3.0.3
+info:
+  title: MindLab Board Feed API (Snippet)
+  version: 0.1.0
+paths:
+  /v1/board/feed:
+    get:
+      summary: List latest feed posts
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: tag
+          schema: { type: string }
+      responses:
+        "200":
+          description: posts + next_cursor
+  /v1/board/notices:
+    get:
+      summary: List notice posts
+  /v1/board/bookmarks:
+    get:
+      summary: List viewer bookmarked posts
+  /v1/board/post:
+    post:
+      summary: Create post
+  /v1/board/post/{post_id}/like:
+    post:
+      summary: Toggle like
+  /v1/board/post/{post_id}/bookmark:
+    post:
+      summary: Toggle bookmark
+  /v1/board/post/{post_id}/report:
+    post:
+      summary: Report post
+  /v1/board/post/{post_id}/comments:
+    post:
+      summary: Add comment

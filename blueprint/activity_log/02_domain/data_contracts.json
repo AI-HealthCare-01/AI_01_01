@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UserDayActivityLog",
+  "type": "object",
+  "required": [
+    "user_id",
+    "date",
+    "items",
+    "summary"
+  ],
+  "properties": {
+    "user_id": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "has_checkin",
+        "has_challenge_activity",
+        "has_cbt_activity",
+        "has_journal_entry",
+        "has_assessment"
+      ],
+      "properties": {
+        "has_checkin": {
+          "type": "boolean"
+        },
+        "has_challenge_activity": {
+          "type": "boolean"
+        },
+        "challenge_completed_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "active_challenge_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "has_cbt_activity": {
+          "type": "boolean"
+        },
+        "cbt_session_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "has_journal_entry": {
+          "type": "boolean"
+        },
+        "journal_entry_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "has_assessment": {
+          "type": "boolean"
+        },
+        "activity_count_total": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "activity_type",
+          "display_label",
+          "detail_route"
+        ],
+        "properties": {
+          "activity_type": {
+            "type": "string",
+            "enum": [
+              "checkin",
+              "challenge",
+              "cbt",
+              "journal",
+              "assessment"
+            ]
+          },
+          "display_label": {
+            "type": "string"
+          },
+          "preview_text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "detail_route": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

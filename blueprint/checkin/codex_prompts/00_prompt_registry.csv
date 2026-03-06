@@ -1,0 +1,8 @@
+order,file_name,purpose_ko
+1,01_backend_domain_and_db.md,"DB 테이블, 타입, 서비스 스켈레톤"
+2,02_api_endpoints_and_validators.md,"API 라우트, DTO, validator"
+3,03_frontend_flows.md,"체크인 UI, 상태, 입력 컴포넌트"
+4,04_daily_state_and_model_features.md,파생변수와 모델 입력 연결
+5,05_tracking_and_metrics.md,"이벤트 로그, KPI, 실험 포인트"
+6,06_tests_and_seed_data.md,"seed, tests, happy-path and edge cases"
+7,07_build_checklist.md,최종 점검표

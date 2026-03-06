@@ -1,0 +1,21 @@
+inputs:
+- current_state
+- checkin_windows_7d_28d
+- challenge_history
+- assessment_anchor_status
+- risk_summary
+ranking:
+  severity_weight: 0.35
+  modifiable_gap_weight: 0.3
+  past_fit_weight: 0.2
+  burden_weight: -0.1
+  active_load_weight: -0.05
+guards:
+- do not recommend sustained challenge if active sustained challenges >= 3
+- do not recommend same domain sustained challenge if one is already active
+- if risk_level >= 2 suppress high-burden sustained challenge
+- if risk_level >= 3 suppress general challenge recommendation
+copy_rules:
+- say why this challenge may fit today's pattern
+- do not say this challenge will cure or diagnose anything
+- do not present feature importance as causal proof

@@ -1,0 +1,86 @@
+name: aws-deploy-staging-draft
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Run terraform apply"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ap-northeast-2
+  TF_WORKDIR: infra/aws/terraform/environments/staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GHA_ROLE_ARN_STAGING }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tag
+        run: echo "IMAGE_TAG=${GITHUB_SHA::12}" >> $GITHUB_ENV
+
+      - name: Build and push web image
+        env:
+          WEB_REPOSITORY_URI: ${{ secrets.ECR_WEB_REPOSITORY_URI_STAGING }}
+        run: |
+          docker build -f infra/aws/docker/web.Dockerfile -t "$WEB_REPOSITORY_URI:$IMAGE_TAG" .
+          docker push "$WEB_REPOSITORY_URI:$IMAGE_TAG"
+
+      - name: Build and push api image
+        env:
+          API_REPOSITORY_URI: ${{ secrets.ECR_API_REPOSITORY_URI_STAGING }}
+        run: |
+          docker build -f infra/aws/docker/api.Dockerfile -t "$API_REPOSITORY_URI:$IMAGE_TAG" .
+          docker push "$API_REPOSITORY_URI:$IMAGE_TAG"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform init (draft backend)
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: terraform init -backend=false
+
+      - name: Terraform plan
+        working-directory: ${{ env.TF_WORKDIR }}
+        env:
+          TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD_STAGING }}
+        run: |
+          terraform plan \
+            -var "web_image_uri=${{ secrets.ECR_WEB_REPOSITORY_URI_STAGING }}:${IMAGE_TAG}" \
+            -var "api_image_uri=${{ secrets.ECR_API_REPOSITORY_URI_STAGING }}:${IMAGE_TAG}" \
+            -out tfplan
+
+      - name: Terraform apply
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.apply == 'true' }}
+        working-directory: ${{ env.TF_WORKDIR }}
+        env:
+          TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD_STAGING }}
+        run: |
+          terraform apply -auto-approve \
+            -var "web_image_uri=${{ secrets.ECR_WEB_REPOSITORY_URI_STAGING }}:${IMAGE_TAG}" \
+            -var "api_image_uri=${{ secrets.ECR_API_REPOSITORY_URI_STAGING }}:${IMAGE_TAG}"

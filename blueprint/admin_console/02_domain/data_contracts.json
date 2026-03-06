@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AdminConsolePermissionContract",
+  "type": "object",
+  "required": [
+    "roles",
+    "queues",
+    "approval_flows"
+  ],
+  "properties": {
+    "roles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "role",
+          "permissions"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "support"
+            ]
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "capability_extensions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "extension_code",
+          "grantable_to",
+          "approval_required"
+        ],
+        "properties": {
+          "extension_code": {
+            "type": "string",
+            "enum": [
+              "analyst_ml_extension"
+            ]
+          },
+          "grantable_to": {
+            "type": "string",
+            "enum": [
+              "support"
+            ]
+          },
+          "approval_required": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    },
+    "queues": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "support_queue",
+          "moderation_queue",
+          "safety_queue",
+          "ops_queue",
+          "ml_queue"
+        ]
+      }
+    },
+    "approval_flows": {
+      "type": "object",
+      "properties": {
+        "policy_change": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "model_change": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

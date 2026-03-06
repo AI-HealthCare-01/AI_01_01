@@ -1,0 +1,5 @@
+﻿event_name,table_name,required_fields,purpose_ko
+cbt_session_started,cbt_session_summary,"session_id,user_id,started_at",세션 시작
+cbt_session_completed,cbt_session_summary,"session_id,user_id,date,session_helpfulness_0_10",세션 완료
+cbt_homework_saved,cbt_session_summary,"session_id,user_id,homework_commitment_0_10",과제 저장
+cbt_risk_flagged,cbt_risk_signal,"user_id,date,suicide_risk_level",위험 신호 발생

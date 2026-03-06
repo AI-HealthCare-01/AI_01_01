@@ -1,0 +1,11 @@
+field_name,rule_type,validator,blocking_flag,notes
+sleep_total_bucket,required,must_be_in_enum,Y,제출 시 필수
+wake_time_local,required,valid_local_time,Y,HH:MM 형식
+sleep_latency_bucket,required,must_be_in_enum,Y,제출 시 필수
+mood_1_5,required,int_1_to_5,Y,제출 시 필수
+anxiety_1_5,required,int_1_to_5,Y,제출 시 필수
+energy_1_5,required,int_1_to_5,Y,제출 시 필수
+daylight_bucket,required,must_be_in_enum,Y,제출 시 필수
+exercise_bucket,required,must_be_in_enum,Y,제출 시 필수
+alcohol_bucket,required,must_be_in_enum,Y,제출 시 필수
+caffeine_after_2pm_flag,required,bool_like,Y,제출 시 필수

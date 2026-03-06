@@ -1,0 +1,75 @@
+openapi: 3.0.3
+info:
+  title: MindLab Support Ticket API (Snippet)
+  version: 0.1.0
+paths:
+  /v1/support/tickets:
+    post:
+      summary: Create new inquiry or feedback ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ticket_type, title, category, body]
+              properties:
+                ticket_type: { type: string, enum: [inquiry, feedback] }
+                title: { type: string, maxLength: 60 }
+                category: { type: string }
+                related_feature: { type: string }
+                body: { type: string, maxLength: 2000 }
+                reply_requested: { type: boolean }
+      responses:
+        "200":
+          description: Created ticket detail
+    get:
+      summary: List current user's tickets
+      responses:
+        "200":
+          description: Ticket list for current user
+
+  /v1/support/tickets/{ticket_id}:
+    get:
+      summary: Get ticket detail (messages + attachments + status)
+      parameters:
+        - in: path
+          name: ticket_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Ticket detail
+
+  /v1/support/tickets/{ticket_id}/followup:
+    post:
+      summary: Add follow-up message and reopen the ticket
+      parameters:
+        - in: path
+          name: ticket_id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, maxLength: 2000 }
+      responses:
+        "200":
+          description: Updated ticket detail
+
+  /v1/support/tickets/{ticket_id}/resolve:
+    post:
+      summary: Mark ticket as resolved by user
+      parameters:
+        - in: path
+          name: ticket_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Ticket status updated

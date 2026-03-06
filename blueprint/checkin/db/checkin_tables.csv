@@ -1,0 +1,5 @@
+﻿table_name,grain,primary_key,purpose_ko,key_columns
+daily_checkin,1 row per user per local date,"user_id,date",원본 check-in 입력 저장,"user_id,date,timezone,checked_at,status,current_version_id"
+daily_checkin_version,append-only history,checkin_version_id,same-day edit history,"user_id,date,version_no,payload_json,submitted_at"
+daily_checkin_features_daily,1 row per user per local date,"user_id,date",check-in derived features,"sleep_total_midpoint,wake_time_min_of_day,..."
+daily_checkin_event_log,event stream,event_id,프론트/백 이벤트,"event_name,user_id,date,payload_json,created_at"

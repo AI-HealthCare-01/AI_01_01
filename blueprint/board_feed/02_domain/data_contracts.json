@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BoardFeedContract",
+  "type": "object",
+  "required": [
+    "post",
+    "author",
+    "engagement"
+  ],
+  "properties": {
+    "post": {
+      "type": "object",
+      "required": [
+        "post_id",
+        "feed_public_id",
+        "created_at",
+        "is_notice",
+        "is_anonymous",
+        "body_text"
+      ],
+      "properties": {
+        "post_id": {
+          "type": "string"
+        },
+        "feed_public_id": {
+          "type": "string",
+          "description": "User-visible ID like P-120384"
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 60
+        },
+        "display_title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "body_text": {
+          "type": "string",
+          "maxLength": 1500
+        },
+        "body_preview": {
+          "type": "string"
+        },
+        "tag_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "image_urls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "is_notice": {
+          "type": "boolean"
+        },
+        "is_pinned_notice": {
+          "type": "boolean"
+        },
+        "is_anonymous": {
+          "type": "boolean"
+        },
+        "visibility_status": {
+          "type": "string",
+          "enum": [
+            "visible",
+            "hidden_by_author",
+            "hidden_by_moderator",
+            "deleted"
+          ]
+        },
+        "moderation_status": {
+          "type": "string",
+          "enum": [
+            "clear",
+            "under_review",
+            "auto_hidden",
+            "actioned"
+          ]
+        }
+      }
+    },
+    "author": {
+      "type": "object",
+      "required": [
+        "author_user_id",
+        "display_name"
+      ],
+      "properties": {
+        "author_user_id": {
+          "type": "string"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "is_staff": {
+          "type": "boolean"
+        }
+      }
+    },
+    "engagement": {
+      "type": "object",
+      "properties": {
+        "like_count": {
+          "type": "integer"
+        },
+        "bookmark_count": {
+          "type": "integer"
+        },
+        "comment_count": {
+          "type": "integer"
+        },
+        "report_count": {
+          "type": "integer"
+        },
+        "viewer_liked": {
+          "type": "boolean"
+        },
+        "viewer_bookmarked": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

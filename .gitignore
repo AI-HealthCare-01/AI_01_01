@@ -1,0 +1,92 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Env / Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+pnpm-lock.yaml.local
+package-lock.json.local
+yarn.lock.local
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime / temp
+tmp/
+temp/
+.cache/
+*.tmp
+
+# Model artifacts (keep manifests/schema if needed)
+model/**/*.joblib
+model/**/*.pkl
+model/**/*.pt
+model/**/*.onnx
+model/**/*.h5
+model/**/*.ckpt
+model/**/*.npy
+model/**/*.npz
+
+# Large generated data
+model/synthetic_data/generated/
+model/metrics/generated/
+exports/
+artifacts/
+
+# Local DB / sqlite
+*.sqlite
+*.sqlite3
+apps/api/.data/
+
+# Test output
+htmlcov/
+coverage.xml
+junit.xml
+
+# Firebase
+.firebase/
+firebase-debug.log
+
+# AWS / deployment local files
+*.pem
+cdk.out/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+
+# Design reference images (local-only assets)
+design/reference_images/
+
+# Docker compose symlink
+docker-compose.yml

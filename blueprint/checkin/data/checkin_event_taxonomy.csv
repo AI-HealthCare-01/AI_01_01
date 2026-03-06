@@ -1,0 +1,10 @@
+event_name,domain,description_ko
+checkin_prompt_shown,checkin,로그인 후 체크인 노출
+checkin_started,checkin,체크인 시작
+checkin_question_answered,checkin,개별 문항 응답
+checkin_submitted,checkin,체크인 제출 완료
+checkin_skipped,checkin,체크인 스킵
+checkin_reminder_sent,checkin,리마인더 발송
+checkin_reminder_opened,checkin,리마인더로 진입
+checkin_edited,checkin,당일 기록 수정
+checkin_validation_error,checkin,유효성 오류

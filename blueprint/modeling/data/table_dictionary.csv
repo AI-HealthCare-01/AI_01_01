@@ -1,0 +1,14 @@
+﻿table_name,grain,purpose
+users,1 row per user,정적 사용자 정보
+baseline_assessment,1 row per user,초기 PHQ/GAD/ISI 및 치료 관련 flag
+periodic_assessment,sparse follow-up,"28일 권장, 실제는 불규칙한 anchor"
+daily_checkin,sparse observed user-day,raw check-in 입력
+challenge_catalog,small dimension,challenge 정의
+challenge_exposure,user-day-challenge,노출 / 수락 / 거절 로그
+challenge_enrollment,user-challenge,활성 challenge 상태
+challenge_day_log,user-day-challenge,수행 / 도움점수 / 중도포기
+cbt_session_summary,user-session,구조화된 CBT 세션 요약
+cbt_risk_signal,user-day,CBT 기반 위험 신호
+daily_state,user-day full calendar,최종 상태 및 synthetic true latent
+user_day_trend_metrics,user-day full calendar,7일 / 28일 회고 변화량
+train_user_day_nowcast,user-day full calendar,모델 학습용 feature mart

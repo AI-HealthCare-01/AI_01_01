@@ -1,0 +1,64 @@
+openapi: 3.0.3
+info:
+  title: MindLab MyPage API (Snippet)
+  version: 0.1.0
+paths:
+  /v1/mypage/home:
+    get:
+      summary: Get mypage home summary
+      responses:
+        "200":
+          description: MyPageHomeContract JSON
+  /v1/mypage/profile:
+    patch:
+      summary: Update profile fields (non-sensitive)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nickname: { type: string }
+                birth_year: { type: integer }
+                gender: { type: string }
+      responses:
+        "200":
+          description: Updated profile
+  /v1/mypage/security/password:
+    post:
+      summary: Change password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password, new_password_confirm]
+              properties:
+                current_password: { type: string }
+                new_password: { type: string }
+                new_password_confirm: { type: string }
+      responses:
+        "200":
+          description: Password changed
+  /v1/mypage/bookmarks:
+    get:
+      summary: List bookmarked posts
+  /v1/mypage/my-posts:
+    get:
+      summary: List my posts
+  /v1/mypage/my-comments:
+    get:
+      summary: List my comments
+  /v1/mypage/support-tickets:
+    get:
+      summary: List my support tickets
+  /v1/mypage/report-vault:
+    get:
+      summary: List saved reports
+  /v1/mypage/consents:
+    get:
+      summary: Get consent status
+    patch:
+      summary: Update changeable consent settings

@@ -1,0 +1,48 @@
+checkin_status:
+  - draft
+  - submitted
+  - skipped
+
+completion_mode:
+  - full
+  - partial
+  - reminder_submit
+
+sleep_total_bucket:
+  - lt_4h
+  - h4_5
+  - h5_6
+  - h6_7
+  - h7_8
+  - ge_8h
+
+sleep_latency_bucket:
+  - le_15m
+  - m15_30
+  - m30_60
+  - ge_60m
+
+five_point_state:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+
+daylight_bucket:
+  - m0
+  - m1_9
+  - m10_29
+  - ge_30
+
+exercise_bucket:
+  - m0
+  - m1_9
+  - m10_29
+  - ge_30
+
+alcohol_bucket:
+  - none
+  - one
+  - two_three
+  - ge_four

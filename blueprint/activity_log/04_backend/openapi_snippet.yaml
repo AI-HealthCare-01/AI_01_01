@@ -1,0 +1,24 @@
+openapi: 3.0.3
+info:
+  title: MindLab Activity Log API
+  version: 0.1.0
+paths:
+  /v1/mypage/activity-log:
+    get:
+      summary: Get day-based activity log list
+      parameters:
+        - in: query
+          name: start_date
+          schema: { type: string, format: date }
+        - in: query
+          name: end_date
+          schema: { type: string, format: date }
+        - in: query
+          name: filter
+          schema: { type: string, enum: [all, checkin, challenge, cbt, journal, assessment], default: all }
+        - in: query
+          name: view
+          schema: { type: string, enum: [list, calendar], default: list }
+      responses:
+        "200":
+          description: Array of UserDayActivityLog

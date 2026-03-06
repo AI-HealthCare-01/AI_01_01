@@ -1,0 +1,8 @@
+copy_id,label,usage_note
+screen_title,오늘 체크인,오늘의 상태를 짧게 기록해볼까요?
+submit_button,저장하고 시작하기,홈으로 이동 전 저장 버튼
+skip_button,나중에 할게요,스킵 허용
+completion_title,체크인 완료,오늘 기록이 저장됐어요.
+completion_subtitle,변화 추이는 대시보드에서 볼 수 있어요.,다음 행동으로 자연스럽게 이동
+edit_button,오늘 기록 수정,같은 날 재입력 허용
+reminder_copy,오늘 체크인을 아직 하지 않았어요.,저부담 리마인더

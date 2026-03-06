@@ -1,0 +1,162 @@
+{
+  "note": "공식/검증된 문항 텍스트 및 번역은 라이선스/출처 확인 후 별도 파일로 로딩. 이 파일은 item_code/옵션 구조만 정의한다.",
+  "instruments": {
+    "phq9": {
+      "timeframe_days": 14,
+      "score_min": 0,
+      "score_max": 27,
+      "items": [
+        {
+          "item_code": "PHQ9_1",
+          "display_order": 1,
+          "response_scale": "PHQ_GAD_0_3"
+        },
+        {
+          "item_code": "PHQ9_2",
+          "display_order": 2,
+          "response_scale": "PHQ_GAD_0_3"
+        },
+        {
+          "item_code": "PHQ9_3",
+          "display_order": 3,
+          "response_scale": "PHQ_GAD_0_3"
+        },
+        {
+          "item_code": "PHQ9_4",
+          "display_order": 4,
+          "response_scale": "PHQ_GAD_0_3"
+        },
+        {
+          "item_code": "PHQ9_5",
+          "display_order": 5,
+          "response_scale": "PHQ_GAD_0_3"
+        },
+        {
+          "item_code": "PHQ9_6",
+          "display_order": 6,
+          "response_scale": "PHQ_GAD_0_3"
+        },
+        {
+          "item_code": "PHQ9_7",
+          "display_order": 7,
+          "response_scale": "PHQ_GAD_0_3"
+        },
+        {
+          "item_code": "PHQ9_8",
+          "display_order": 8,
+          "response_scale": "PHQ_GAD_0_3"
+        },
+        {
+          "item_code": "PHQ9_9",
+          "display_order": 9,
+          "response_scale": "PHQ_GAD_0_3"
+        }
+      ]
+    },
+    "gad7": {
+      "timeframe_days": 14,
+      "score_min": 0,
+      "score_max": 21,
+      "items": [
+        {
+          "item_code": "GAD7_1",
+          "display_order": 1,
+          "response_scale": "PHQ_GAD_0_3"
+        },
+        {
+          "item_code": "GAD7_2",
+          "display_order": 2,
+          "response_scale": "PHQ_GAD_0_3"
+        },
+        {
+          "item_code": "GAD7_3",
+          "display_order": 3,
+          "response_scale": "PHQ_GAD_0_3"
+        },
+        {
+          "item_code": "GAD7_4",
+          "display_order": 4,
+          "response_scale": "PHQ_GAD_0_3"
+        },
+        {
+          "item_code": "GAD7_5",
+          "display_order": 5,
+          "response_scale": "PHQ_GAD_0_3"
+        },
+        {
+          "item_code": "GAD7_6",
+          "display_order": 6,
+          "response_scale": "PHQ_GAD_0_3"
+        },
+        {
+          "item_code": "GAD7_7",
+          "display_order": 7,
+          "response_scale": "PHQ_GAD_0_3"
+        }
+      ]
+    },
+    "isi": {
+      "timeframe_days": 14,
+      "score_min": 0,
+      "score_max": 28,
+      "items": [
+        {
+          "item_code": "ISI_1",
+          "display_order": 1,
+          "response_scale": "ISI_ITEM_SPECIFIC_0_4"
+        },
+        {
+          "item_code": "ISI_2",
+          "display_order": 2,
+          "response_scale": "ISI_ITEM_SPECIFIC_0_4"
+        },
+        {
+          "item_code": "ISI_3",
+          "display_order": 3,
+          "response_scale": "ISI_ITEM_SPECIFIC_0_4"
+        },
+        {
+          "item_code": "ISI_4",
+          "display_order": 4,
+          "response_scale": "ISI_ITEM_SPECIFIC_0_4"
+        },
+        {
+          "item_code": "ISI_5",
+          "display_order": 5,
+          "response_scale": "ISI_ITEM_SPECIFIC_0_4"
+        },
+        {
+          "item_code": "ISI_6",
+          "display_order": 6,
+          "response_scale": "ISI_ITEM_SPECIFIC_0_4"
+        },
+        {
+          "item_code": "ISI_7",
+          "display_order": 7,
+          "response_scale": "ISI_ITEM_SPECIFIC_0_4"
+        }
+      ]
+    }
+  },
+  "response_scales": {
+    "PHQ_GAD_0_3": [
+      {
+        "score": 0,
+        "label": "전혀 없음"
+      },
+      {
+        "score": 1,
+        "label": "며칠"
+      },
+      {
+        "score": 2,
+        "label": "절반 이상"
+      },
+      {
+        "score": 3,
+        "label": "거의 매일"
+      }
+    ],
+    "ISI_ITEM_SPECIFIC_0_4": "문항별(공식) 옵션 라벨을 item_code로 매핑해 로딩"
+  }
+}

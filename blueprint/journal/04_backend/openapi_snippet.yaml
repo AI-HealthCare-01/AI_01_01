@@ -1,0 +1,33 @@
+openapi: 3.0.3
+info:
+  title: MindLab Journal API
+  version: 0.1.0
+paths:
+  /v1/journal:
+    get:
+      summary: List journal entries
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: start_date
+          schema: { type: string, format: date }
+        - in: query
+          name: end_date
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: List of JournalEntry
+    post:
+      summary: Create journal entry
+      responses:
+        "200":
+          description: Created JournalEntry
+  /v1/journal/{journal_id}:
+    get:
+      summary: Get journal detail
+    patch:
+      summary: Update journal entry
+    delete:
+      summary: Soft delete journal entry

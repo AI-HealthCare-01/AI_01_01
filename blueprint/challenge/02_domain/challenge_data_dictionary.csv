@@ -1,0 +1,41 @@
+﻿table,column,type,nullable,description_ko,example,must_fill_now,notes
+challenge_catalog,challenge_id,string,N,챌린지 ID,CH_SLEEP_001,Y,고정 카탈로그
+challenge_catalog,name_ko,string,N,챌린지명,수면 리듬 회복 루틴,Y,사용자 노출용
+challenge_catalog,status,enum,N,core/supportive/excluded,core,Y,v1 포함 여부
+challenge_catalog,domain,enum,N,sleep/activation/regulation/social/wellbeing,sleep,Y,slot cap용
+challenge_catalog,challenge_type,enum,N,one_time/sustained,sustained,Y,정책 분기
+challenge_catalog,default_target_days,int,Y,기본 목표 기간,7,Y,one_time이면 1
+challenge_catalog,difficulty_level,enum,N,easy/medium/hard,medium,Y,추천 우선순위
+challenge_catalog,target_outcomes,string,N,타깃 outcome 태그,insomnia,Y,multi-tag
+challenge_catalog,expected_mechanism,string,N,기대 메커니즘,regularize_wake_time,Y,모델 해석용
+challenge_catalog,contraindication_tags,string,Y,제한 태그,risk_ge_2,Y,safety 연결
+challenge_exposure,exposure_id,string,N,노출 ID,EXP_0001,Y,
+challenge_exposure,user_id,string,N,유저 ID,U000001,Y,
+challenge_exposure,date,date,N,로컬 날짜,2026-03-01,Y,
+challenge_exposure,challenge_id,string,N,노출 챌린지 ID,CH_ACT_002,Y,
+challenge_exposure,shown_flag,bool,N,실제 노출 여부,1,Y,
+challenge_exposure,source,enum,N,model_reco/manual_browse/system_default,model_reco,Y,
+challenge_exposure,reason_code,string,Y,추천 이유 코드,low_daylight_dep,Y,설명가능성용
+challenge_exposure,accepted_flag,bool,Y,수락 여부,1,Y,declined/ignored와 분리
+challenge_exposure,declined_flag,bool,Y,거절 여부,0,Y,
+challenge_enrollment,enrollment_id,string,N,활성 enrollment ID,ENR_0001,Y,
+challenge_enrollment,user_id,string,N,유저 ID,U000001,Y,
+challenge_enrollment,challenge_id,string,N,챌린지 ID,CH_ACT_002,Y,
+challenge_enrollment,activated_at,datetime,N,활성화 시각,2026-03-01T09:00:00,Y,
+challenge_enrollment,scheduled_end_date,date,Y,목표 종료일,2026-03-03,Y,
+challenge_enrollment,status,enum,N,active/completed/dropped/expired,active,Y,
+challenge_enrollment,active_slot_index,int,Y,활성 슬롯,1,N,지속형만
+challenge_enrollment,assigned_by,enum,N,user/model/system,model,Y,
+challenge_enrollment,baseline_dep_state,float,Y,활성화 시점 우울,63.2,N,snapshot
+challenge_day_log,day_log_id,string,N,일일 수행 로그 ID,DAYLOG_001,Y,
+challenge_day_log,enrollment_id,string,N,enrollment FK,ENR_0001,Y,
+challenge_day_log,user_id,string,N,유저 ID,U000001,Y,
+challenge_day_log,date,date,N,날짜,2026-03-02,Y,
+challenge_day_log,completed_flag,bool,Y,수행 여부,1,Y,
+challenge_day_log,completion_quality_0_5,int,Y,수행 품질,4,Y,
+challenge_day_log,perceived_difficulty_0_10,int,Y,체감 난이도,6,Y,
+challenge_day_log,perceived_helpfulness_0_10,int,Y,체감 도움,7,Y,
+challenge_day_log,dropout_flag,bool,Y,중도포기 여부,0,Y,
+challenge_day_log,dropout_reason_code,string,Y,중도포기 사유,too_hard,N,
+challenge_day_log,post_mood_1_5,int,Y,수행 후 기분,4,N,선택
+challenge_day_log,post_anxiety_1_5,int,Y,수행 후 불안,2,N,선택

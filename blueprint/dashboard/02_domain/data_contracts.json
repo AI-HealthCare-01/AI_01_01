@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DashboardDataContract",
+  "type": "object",
+  "required": [
+    "symptom_dashboard",
+    "activity_dashboard"
+  ],
+  "properties": {
+    "symptom_dashboard": {
+      "type": "object",
+      "required": [
+        "mode",
+        "series",
+        "summary",
+        "data_density"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "7d",
+            "4w_weekly_avg"
+          ]
+        },
+        "series": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "metric",
+              "points"
+            ],
+            "properties": {
+              "metric": {
+                "type": "string",
+                "enum": [
+                  "dep",
+                  "anx",
+                  "ins"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "points": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "x_label"
+                  ],
+                  "properties": {
+                    "x_label": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "observed_days": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "is_missing_bucket": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              },
+              "current_score": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "window_mean": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "recorded_days": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "last_assessment_at": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            },
+            "days_until_recommended_assessment": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "last_updated_at": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          }
+        },
+        "data_density": {
+          "type": "object",
+          "properties": {
+            "days_in_window": {
+              "type": "integer"
+            },
+            "recorded_days_any_metric": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "activity_dashboard": {
+      "type": "object",
+      "required": [
+        "summary_cards",
+        "calendar",
+        "cbt",
+        "challenge",
+        "survey"
+      ],
+      "properties": {
+        "summary_cards": {
+          "type": "object",
+          "properties": {
+            "checkin_days_7d": {
+              "type": "integer"
+            },
+            "cbt_sessions_7d": {
+              "type": "integer"
+            },
+            "challenge_days_7d": {
+              "type": "integer"
+            },
+            "last_assessment_days_ago": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        },
+        "calendar": {
+          "type": "object",
+          "properties": {
+            "year": {
+              "type": "integer"
+            },
+            "month": {
+              "type": "integer"
+            },
+            "days": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "checked_in": {
+                    "type": "boolean"
+                  },
+                  "is_today": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "cbt": {
+          "type": "object",
+          "properties": {
+            "sessions_7d": {
+              "type": "integer"
+            },
+            "active_days_7d": {
+              "type": "integer"
+            },
+            "last_session_days_ago": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "top_topics": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "challenge": {
+          "type": "object",
+          "properties": {
+            "active_count": {
+              "type": "integer"
+            },
+            "performed_days_7d": {
+              "type": "integer"
+            },
+            "completion_rate_7d": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "dropout_count_28d": {
+              "type": "integer"
+            }
+          }
+        },
+        "survey": {
+          "type": "object",
+          "properties": {
+            "last_assessment_at": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            },
+            "days_until_recommended_assessment": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        },
+        "data_density": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

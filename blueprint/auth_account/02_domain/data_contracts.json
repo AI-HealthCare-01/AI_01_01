@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AuthAndOnboardingContract",
+  "type": "object",
+  "required": [
+    "account",
+    "profile",
+    "consents",
+    "onboarding"
+  ],
+  "properties": {
+    "account": {
+      "type": "object",
+      "required": [
+        "user_id",
+        "firebase_uid",
+        "nickname",
+        "email",
+        "email_verified",
+        "account_status",
+        "ml_subject_id"
+      ],
+      "properties": {
+        "user_id": {
+          "type": "string"
+        },
+        "firebase_uid": {
+          "type": "string"
+        },
+        "nickname": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "email_verified": {
+          "type": "boolean"
+        },
+        "account_status": {
+          "type": "string",
+          "enum": [
+            "pending_email_verification",
+            "active_onboarding_required",
+            "active",
+            "restricted",
+            "suspended",
+            "deleted"
+          ]
+        },
+        "ml_subject_id": {
+          "type": "string"
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "properties": {
+        "birth_year": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1900,
+          "maximum": 2100
+        },
+        "gender": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "female",
+            "male",
+            "nonbinary",
+            "prefer_not_to_say",
+            null
+          ]
+        },
+        "age_years_derived": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "profile_completed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "consents": {
+      "type": "object",
+      "properties": {
+        "terms_required": {
+          "type": "boolean"
+        },
+        "privacy_required": {
+          "type": "boolean"
+        },
+        "sensitive_data_required": {
+          "type": "boolean"
+        },
+        "personalization_optional": {
+          "type": "boolean"
+        },
+        "model_improvement_optional": {
+          "type": "boolean"
+        },
+        "marketing_optional": {
+          "type": "boolean"
+        }
+      }
+    },
+    "onboarding": {
+      "type": "object",
+      "properties": {
+        "onboarding_status": {
+          "type": "string",
+          "enum": [
+            "not_started",
+            "profile_pending",
+            "baseline_pending",
+            "complete"
+          ]
+        },
+        "baseline_assessment_completed": {
+          "type": "boolean"
+        },
+        "dashboard_bootstrapped": {
+          "type": "boolean"
+        },
+        "model_bootstrapped": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

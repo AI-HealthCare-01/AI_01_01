@@ -1,0 +1,7 @@
+﻿screen,component_id,purpose_ko
+ChallengeHome,recommended_card,오늘 추천 카드
+ChallengeHome,active_list,활성 challenge 목록
+ChallengeDetail,why_this,추천 이유 설명 블록
+ChallengeTracker,daily_check,오늘 수행 체크
+ChallengeTracker,helpfulness_prompt,도움점수 입력
+ChallengeTracker,dropout_modal,중도포기 사유 입력

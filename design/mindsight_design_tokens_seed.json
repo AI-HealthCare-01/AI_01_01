@@ -1,0 +1,84 @@
+{
+  "name": "Mindsight Design Token Seed v1",
+  "colors": {
+    "bg": {
+      "base": "#FAFBFF",
+      "soft": "#F6F3FB"
+    },
+    "surface": {
+      "base": "#FFFFFF",
+      "alt": "#F8F7FC",
+      "muted": "#F3F5FA"
+    },
+    "border": {
+      "soft": "#E9E7F2",
+      "muted": "#D8DCE8"
+    },
+    "text": {
+      "primary": "#1F2430",
+      "secondary": "#687085",
+      "tertiary": "#98A1B3",
+      "inverse": "#FFFFFF"
+    },
+    "brand": {
+      "primary": "#7C6CF6",
+      "primary_hover": "#6D5CE8",
+      "primary_soft": "#EEEAFE"
+    },
+    "accent": {
+      "pink": "#F5B8D0",
+      "sky": "#BEE7F3",
+      "mint": "#CDEEE5",
+      "peach": "#F6D8C8",
+      "lavender": "#D9CCF7"
+    },
+    "status": {
+      "success": "#5CC89B",
+      "warning": "#F3B764",
+      "danger": "#EB7282",
+      "info": "#7EAEF7"
+    },
+    "chart": {
+      "depression": "#7C6CF6",
+      "anxiety": "#F39AC1",
+      "insomnia": "#6EC7C1",
+      "grid": "#E9ECF4",
+      "axis": "#8E97AB"
+    }
+  },
+  "spacing": {
+    "1": "4px",
+    "2": "8px",
+    "3": "12px",
+    "4": "16px",
+    "5": "20px",
+    "6": "24px",
+    "7": "32px",
+    "8": "40px",
+    "9": "48px",
+    "10": "64px"
+  },
+  "radius": {
+    "sm": "10px",
+    "md": "14px",
+    "lg": "18px",
+    "xl": "24px",
+    "pill": "999px"
+  },
+  "shadow": {
+    "card": "0 8px 24px rgba(29, 42, 80, 0.06)",
+    "card_hover": "0 12px 28px rgba(29, 42, 80, 0.10)",
+    "modal": "0 20px 48px rgba(21, 27, 38, 0.16)",
+    "soft": "0 4px 12px rgba(29, 42, 80, 0.05)"
+  },
+  "typography": {
+    "page_title": "32/40/700",
+    "section_title": "22/30/700",
+    "card_title": "16/24/600",
+    "body_lg": "16/26/400",
+    "body_md": "14/22/400",
+    "body_sm": "13/20/400",
+    "caption": "12/18/400",
+    "stat_number": "28/34/700"
+  }
+}

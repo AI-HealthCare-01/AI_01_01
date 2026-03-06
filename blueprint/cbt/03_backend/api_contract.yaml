@@ -1,0 +1,14 @@
+openapi: 3.0.3
+info:
+  title: MindLab CBT API
+  version: 0.2.0
+paths:
+  /cbt/sessions:
+    post:
+      summary: CBT 세션 시작 및 응답 생성
+  /cbt/sessions/{session_id}/summary:
+    get:
+      summary: 구조화 요약 조회
+  /cbt/risk-signal:
+    post:
+      summary: 구조화 위험 신호 저장

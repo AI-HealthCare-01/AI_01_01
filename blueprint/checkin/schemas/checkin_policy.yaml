@@ -1,0 +1,21 @@
+max_steps: 2
+allow_skip: true
+allow_same_day_edit: true
+capture_skip_reason: optional
+model_usage:
+  primary_target:
+  - dep_state_today
+  - anx_state_today
+  - ins_state_today
+  trend_metrics:
+  - 7d_retro
+  - 28d_retro
+  related_anchor_tables:
+  - baseline_assessment
+  - periodic_assessment
+excluded_fields:
+- outing
+- free_text_journal
+- cbt_thought_record
+- rumination
+- avoidance

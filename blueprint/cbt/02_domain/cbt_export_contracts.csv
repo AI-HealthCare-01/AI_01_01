@@ -1,0 +1,4 @@
+﻿source_table,consumer,status,export_fields,notes
+cbt_session_summary,current_state_model,allowed,"session_count, emotion_shift, belief_shift, homework_commitment, homework_completed_prev_flag, distortion_total_count, helpfulness",자유텍스트 전문 제외
+cbt_risk_signal,current_state_model,allowed,risk flags and recent max level,추천보다 safety gate 우선
+cbt_case_memory,current_state_model,observe_only,not a core feature in v1,내부 가설은 직접 feature로 쓰지 않음

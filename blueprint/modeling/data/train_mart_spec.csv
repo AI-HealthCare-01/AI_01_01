@@ -1,0 +1,35 @@
+﻿field_name,role,source,notes
+dep_target_state_today,target,daily_state.dep_latent_true_0_100 (synthetic) or dep_state_final_0_100_today (service),우울 현재 상태
+anx_target_state_today,target,daily_state.anx_latent_true_0_100 or anx_state_final_0_100_today,불안 현재 상태
+ins_target_state_today,target,daily_state.ins_latent_true_0_100 or ins_state_final_0_100_today,불면 현재 상태
+sleep_total_min_today,feature,daily_checkin same-day,same-day 관측치
+wake_time_min_today,feature,daily_checkin same-day,same-day 관측치
+sleep_latency_min_today,feature,daily_checkin same-day,same-day 관측치
+mood_1_5_today,feature,daily_checkin same-day,same-day 관측치
+anxiety_1_5_today,feature,daily_checkin same-day,same-day 관측치
+energy_1_5_today,feature,daily_checkin same-day,same-day 관측치
+daylight_bucket_today,feature,daily_checkin same-day,same-day 관측치
+exercise_bucket_today,feature,daily_checkin same-day,same-day 관측치
+alcohol_bucket_today,feature,daily_checkin same-day,same-day 관측치
+caffeine_after_2pm_flag_today,feature,daily_checkin same-day,same-day 관측치
+checkin_present_today_flag,feature,derived,결측 내성
+sleep_total_mean_7d,feature,derived,7일 평균
+wake_time_std_7d,feature,derived,7일 규칙성
+daylight_days_ge_10m_7d,feature,derived,7일 햇빛 active days
+exercise_days_ge_10m_7d,feature,derived,7일 운동 active days
+late_caffeine_days_7d,feature,derived,7일 늦은 카페인 일수
+days_since_prev_checkin,feature,derived,접속 불규칙성 반영
+phq9_last_score,feature,periodic_assessment,sparse anchor
+gad7_last_score,feature,periodic_assessment,sparse anchor
+isi_last_score,feature,periodic_assessment,sparse anchor
+days_since_last_phq9,feature,periodic_assessment,anchor freshness
+assessment_overdue_flag,feature,derived,anchor missingness
+challenge_completion_rate_7d,feature,challenge_day_log,행동 적합도
+challenge_helpfulness_mean_28d,feature,challenge_day_log,과거 response
+active_challenge_count_today,feature,challenge_enrollment,부하도
+cbt_sessions_7d,feature,cbt_session_summary,최근 세션 빈도
+cbt_belief_shift_mean_28d,feature,cbt_session_summary,구조화 변화 신호
+cbt_homework_commitment_mean_28d,feature,cbt_session_summary,과제 의지
+risk_max_level_28d,feature,cbt_risk_signal,safety summary
+dep_week_delta_retro,dashboard_metric,user_day_trend_metrics,회고 지표
+dep_month_delta_retro,dashboard_metric,user_day_trend_metrics,회고 지표

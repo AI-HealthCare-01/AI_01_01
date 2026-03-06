@@ -1,0 +1,33 @@
+feature_name: challenge
+selection_mode: optional
+activation_policy:
+  max_active_total: 3
+  max_active_per_domain: 1
+  one_time_does_not_consume_slot: true
+domains:
+- sleep
+- activation
+- regulation
+- social
+- wellbeing
+core_catalog_ids:
+- CH_SLEEP_001
+- CH_ACT_001
+- CH_ACT_002
+- CH_ACT_003
+- CH_REG_001
+- CH_REG_002
+- CH_SOC_001
+supportive_catalog_ids:
+- CH_WELL_001
+safety_gate:
+  risk_level_0: normal recommendation
+  risk_level_1: normal recommendation with caution copy
+  risk_level_2: suppress high-burden sustained challenge
+  risk_level_3: suppress general challenge and show safety route
+recommendation_principle:
+- current state severity
+- modifiable gap
+- past challenge fit
+- current active load
+- safety gate

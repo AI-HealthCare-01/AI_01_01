@@ -1,0 +1,52 @@
+openapi: 3.0.3
+info:
+  title: MindLab Auth & Onboarding API (Snippet)
+  version: 0.1.0
+paths:
+  /v1/auth/signup:
+    post:
+      summary: Create account shell after Firebase signup client flow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firebase_uid, email, nickname]
+              properties:
+                firebase_uid: { type: string }
+                email: { type: string, format: email }
+                nickname: { type: string }
+      responses:
+        "200":
+          description: user_id, account_status
+  /v1/auth/session/bootstrap:
+    post:
+      summary: Verify Firebase ID token and return service session context
+      responses:
+        "200":
+          description: user/account/onboarding state
+  /v1/onboarding/profile:
+    post:
+      summary: Save onboarding profile fields
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [birth_year]
+              properties:
+                birth_year: { type: integer }
+                gender: { type: string, enum: [female, male, nonbinary, prefer_not_to_say] }
+                consents:
+                  type: object
+      responses:
+        "200":
+          description: onboarding state
+  /v1/onboarding/baseline-assessment/complete:
+    post:
+      summary: Save baseline assessment and bootstrap dashboard/model
+      responses:
+        "200":
+          description: active account state

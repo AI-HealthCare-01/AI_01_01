@@ -1,0 +1,10 @@
+source_table,source_field,derived_feature,window,allowed_in_v1,notes
+cbt_session_summary,session_id,cbt_sessions_7d,7d count,Y,세션 수
+cbt_session_summary,emotion_intensity_pre_0_100-emotion_intensity_post_0_100,cbt_emotion_shift_mean_28d,28d mean,Y,세션 전후 변화
+cbt_session_summary,belief_pre_0_100-belief_post_0_100,cbt_belief_shift_mean_28d,28d mean,Y,믿음 변화
+cbt_session_summary,homework_commitment_0_10,cbt_homework_commitment_mean_28d,28d mean,Y,과제 의지
+cbt_session_summary,homework_completed_prev_flag,cbt_homework_completed_rate_28d,28d mean,Y,과제 수행률
+cbt_session_summary,distortion_total_count,cbt_distortion_total_mean_28d,28d mean,Y,구조화 신호
+cbt_session_summary,session_helpfulness_0_10,cbt_helpfulness_mean_28d,28d mean,Y,도움점수
+cbt_risk_signal,suicide_risk_level,risk_max_level_28d,28d max,Y,safety gate 우선
+cbt_case_memory,core_belief_text,NA,NA,N,초기 모델 핵심 feature로 사용하지 않음

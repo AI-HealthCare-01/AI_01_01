@@ -1,0 +1,324 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReportSummaryDataContract",
+  "type": "object",
+  "required": [
+    "period",
+    "computed",
+    "source_density"
+  ],
+  "properties": {
+    "period": {
+      "type": "object",
+      "required": [
+        "start_date",
+        "end_date"
+      ],
+      "properties": {
+        "start_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "end_date": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    },
+    "computed": {
+      "type": "object",
+      "required": [
+        "symptom_timeseries",
+        "sleep_metrics",
+        "lifestyle_metrics",
+        "assessments",
+        "challenge_summary",
+        "cbt_summary",
+        "risk_summary"
+      ],
+      "properties": {
+        "symptom_timeseries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "date",
+              "dep_state",
+              "anx_state",
+              "ins_state"
+            ],
+            "properties": {
+              "date": {
+                "type": "string",
+                "format": "date"
+              },
+              "dep_state": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "anx_state": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "ins_state": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "has_checkin": {
+                "type": "boolean"
+              },
+              "has_state_observation": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "sleep_metrics": {
+          "type": "object",
+          "properties": {
+            "sleep_total_mean_min": {
+              "type": "number"
+            },
+            "wake_time_std_min": {
+              "type": "number"
+            },
+            "sleep_latency_bucket_dist": {
+              "type": "object"
+            },
+            "sleep_latency_bucket_mode": {
+              "type": "string"
+            }
+          }
+        },
+        "lifestyle_metrics": {
+          "type": "object",
+          "properties": {
+            "exercise_bucket_counts": {
+              "type": "object"
+            },
+            "daylight_bucket_counts": {
+              "type": "object"
+            },
+            "alcohol_bucket_counts": {
+              "type": "object"
+            },
+            "late_caffeine_days": {
+              "type": "integer"
+            }
+          }
+        },
+        "assessments": {
+          "type": "object",
+          "properties": {
+            "latest": {
+              "type": "object",
+              "properties": {
+                "completed_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "phq9_total": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "gad7_total": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "isi_total": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "days_since": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "history": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "completed_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "phq9_total": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "gad7_total": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "isi_total": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "challenge_summary": {
+          "type": "object",
+          "properties": {
+            "shown_count": {
+              "type": "integer"
+            },
+            "accepted_count": {
+              "type": "integer"
+            },
+            "declined_count": {
+              "type": "integer"
+            },
+            "active_count": {
+              "type": "integer"
+            },
+            "completion_rate": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "dropout_count": {
+              "type": "integer"
+            },
+            "helpfulness_mean_0_10": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "by_domain": {
+              "type": "object"
+            }
+          }
+        },
+        "cbt_summary": {
+          "type": "object",
+          "properties": {
+            "sessions_count": {
+              "type": "integer"
+            },
+            "top_topics": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "top_skills": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "homework_attempts": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "helpfulness_mean_0_10": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          }
+        },
+        "risk_summary": {
+          "type": "object",
+          "properties": {
+            "functional_impairment_any": {
+              "type": "boolean"
+            },
+            "self_harm_any": {
+              "type": "boolean"
+            },
+            "suicide_risk_max_level": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            },
+            "violence_risk_any": {
+              "type": "boolean"
+            },
+            "events": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "level": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "source": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "source_density": {
+      "type": "object",
+      "required": [
+        "days_in_period",
+        "checkin_days",
+        "assessment_count",
+        "challenge_log_days",
+        "cbt_sessions"
+      ],
+      "properties": {
+        "days_in_period": {
+          "type": "integer"
+        },
+        "checkin_days": {
+          "type": "integer"
+        },
+        "assessment_count": {
+          "type": "integer"
+        },
+        "challenge_log_days": {
+          "type": "integer"
+        },
+        "cbt_sessions": {
+          "type": "integer"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

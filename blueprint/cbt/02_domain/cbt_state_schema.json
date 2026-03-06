@@ -1,0 +1,100 @@
+{
+  "type": "object",
+  "properties": {
+    "situation": {
+      "type": "string"
+    },
+    "automatic_thoughts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "emotions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "intensity": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "behaviors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_for": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_against": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "distortion_candidates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "intermediate_belief_hypotheses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "core_belief_hypotheses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "expose_to_user": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "risk_flags": {
+      "type": "object",
+      "properties": {
+        "functional_impairment_flag": {
+          "type": "boolean"
+        },
+        "self_harm_flag": {
+          "type": "boolean"
+        },
+        "suicide_risk_level": {
+          "type": "integer"
+        },
+        "violence_risk_flag": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

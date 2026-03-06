@@ -1,0 +1,7 @@
+﻿challenge_id,target_domain,linked_feature,expected_direction,rationale
+CH_SLEEP_001,ins,wake_time_std_7d,expected_down,improve sleep regularity and reduce insomnia severity
+CH_SLEEP_001,ins,late_caffeine_days_7d,expected_down,reduce late stimulant exposure
+CH_ACT_002,dep,daylight_days_ge_10m_7d,expected_up,increase daylight exposure
+CH_ACT_003,dep,exercise_days_ge_10m_7d,expected_up,increase movement
+CH_REG_001,anx,same_day_anxiety_post,expected_down,lower acute arousal after completion
+CH_SOC_001,dep,support_contact_days_28d,expected_up,increase social contact signal

@@ -1,0 +1,62 @@
+{
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sleep_total_bucket": {
+      "type": "string"
+    },
+    "wake_time_local": {
+      "type": "string"
+    },
+    "sleep_latency_bucket": {
+      "type": "string"
+    },
+    "mood_1_5": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "anxiety_1_5": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "energy_1_5": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "daylight_bucket": {
+      "type": "string"
+    },
+    "exercise_bucket": {
+      "type": "string"
+    },
+    "alcohol_bucket": {
+      "type": "string"
+    },
+    "caffeine_after_2pm_flag": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "date",
+    "sleep_total_bucket",
+    "wake_time_local",
+    "sleep_latency_bucket",
+    "mood_1_5",
+    "anxiety_1_5",
+    "energy_1_5",
+    "daylight_bucket",
+    "exercise_bucket",
+    "alcohol_bucket",
+    "caffeine_after_2pm_flag"
+  ]
+}

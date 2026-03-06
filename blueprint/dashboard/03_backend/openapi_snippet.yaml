@@ -1,0 +1,24 @@
+openapi: 3.0.3
+info:
+  title: MindLab Dashboard API (Snippet)
+  version: 0.1.0
+paths:
+  /v1/dashboard/symptom:
+    get:
+      summary: Get symptom dashboard data
+      parameters:
+        - in: query
+          name: mode
+          required: true
+          schema:
+            type: string
+            enum: [7d, 4w_weekly_avg]
+      responses:
+        "200":
+          description: symptom dashboard payload
+  /v1/dashboard/activity:
+    get:
+      summary: Get activity dashboard data
+      responses:
+        "200":
+          description: activity dashboard payload

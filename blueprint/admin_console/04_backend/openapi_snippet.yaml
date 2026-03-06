@@ -1,0 +1,69 @@
+openapi: 3.0.3
+info:
+  title: MindLab Admin Console API (Snippet)
+  version: 0.1.0
+paths:
+  /v1/admin/overview:
+    get:
+      summary: Admin overview KPIs
+      responses:
+        "200":
+          description: Overview stats by queue and activity
+
+  /v1/admin/users:
+    get:
+      summary: Search/list users (no IP in list)
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+      responses:
+        "200":
+          description: User list
+
+  /v1/admin/users/{user_id}/ban-context:
+    get:
+      summary: Load ban context (email + recent IPs) only when starting restriction flow
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Ban context payload
+
+  /v1/admin/restrictions:
+    post:
+      summary: Create restriction action
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_user_id, reason_code]
+              properties:
+                target_user_id: { type: string }
+                block_account: { type: boolean }
+                block_ip: { type: boolean }
+                target_ip: { type: string }
+                reason_code: { type: string }
+                reason_detail: { type: string }
+                ends_at: { type: string, format: date-time }
+
+  /v1/admin/owner-approval:
+    post:
+      summary: Submit owner approval request for policy/model changes
+
+  /v1/admin/owner-approval/{approval_id}/decide:
+    post:
+      summary: Owner approves or rejects a request
+
+  /v1/admin/extensions/request:
+    post:
+      summary: Support requests analyst_ml_extension
+
+  /v1/admin/extensions/{extension_id}/decide:
+    post:
+      summary: Owner/Admin reviews extension request

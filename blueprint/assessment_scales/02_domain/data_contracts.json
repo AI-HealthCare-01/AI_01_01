@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AssessmentSessionContract",
+  "type": "object",
+  "required": [
+    "session",
+    "instruments",
+    "responses",
+    "scores"
+  ],
+  "properties": {
+    "session": {
+      "type": "object",
+      "required": [
+        "assessment_id",
+        "user_id",
+        "scheduled_for",
+        "status"
+      ],
+      "properties": {
+        "assessment_id": {
+          "type": "string"
+        },
+        "user_id": {
+          "type": "string"
+        },
+        "scheduled_for": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "completed",
+            "missed",
+            "late",
+            "skipped"
+          ]
+        },
+        "recommended_cycle_days": {
+          "type": "integer",
+          "default": 28
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "onboarding",
+            "28day_reminder",
+            "manual_start",
+            "clinician_request",
+            "other"
+          ]
+        }
+      }
+    },
+    "instruments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "instrument",
+          "version",
+          "timeframe_days",
+          "score_range"
+        ],
+        "properties": {
+          "instrument": {
+            "type": "string",
+            "enum": [
+              "phq9",
+              "gad7",
+              "isi"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string",
+            "default": "ko-KR"
+          },
+          "timeframe_days": {
+            "type": "integer"
+          },
+          "score_range": {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "integer"
+              },
+              "max": {
+                "type": "integer"
+              }
+            }
+          },
+          "severity_bands": {
+            "type": "array"
+          }
+        }
+      }
+    },
+    "responses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "assessment_id",
+          "instrument",
+          "item_code",
+          "response_score"
+        ],
+        "properties": {
+          "assessment_id": {
+            "type": "string"
+          },
+          "instrument": {
+            "type": "string",
+            "enum": [
+              "phq9",
+              "gad7",
+              "isi"
+            ]
+          },
+          "item_code": {
+            "type": "string"
+          },
+          "display_order": {
+            "type": "integer"
+          },
+          "response_score": {
+            "type": "integer"
+          },
+          "response_label": {
+            "type": "string"
+          },
+          "answered_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "scores": {
+      "type": "object",
+      "properties": {
+        "phq9_total": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "gad7_total": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "isi_total": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "phq9_band": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "gad7_band": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "isi_band": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "risk_flags": {
+          "type": "object",
+          "properties": {
+            "phq9_item9_nonzero": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        }
+      }
+    }
+  }
+}

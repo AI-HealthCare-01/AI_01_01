@@ -1,0 +1,37 @@
+{
+  "categories": [
+    {
+      "code": "abuse",
+      "label_ko": "욕설/모욕"
+    },
+    {
+      "code": "hate",
+      "label_ko": "혐오/차별"
+    },
+    {
+      "code": "threat",
+      "label_ko": "위협/폭력"
+    },
+    {
+      "code": "sexual_harassment",
+      "label_ko": "성희롱/불쾌한 성적 표현"
+    },
+    {
+      "code": "privacy",
+      "label_ko": "개인정보 노출"
+    },
+    {
+      "code": "spam",
+      "label_ko": "광고/도배"
+    },
+    {
+      "code": "self_harm_signal",
+      "label_ko": "자해/자살 우려"
+    },
+    {
+      "code": "violence_signal",
+      "label_ko": "타해 우려"
+    }
+  ],
+  "note": "사용자의 힘듦 표현(예: 너무 힘들다, 불안하다)은 커뮤니티 위반으로 분류하지 않는다."
+}

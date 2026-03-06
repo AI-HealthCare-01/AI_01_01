@@ -1,0 +1,9 @@
+component_id,component_name,usage,notes
+cmp_01,CheckinGate,로그인 후 오늘 체크인 여부 확인,홈 진입 전 조건부 노출
+cmp_02,CheckinSheet,체크인 메인 컨테이너,1~2 step 최대
+cmp_03,TimePickerWake,기상시간 입력,로컬 시간 기준
+cmp_04,SegmentedFivePoint,기분/불안/에너지 공용,텍스트 라벨 포함
+cmp_05,BucketChipGroup,수면/햇빛/운동/음주 공용,짧은 칩형
+cmp_06,BinaryChipGroup,카페인 여부,예/아니요
+cmp_07,CheckinCompletionCard,완료 요약,저장 후 홈 이동
+cmp_08,CheckinReminderEntry,리마인더 재진입,partial state 재사용 가능

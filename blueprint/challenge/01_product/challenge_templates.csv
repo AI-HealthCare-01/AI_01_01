@@ -1,0 +1,10 @@
+﻿template_id,challenge_id,step_order,step_type,verification_type,step_copy_ko
+TPL_SLEEP_001,CH_SLEEP_001,1,setup,manual_time_select,고정 기상시간을 선택하세요
+TPL_SLEEP_001,CH_SLEEP_001,2,daily,manual_check,어제 늦은 카페인을 피했나요?
+TPL_SLEEP_001,CH_SLEEP_001,3,daily,manual_check,기상시간을 지켰나요?
+TPL_ACT_001,CH_ACT_001,1,daily,manual_check,기상 후 기본 루틴을 시작했나요?
+TPL_ACT_002,CH_ACT_002,1,daily,sensor_or_manual,햇빛 10분 이상 노출
+TPL_ACT_003,CH_ACT_003,1,daily,sensor_or_manual,산책 10분 이상
+TPL_REG_001,CH_REG_001,1,one_time,manual_check,호흡 또는 이완 3분
+TPL_REG_002,CH_REG_002,1,one_time,manual_check,감각 grounding 1분
+TPL_SOC_001,CH_SOC_001,1,one_time,manual_check,지지자에게 안부 메시지 보내기

@@ -1,0 +1,11 @@
+﻿question_id,label_ko,raw_field,input_type,allowed_values,required_v1,notes
+Q01,지난밤 총 수면시간,sleep_total_bucket,single_select,<=4h|4-5h|5-6h|6-7h|7-8h|>=8h,Y,불면/기분/에너지 연결
+Q02,오늘 몇 시에 일어났나요?,wake_time_local,time_picker,HH:MM,Y,규칙성은 파생 계산
+Q03,잠들기까지 얼마나 걸렸나요?,sleep_latency_bucket,single_select,<=15m|15-30m|30-60m|>=60m,Y,불면 신호
+Q04,오늘 전반적인 기분은 어떤가요?,mood_1_5,segmented_5,1..5,Y,우울 상태 핵심
+Q05,지금 불안하거나 스트레스가 어느 정도인가요?,anxiety_1_5,segmented_5,1..5,Y,불안 상태 핵심
+Q06,지금 에너지 수준은 어떤가요?,energy_1_5,segmented_5,1..5,Y,무기력/활동성
+Q07,어제 햇빛을 얼마나 봤나요?,daylight_bucket,single_select,0m|1-9m|10-29m|>=30m,Y,행동활성화/수면 리듬
+Q08,어제 운동은 얼마나 했나요?,exercise_bucket,single_select,0m|1-9m|10-29m|>=30m,Y,활동량
+Q09,어제 음주를 했나요?,alcohol_bucket,single_select,none|1 drink|2-3 drinks|4+ drinks,Y,수면/기분 변동
+Q10,어제 오후 2시 이후 카페인을 마셨나요?,caffeine_after_2pm_flag,single_select,no|yes,Y,수면 방해

@@ -1,0 +1,16 @@
+scope,item,notes
+included,sleep_total_bucket,코어 체크인 포함
+included,wake_time_local,코어 체크인 포함
+included,sleep_latency_bucket,코어 체크인 포함
+included,mood_1_5,코어 체크인 포함
+included,anxiety_1_5,코어 체크인 포함
+included,energy_1_5,코어 체크인 포함
+included,daylight_bucket,코어 체크인 포함
+included,exercise_bucket,코어 체크인 포함
+included,alcohol_bucket,코어 체크인 포함
+included,caffeine_after_2pm_flag,코어 체크인 포함
+excluded,outing,해석 모호성 때문에 제외
+excluded,journal_text,자유일기와 겹치므로 제외
+excluded,thought_record,CBT 기능과 겹치므로 제외
+excluded,rumination,CBT 기능과 경계 충돌 가능성으로 제외
+excluded,avoidance,CBT 기능과 경계 충돌 가능성으로 제외

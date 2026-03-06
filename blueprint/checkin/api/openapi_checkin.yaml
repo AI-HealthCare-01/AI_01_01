@@ -1,0 +1,16 @@
+openapi: 3.0.3
+info:
+  title: MindLab Check-in API
+  version: 0.2.0
+paths:
+  /checkin/today:
+    get:
+      summary: 오늘 check-in 존재 여부 및 payload 조회
+    post:
+      summary: 오늘 check-in 저장
+  /checkin/today/edit:
+    post:
+      summary: same-day check-in 수정 저장(version append)
+  /checkin/features/today:
+    get:
+      summary: current-state model용 feature bundle 조회

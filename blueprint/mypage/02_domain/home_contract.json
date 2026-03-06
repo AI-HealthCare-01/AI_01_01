@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MyPageHomeContract",
+  "type": "object",
+  "required": [
+    "profile",
+    "activity_summary",
+    "ticket_summary",
+    "report_summary",
+    "quick_links"
+  ],
+  "properties": {
+    "profile": {
+      "type": "object",
+      "required": [
+        "user_id",
+        "nickname",
+        "email_masked",
+        "email_verified",
+        "created_at"
+      ],
+      "properties": {
+        "user_id": {
+          "type": "string"
+        },
+        "nickname": {
+          "type": "string"
+        },
+        "email_masked": {
+          "type": "string"
+        },
+        "email_verified": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "birth_year": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "gender": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "notification_preferences": {
+          "type": "object"
+        }
+      }
+    },
+    "activity_summary": {
+      "type": "object",
+      "properties": {
+        "window_days": {
+          "type": "integer",
+          "default": 7
+        },
+        "checkin_days": {
+          "type": "integer"
+        },
+        "challenge_active_count": {
+          "type": "integer"
+        },
+        "challenge_completed_days": {
+          "type": "integer"
+        },
+        "cbt_sessions": {
+          "type": "integer"
+        },
+        "journal_days": {
+          "type": "integer"
+        },
+        "last_assessment_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "ticket_summary": {
+      "type": "object",
+      "properties": {
+        "waiting_user_count": {
+          "type": "integer"
+        },
+        "answered_count": {
+          "type": "integer"
+        },
+        "reopened_count": {
+          "type": "integer"
+        }
+      }
+    },
+    "report_summary": {
+      "type": "object",
+      "properties": {
+        "vault_count": {
+          "type": "integer"
+        },
+        "recent_reports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "report_id": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "period_start": {
+                "type": "string",
+                "format": "date"
+              },
+              "period_end": {
+                "type": "string",
+                "format": "date"
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "pdf",
+                  "png",
+                  "jpg"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "quick_links": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

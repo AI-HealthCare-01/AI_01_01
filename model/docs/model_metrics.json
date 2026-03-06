@@ -1,0 +1,31 @@
+{
+  "algorithm": "Ridge + median imputation",
+  "dataset": "observed_login_day_nowcast_v3",
+  "group_split": "user_id",
+  "targets": {
+    "dep_target_state_today": {
+      "mae": 3.7788779278369837,
+      "r2": 0.9482099230384852,
+      "train_rows": 13773,
+      "test_rows": 3300,
+      "train_users": 960,
+      "test_users": 240
+    },
+    "anx_target_state_today": {
+      "mae": 4.058387054966768,
+      "r2": 0.9590311952244119,
+      "train_rows": 13773,
+      "test_rows": 3300,
+      "train_users": 960,
+      "test_users": 240
+    },
+    "ins_target_state_today": {
+      "mae": 3.8961724617041225,
+      "r2": 0.9515462599161068,
+      "train_rows": 13773,
+      "test_rows": 3300,
+      "train_users": 960,
+      "test_users": 240
+    }
+  }
+}

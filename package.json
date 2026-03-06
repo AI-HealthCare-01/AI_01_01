@@ -1,0 +1,28 @@
+{
+  "name": "mindsight-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "packages/shared",
+    "packages/domain"
+  ],
+  "scripts": {
+    "dev": "npm run dev:web",
+    "dev:web": "npm run dev --workspace @mindsight/web",
+    "build": "npm run build:packages && npm run build:web",
+    "build:web": "npm run build --workspace @mindsight/web",
+    "build:packages": "npm run build --workspace @mindsight/shared && npm run build --workspace @mindsight/domain",
+    "lint": "./scripts/lint.sh",
+    "lint:web": "npm run lint --workspace @mindsight/web",
+    "lint:packages": "npm run lint --workspace @mindsight/shared && npm run lint --workspace @mindsight/domain",
+    "test": "./scripts/test.sh",
+    "test:smoke": "./scripts/smoke.sh",
+    "test:web": "npm run test --workspace @mindsight/web",
+    "test:packages": "npm run test --workspace @mindsight/shared && npm run test --workspace @mindsight/domain",
+    "typecheck": "npm run typecheck:web",
+    "typecheck:web": "npm run typecheck --workspace @mindsight/web"
+  },
+  "devDependencies": {
+    "firebase-tools": "^15.8.0"
+  }
+}

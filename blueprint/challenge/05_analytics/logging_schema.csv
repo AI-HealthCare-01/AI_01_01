@@ -1,0 +1,4 @@
+﻿table,required_columns,usage
+challenge_exposure,"user_id,date,challenge_id,shown_flag,source,reason_code,accepted_flag,declined_flag",추천 퍼널
+challenge_enrollment,"user_id,challenge_id,activated_at,status,assigned_by",활성화/종료 추적
+challenge_day_log,"user_id,date,challenge_id,completed_flag,completion_quality_0_5,perceived_helpfulness_0_10,dropout_flag",수행 품질 추적

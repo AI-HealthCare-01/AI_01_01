@@ -1,0 +1,8 @@
+﻿event_name,table_name,required_fields,purpose_ko
+challenge_recommendation_shown,challenge_exposure,"challenge_id,user_id,date,source,reason_code",추천 노출
+challenge_recommendation_clicked,challenge_exposure,"challenge_id,user_id,date",카드 클릭
+challenge_accepted,challenge_enrollment,"challenge_id,user_id,activated_at,assigned_by",추천 수락
+challenge_declined,challenge_exposure,"challenge_id,user_id,date",추천 거절
+challenge_started,challenge_enrollment,"challenge_id,user_id,activated_at",챌린지 시작
+challenge_completed_today,challenge_day_log,"challenge_id,user_id,date,completed_flag,completion_quality_0_5",당일 수행 완료
+challenge_dropped,challenge_day_log,"challenge_id,user_id,date,dropout_flag,dropout_reason_code",중도포기

@@ -1,0 +1,8 @@
+﻿source_table,source_column,derived_feature,window_or_transform,primary_target,notes
+challenge_exposure,shown_flag,challenge_shown_count_7d,7d count,all,노출과 수락을 분리
+challenge_exposure,accepted_flag,challenge_accept_count_7d,7d count,all,수락 신호
+challenge_enrollment,status,active_challenge_count_today,same-day count,all,부하도
+challenge_day_log,completed_flag,challenge_completion_rate_7d,7d ratio,all,수행률
+challenge_day_log,perceived_helpfulness_0_10,challenge_helpfulness_mean_28d,28d mean,all,과거 적합도
+challenge_day_log,dropout_flag,challenge_dropout_count_28d,28d count,all,부담/이탈
+challenge_enrollment,challenge_id/domain,sleep_challenge_active_flag,same-day flag,ins,도메인 활성

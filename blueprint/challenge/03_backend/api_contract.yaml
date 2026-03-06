@@ -1,0 +1,23 @@
+openapi: 3.0.3
+info:
+  title: MindLab Challenge API
+  version: 0.3.0
+paths:
+  /challenge/catalog:
+    get:
+      summary: challenge 카탈로그 조회
+  /challenge/recommendations/today:
+    get:
+      summary: 오늘 추천 challenge 조회
+  /challenge/exposures:
+    post:
+      summary: recommendation or browse exposure log 기록
+  /challenge/enrollments:
+    post:
+      summary: challenge 시작
+  /challenge/enrollments/{enrollment_id}:
+    patch:
+      summary: challenge 종료 또는 상태 변경
+  /challenge/day-log:
+    post:
+      summary: 당일 수행 로그 저장

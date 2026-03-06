@@ -1,0 +1,8 @@
+﻿rule_id,state_pattern,candidate_challenge_id,priority,reason_code,guardrail,notes
+MAP_001,ins_state>=60 AND wake_time_std_7d>=75,CH_SLEEP_001,high,ins_high_wake_irregular,risk<2,수면/기상 불규칙
+MAP_002,dep_state>=55 AND daylight_days_ge_10m_7d<=2,CH_ACT_002,high,dep_low_daylight,risk<2,햇빛 부족
+MAP_003,dep_state>=55 AND exercise_days_ge_10m_7d<=2,CH_ACT_003,medium,dep_low_activity,risk<2,활동량 부족
+MAP_004,dep_state>=50 AND energy_mean_7d<=2.5,CH_ACT_001,medium,dep_low_energy,risk<2,아침 앵커
+MAP_005,anx_state>=60 AND anxiety_mean_7d>=3.5,CH_REG_001,high,anx_high_anxiety,risk<2,호흡/이완
+MAP_006,anx_state>=60 AND anxiety_spike_today>=1,CH_REG_002,medium,acute_anxiety_spike,risk<2,감각 grounding
+MAP_007,dep_state>=50 AND active_social_contact_days_28d<=1,CH_SOC_001,low,low_social_contact,risk<2,사회적 접촉 부족

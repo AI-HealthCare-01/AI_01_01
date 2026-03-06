@@ -1,0 +1,11 @@
+﻿raw_input,derived_variable,primary_target_domain,directional_link,recommended_windowing,notes
+sleep_total_bucket,sleep_total_min_midpoint,insomnia,negative_if_low,"7d mean/std, 28d mean/std",총 수면시간 부족
+wake_time_local,wake_time_min_of_day,insomnia,negative_if_irregular,"7d std, 28d std, days_since_prev_checkin",규칙성은 계산
+sleep_latency_bucket,sleep_latency_min_midpoint,insomnia,negative_if_high,"7d mean, 28d mean",잠들기 어려움
+mood_1_5,mood_score,depression,positive_if_high,today + 7d/28d mean,현재 상태 관측치
+anxiety_1_5,anxiety_score,anxiety,negative_if_high,today + 7d/28d mean,현재 상태 관측치
+energy_1_5,energy_score,depression,positive_if_high,today + 7d/28d mean,무기력 연결
+daylight_bucket,daylight_minutes_midpoint,depression_insomnia,positive_if_high,7d/28d active days,햇빛 노출
+exercise_bucket,exercise_minutes_midpoint,depression_anxiety,positive_if_high,7d/28d active days,운동량
+alcohol_bucket,alcohol_units_bucket,insomnia_mood,negative_if_high,7d/28d active days,수면 방해
+caffeine_after_2pm_flag,late_caffeine_flag,insomnia,negative_if_yes,7d/28d counts,늦은 카페인

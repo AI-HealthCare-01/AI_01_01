@@ -1,0 +1,38 @@
+openapi: 3.0.3
+info:
+  title: MindLab Summary Report API (Snippet)
+  version: 0.1.0
+paths:
+  /v1/report/summary:
+    get:
+      summary: Get summary report data for preview
+      parameters:
+        - in: query
+          name: start_date
+          required: true
+          schema: { type: string, format: date }
+        - in: query
+          name: end_date
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: ReportSummaryDataContract JSON
+  /v1/report/summary/export:
+    post:
+      summary: Export summary report as PDF or PNG
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [start_date, end_date, format]
+              properties:
+                start_date: { type: string, format: date }
+                end_date: { type: string, format: date }
+                format: { type: string, enum: [pdf, png] }
+                include_sensitive: { type: boolean, default: true }
+      responses:
+        "200":
+          description: File stream or signed URL

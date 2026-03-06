@@ -1,0 +1,6 @@
+﻿screen,component_id,purpose_ko
+CBTLanding,entry_card,시작 진입 카드
+CBTConversation,message_thread,대화 스레드
+CBTConversation,safety_banner,위험 안내 배너
+CBTSummary,summary_card,세션 요약 카드
+CBTSummary,homework_card,과제 카드

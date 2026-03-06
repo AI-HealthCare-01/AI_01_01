@@ -1,0 +1,8 @@
+{
+  "users": 1200,
+  "rows": 17073,
+  "rows_per_user_min": 1,
+  "rows_per_user_max": 28,
+  "feature_count": 97,
+  "notes": "Observed login-day nowcast mart. Handles irregular usage via days_since_prev_checkin, lag/rolling over previous observed entries, and sparse assessment anchors. Same-day challenge/CBT/risk summaries and their recent observed-history features are included."
+}

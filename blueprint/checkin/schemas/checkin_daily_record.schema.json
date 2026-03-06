@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DailyCheckinRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "user_id",
+    "local_date",
+    "timezone",
+    "status",
+    "current_payload"
+  ],
+  "properties": {
+    "user_id": {
+      "type": "string"
+    },
+    "local_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "timezone": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "submitted",
+        "skipped"
+      ]
+    },
+    "checked_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "completion_mode": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "full",
+        "partial",
+        "reminder_submit",
+        null
+      ]
+    },
+    "current_payload": {
+      "$ref": "./checkin_payload.schema.json"
+    },
+    "version_no": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

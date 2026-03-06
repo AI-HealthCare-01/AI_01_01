@@ -1,0 +1,18 @@
+project_name = "mindsight"
+aws_region   = "ap-northeast-2"
+
+db_password = "change-me"
+
+web_image_uri = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/mindsight-staging-web:latest"
+api_image_uri = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/mindsight-staging-api:latest"
+
+enable_https        = false
+acm_certificate_arn = null
+
+web_env_vars = {
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID = "demo-mindsight"
+}
+
+api_env_vars = {
+  FIREBASE_PROJECT_ID = "demo-mindsight"
+}

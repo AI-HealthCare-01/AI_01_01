@@ -1,0 +1,8 @@
+metric_name,unit,definition_ko,priority
+submit_rate,%,prompt_shown 대비 submitted,core
+median_completion_seconds,sec,started부터 submitted까지 중앙값,core
+skip_rate,%,prompt_shown 대비 skipped,core
+question_completion_rate,%,질문별 응답 완료율,diagnostic
+same_day_edit_rate,%,submitted 이후 edited 비율,diagnostic
+day7_repeat_checkin_rate,%,첫 완료 후 7일 내 반복 완료,growth
+model_usable_record_rate,%,모델 입력 가능 레코드 비율,modeling

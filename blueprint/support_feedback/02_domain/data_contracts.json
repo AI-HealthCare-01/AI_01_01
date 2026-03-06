@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SupportTicketContract",
+  "type": "object",
+  "required": [
+    "ticket",
+    "messages"
+  ],
+  "properties": {
+    "ticket": {
+      "type": "object",
+      "required": [
+        "ticket_id",
+        "user_id",
+        "ticket_type",
+        "title",
+        "status",
+        "category",
+        "created_at"
+      ],
+      "properties": {
+        "ticket_id": {
+          "type": "string"
+        },
+        "feed_number": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "user_id": {
+          "type": "string"
+        },
+        "ticket_type": {
+          "type": "string",
+          "enum": [
+            "inquiry",
+            "feedback"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "new",
+            "waiting_admin",
+            "in_progress",
+            "answered",
+            "waiting_user",
+            "reopened",
+            "resolved",
+            "closed"
+          ]
+        },
+        "category": {
+          "type": "string"
+        },
+        "related_feature": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "important",
+            "urgent"
+          ]
+        },
+        "reply_requested": {
+          "type": "boolean"
+        },
+        "sensitive_queue_flag": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "resolved_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "closed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "messages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "ticket_id",
+          "author_type",
+          "body",
+          "created_at"
+        ],
+        "properties": {
+          "message_id": {
+            "type": "string"
+          },
+          "ticket_id": {
+            "type": "string"
+          },
+          "author_type": {
+            "type": "string",
+            "enum": [
+              "user",
+              "admin",
+              "system"
+            ]
+          },
+          "author_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "is_followup": {
+            "type": "boolean"
+          },
+          "internal_only": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "attachment_id": {
+            "type": "string"
+          },
+          "ticket_id": {
+            "type": "string"
+          },
+          "message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "file_size_bytes": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "notifications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "notification_id": {
+            "type": "string"
+          },
+          "recipient_type": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "user"
+            ]
+          },
+          "recipient_id": {
+            "type": "string"
+          },
+          "ticket_id": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "is_read": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}

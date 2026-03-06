@@ -15,3 +15,7 @@
 - `lint.sh`: run workspace and API lint checks.
 - `test.sh`: run workspace and API test checks.
 - `smoke.sh`: run lightweight web/API smoke checks.
+- `ignored-diff.sh`: track `.gitignore` 대상 파일 변경(추가/삭제/수정) 비교.
+  - `./scripts/ignored-diff.sh baseline`: 기준 스냅샷 생성/갱신
+  - `./scripts/ignored-diff.sh diff`: 기준 대비 변경 내역 출력
+  - 산출물은 기본적으로 `artifacts/ignored-tracking/`에 저장됨

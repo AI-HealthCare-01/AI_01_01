@@ -1,4 +1,4 @@
-.PHONY: bootstrap web-install api-install web-dev web-dev-real web-dev-emulator api-dev api-dev-real api-dev-emulator auth-emulator auth-e2e db-up db-down docker-up docker-up-real docker-up-emulator docker-down lint test smoke build typecheck
+.PHONY: bootstrap web-install api-install web-dev web-dev-real web-dev-emulator api-dev api-dev-real api-dev-emulator auth-emulator auth-e2e db-up db-down docker-up docker-up-real docker-up-emulator docker-down lint test smoke build typecheck ignored-baseline ignored-diff
 
 bootstrap: web-install api-install
 
@@ -66,3 +66,9 @@ build:
 
 typecheck:
 	npm run typecheck
+
+ignored-baseline:
+	./scripts/ignored-diff.sh baseline
+
+ignored-diff:
+	./scripts/ignored-diff.sh diff

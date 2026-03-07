@@ -11,7 +11,7 @@ from pathlib import Path
 
 from app.core_inputs.store import CoreInputStore
 
-from .llm import CbtLlmEngine, CbtStructuredDraft
+from .cbt.engine import CbtThoughtRecordEngine
 from .models import (
     ActivityCalendar,
     ActivityCalendarDay,
@@ -22,6 +22,8 @@ from .models import (
     ActivitySummaryCards,
     ActivitySurveySummary,
     CbtActionKind,
+    CbtConversationBootstrapResponse,
+    CbtConversationMessage,
     CbtConversationTurnRequest,
     CbtConversationTurnResponse,
     CbtPlannerAction,
@@ -50,9 +52,9 @@ from .models import (
     ReportRiskSummary,
     ReportSourceDensity,
     ReportSummaryExportRequest,
+    ReportSummaryResponse,
     ReportSummarySaveRequest,
     ReportSummarySaveResponse,
-    ReportSummaryResponse,
     ReportSymptomPoint,
     SymptomDashboardResponse,
     SymptomMetric,
@@ -152,7 +154,7 @@ class InsightsStore:
         # Reuse base schema from core input module.
         CoreInputStore(database_path)
         self._cbt_state_schema = self._load_cbt_state_schema()
-        self._cbt_llm = CbtLlmEngine()
+        self._cbt_engine = CbtThoughtRecordEngine()
         self._initialize_schema()
 
     def _connect(self) -> sqlite3.Connection:
@@ -196,6 +198,12 @@ class InsightsStore:
                   user_id TEXT NOT NULL,
                   date TEXT NOT NULL,
                   started_at TEXT NOT NULL,
+                  ended_at TEXT,
+                  status TEXT NOT NULL DEFAULT 'completed',
+                  module_id TEXT NOT NULL DEFAULT 'thought_record',
+                  context_text TEXT,
+                  mood_label TEXT,
+                  mood_intensity_0_100 INTEGER,
                   duration_sec INTEGER,
                   emotion_intensity_pre_0_100 INTEGER,
                   emotion_intensity_post_0_100 INTEGER,
@@ -217,6 +225,7 @@ class InsightsStore:
                   reflection_performed_flag INTEGER,
                   reflection_note TEXT,
                   reflection_completed_at TEXT,
+                  turn_log_json TEXT,
                   state_json TEXT,
                   created_at TEXT NOT NULL
                 );
@@ -267,6 +276,12 @@ class InsightsStore:
                 "cbt_session_summary",
                 {
                     "started_at": "TEXT",
+                    "ended_at": "TEXT",
+                    "status": "TEXT NOT NULL DEFAULT 'completed'",
+                    "module_id": "TEXT NOT NULL DEFAULT 'thought_record'",
+                    "context_text": "TEXT",
+                    "mood_label": "TEXT",
+                    "mood_intensity_0_100": "INTEGER",
                     "duration_sec": "INTEGER",
                     "emotion_intensity_pre_0_100": "INTEGER",
                     "emotion_intensity_post_0_100": "INTEGER",
@@ -288,6 +303,7 @@ class InsightsStore:
                     "reflection_performed_flag": "INTEGER",
                     "reflection_note": "TEXT",
                     "reflection_completed_at": "TEXT",
+                    "turn_log_json": "TEXT",
                     "state_json": "TEXT",
                     "created_at": "TEXT",
                 },
@@ -711,6 +727,9 @@ class InsightsStore:
     @classmethod
     def _core_belief_summary(cls, state: dict[str, object]) -> str | None:
         thought = cls._automatic_thought_summary(state)
+        core_message = str(state.get("core_message_text") or "").strip()
+        if core_message:
+            return cls._to_belief_sentence(core_message, state, thought)
 
         core = cls._first_nonempty_text(state.get("core_belief_hypotheses"))
         if core:
@@ -839,62 +858,49 @@ class InsightsStore:
         cls,
         state: dict[str, object],
         risk_level: int,
-        draft: CbtStructuredDraft,
+        *,
+        previous: tuple[int | None, int | None, int | None, int | None, int | None, int | None] | None = None,
     ) -> tuple[int, int, int, int, int, int]:
         progress = 0
-        if str(state.get("situation") or "").strip():
+        if str(state.get("situation_text") or state.get("situation") or "").strip():
             progress += 1
         if cls._list_count(state, "automatic_thoughts") > 0 and cls._list_count(state, "emotions") > 0:
             progress += 1
         if cls._list_count(state, "evidence_for") > 0 and cls._list_count(state, "evidence_against") > 0:
             progress += 1
-        if str(state.get("balanced_statement") or "").strip():
+        if str(state.get("alternative_thought") or state.get("balanced_statement") or "").strip():
             progress += 1
         if cls._list_count(state, "behaviors") > 0:
             progress += 1
 
         risk_penalty = risk_level * 4
-        emotion_post_default = int(_clamp(74 - (progress * 7) + risk_penalty, 26, 96))
+        current_emotion = state.get("emotion_intensity_0_100")
+        try:
+            emotion_post_default = int(_clamp(float(current_emotion), 0, 100)) if current_emotion is not None else int(
+                _clamp(74 - (progress * 7) + risk_penalty, 26, 96)
+            )
+        except (TypeError, ValueError):
+            emotion_post_default = int(_clamp(74 - (progress * 7) + risk_penalty, 26, 96))
         belief_post_default = int(_clamp(78 - (progress * 6) + risk_penalty, 28, 97))
-
-        emotion_post = (
-            int(_clamp(draft.emotion_post, 0, 100))
-            if draft.emotion_post is not None
-            else emotion_post_default
-        )
-        belief_post = (
-            int(_clamp(draft.belief_post, 0, 100))
-            if draft.belief_post is not None
-            else belief_post_default
-        )
+        emotion_post = emotion_post_default
+        belief_post = belief_post_default
 
         emotion_pre_default = int(_clamp(max(emotion_post + 10, 72 + risk_penalty), 32, 100))
         belief_pre_default = int(_clamp(max(belief_post + 12, 74 + risk_penalty), 35, 100))
+        if previous is not None:
+            prev_emotion_pre, _, prev_belief_pre, _, _, _ = previous
+            if prev_emotion_pre is not None:
+                emotion_pre_default = int(_clamp(prev_emotion_pre, 0, 100))
+            if prev_belief_pre is not None:
+                belief_pre_default = int(_clamp(prev_belief_pre, 0, 100))
 
-        emotion_pre = (
-            int(_clamp(draft.emotion_pre, 0, 100))
-            if draft.emotion_pre is not None
-            else emotion_pre_default
-        )
-        belief_pre = (
-            int(_clamp(draft.belief_pre, 0, 100))
-            if draft.belief_pre is not None
-            else belief_pre_default
-        )
+        emotion_pre = emotion_pre_default
+        belief_pre = belief_pre_default
 
         homework_default = int(_clamp(4 + progress + (1 if cls._list_count(state, "behaviors") > 0 else 0), 0, 10))
         helpfulness_default = int(_clamp(5 + progress, 0, 10))
-
-        homework_commitment = (
-            int(_clamp(draft.homework_commitment, 0, 10))
-            if draft.homework_commitment is not None
-            else homework_default
-        )
-        helpfulness = (
-            int(_clamp(draft.helpfulness, 0, 10))
-            if draft.helpfulness is not None
-            else helpfulness_default
-        )
+        homework_commitment = homework_default
+        helpfulness = helpfulness_default
 
         return (
             emotion_pre,
@@ -903,6 +909,103 @@ class InsightsStore:
             belief_post,
             homework_commitment,
             helpfulness,
+        )
+
+    @staticmethod
+    def _latest_user_text(conversation: list[dict[str, str]]) -> str:
+        for item in reversed(conversation):
+            if item["role"] == "user" and item["content"].strip():
+                return item["content"].strip()
+        return ""
+
+    def _load_today_record_for_cbt(
+        self,
+        conn: sqlite3.Connection,
+        user_id: str,
+        target_date: date,
+    ) -> dict[str, object]:
+        row = conn.execute(
+            """
+            SELECT dcv.payload_json
+            FROM daily_checkin dc
+            LEFT JOIN daily_checkin_version dcv ON dcv.checkin_version_id = dc.current_version_id
+            WHERE dc.user_id = ?
+              AND dc.status = 'submitted'
+              AND dc.date = ?
+            """,
+            (user_id, target_date.isoformat()),
+        ).fetchone()
+        if not row or not row["payload_json"]:
+            return {"exists": False, "date": target_date.isoformat()}
+
+        payload = json.loads(str(row["payload_json"]))
+        mood_1_5 = payload.get("mood_1_5")
+        mood_label_map = {
+            1: "매우 힘듦",
+            2: "조금 힘듦",
+            3: "보통",
+            4: "괜찮음",
+            5: "좋음",
+        }
+        mood_label = mood_label_map.get(int(mood_1_5), "보통") if isinstance(mood_1_5, int) else "보통"
+        mood_intensity = None
+        if isinstance(mood_1_5, int):
+            mood_intensity = int(_clamp((6 - mood_1_5) * 22, 0, 100))
+        sleep_bucket = str(payload.get("sleep_total_bucket") or "")
+        sleep_hours = SLEEP_TOTAL_TO_MINUTES.get(sleep_bucket)
+        return {
+            "exists": True,
+            "date": target_date.isoformat(),
+            "mood_label": mood_label,
+            "mood_intensity_0_100": mood_intensity,
+            "sleep_hours": round((sleep_hours or 0) / 60, 1) if sleep_hours else None,
+            "energy_1_5": payload.get("energy_1_5"),
+            "caffeine_after_2pm_flag": bool(payload.get("caffeine_after_2pm_flag", False)),
+            "exercise_bucket": payload.get("exercise_bucket"),
+        }
+
+    def _load_profile_snapshot(self, conn: sqlite3.Connection, user_id: str) -> tuple[str, str]:
+        try:
+            row = conn.execute(
+                """
+                SELECT nickname, coach_name
+                FROM account_user
+                WHERE user_id = ?
+                """,
+                (user_id,),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return ("나", "마음코치")
+        if not row:
+            return ("나", "마음코치")
+        user_name = str(row["nickname"] or "").strip() or "나"
+        coach_name = str(row["coach_name"] or "").strip() or "마음코치"
+        return (user_name, coach_name)
+
+    def get_cbt_conversation_bootstrap(self, user_id: str) -> CbtConversationBootstrapResponse:
+        with self._connect() as conn:
+            today_record = self._load_today_record_for_cbt(conn, user_id, date.today())
+            user_name, coach_name = self._load_profile_snapshot(conn, user_id)
+        bootstrap = self._cbt_engine.bootstrap(
+            today_record=today_record,
+            coach_nickname=coach_name,
+            user_nickname=user_name,
+        )
+        self._validate_schema(self._cbt_state_schema, bootstrap.state)
+        return CbtConversationBootstrapResponse(
+            structured_state_draft=bootstrap.state,
+            current_stage=bootstrap.current_stage,
+            phase_key=bootstrap.phase_key,
+            subphase_key=bootstrap.subphase_key,
+            phase_index=bootstrap.phase_index,
+            assistant_messages=[
+                CbtConversationMessage(role="assistant", content=content, sender_name=coach_name)
+                for content in bootstrap.assistant_messages
+            ],
+            quick_replies=bootstrap.quick_replies,
+            action_links=bootstrap.action_links,
+            requires_today_record=bootstrap.requires_today_record,
+            today_record_route=bootstrap.today_record_route,
         )
 
     @staticmethod
@@ -920,26 +1023,77 @@ class InsightsStore:
         user_id: str,
         payload: CbtConversationTurnRequest,
     ) -> CbtConversationTurnResponse:
-        del user_id  # reserved for future per-user memory prompt tuning
-
         conversation = self._conversation_items(payload)
-        if not conversation:
+        state_payload = payload.state if isinstance(payload.state, dict) else {}
+        coach_name = "마음코치"
+        with self._connect() as conn:
+            _, coach_name = self._load_profile_snapshot(conn, user_id)
+        if not state_payload.get("flow_id"):
+            bootstrap = self.get_cbt_conversation_bootstrap(user_id)
+            state_payload = bootstrap.structured_state_draft
+        user_input = (
+            (payload.user_input or "").strip()
+            or (payload.selected_quick_reply or "").strip()
+            or self._latest_user_text(conversation)
+        )
+        action_id = (payload.quick_reply_action_id or "").strip()
+        if not user_input and not action_id:
             raise ValueError("invalid_cbt_state_schema:$.messages")
 
-        draft = self._cbt_llm.generate_turn(
-            messages=conversation,
-            existing_state=payload.state,
-            current_stage=payload.current_stage.value if payload.current_stage else None,
+        turn = self._cbt_engine.process_turn(
+            raw_state=state_payload,
+            user_input=user_input,
+            quick_reply_action_id=action_id or None,
+            selected_quick_reply=payload.selected_quick_reply,
         )
-        self._validate_schema(self._cbt_state_schema, draft.state)
-        risk_flags = self._extract_risk_flags(draft.state)
+
+        self._validate_schema(self._cbt_state_schema, turn.state)
+        risk_flags = self._extract_risk_flags(turn.state)
         risk_level = self._resolve_risk_level(risk_flags)
-        safety_first = risk_level >= 2
-        safety_message = (
-            "위험 신호가 감지되어 안전 안내를 우선합니다."
-            if safety_first
-            else None
+
+        previous_values = (
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
         )
+        try:
+            previous_values = (
+                (
+                    int(turn.state.get("emotion_intensity_pre_0_100"))
+                    if turn.state.get("emotion_intensity_pre_0_100") is not None
+                    else None
+                ),
+                (
+                    int(turn.state.get("emotion_intensity_post_0_100"))
+                    if turn.state.get("emotion_intensity_post_0_100") is not None
+                    else None
+                ),
+                (
+                    int(turn.state.get("belief_pre_0_100"))
+                    if turn.state.get("belief_pre_0_100") is not None
+                    else None
+                ),
+                (
+                    int(turn.state.get("belief_post_0_100"))
+                    if turn.state.get("belief_post_0_100") is not None
+                    else None
+                ),
+                (
+                    int(turn.state.get("homework_commitment_0_10"))
+                    if turn.state.get("homework_commitment_0_10") is not None
+                    else None
+                ),
+                (
+                    int(turn.state.get("session_helpfulness_0_10"))
+                    if turn.state.get("session_helpfulness_0_10") is not None
+                    else None
+                ),
+            )
+        except (TypeError, ValueError):
+            previous_values = (None, None, None, None, None, None)
         (
             emotion_pre,
             emotion_post,
@@ -947,15 +1101,45 @@ class InsightsStore:
             belief_post,
             homework_commitment,
             helpfulness,
-        ) = self._estimate_turn_checkpoints(draft.state, risk_level, draft)
+        ) = self._estimate_turn_checkpoints(turn.state, risk_level, previous=previous_values)
+
+        turn.state["emotion_intensity_pre_0_100"] = emotion_pre
+        turn.state["emotion_intensity_post_0_100"] = emotion_post
+        turn.state["belief_pre_0_100"] = belief_pre
+        turn.state["belief_post_0_100"] = belief_post
+        turn.state["homework_commitment_0_10"] = homework_commitment
+        turn.state["session_helpfulness_0_10"] = helpfulness
+
+        assistant_message = "\n\n".join(turn.assistant_messages).strip()
+        if not assistant_message:
+            assistant_message = "천천히 이어가도 괜찮아요. 지금 느낀 점을 한 줄로만 적어볼까요?"
+
+        planner_action = turn.planner_action
+        if planner_action not in {item.value for item in CbtPlannerAction}:
+            planner_action = CbtPlannerAction.review_evidence.value
 
         return CbtConversationTurnResponse(
-            assistant_message=draft.assistant_reply,
-            structured_state_draft=draft.state,
-            planner_action=CbtPlannerAction(draft.planner_action),
+            assistant_message=assistant_message,
+            assistant_messages=[
+                CbtConversationMessage(role="assistant", content=content, sender_name=coach_name)
+                for content in turn.assistant_messages
+            ],
+            structured_state_draft=turn.state,
+            planner_action=CbtPlannerAction(planner_action),
+            current_stage=turn.current_stage,
+            phase_key=turn.phase_key,
+            subphase_key=turn.subphase_key,
+            phase_index=turn.phase_index,
+            quick_replies=turn.quick_replies,
+            action_links=turn.action_links,
+            state_repeat_count=turn.state_repeat_count,
+            fallback_reason=turn.fallback_reason,
+            conversation_closed=turn.conversation_closed,
+            requires_today_record=turn.requires_today_record,
+            today_record_route=turn.today_record_route,
             risk_level=risk_level,
-            safety_first=safety_first,
-            safety_message=safety_message,
+            safety_first=turn.safety_first,
+            safety_message=turn.safety_message,
             emotion_intensity_pre_0_100=emotion_pre,
             emotion_intensity_post_0_100=emotion_post,
             belief_pre_0_100=belief_pre,
@@ -971,18 +1155,40 @@ class InsightsStore:
     ) -> CbtSessionResponse:
         state_payload = payload.state or {}
         conversation = self._conversation_items(payload)
-        draft = None
-        # If client already sends structured state from the CBT flow, persist that state as source of truth.
-        # Regenerating from conversation at save time can overwrite user-confirmed reframe/belief fields.
-        if conversation and not state_payload:
-            draft = self._cbt_llm.generate_turn(messages=conversation, existing_state=state_payload)
-            state_payload = draft.state
+        with self._connect() as conn:
+            today_record = self._load_today_record_for_cbt(conn, user_id, payload.date or date.today())
+            profile_user_name, profile_coach_name = self._load_profile_snapshot(conn, user_id)
+        if not state_payload:
+            state_payload = self._cbt_engine.bootstrap(
+                today_record=today_record,
+                coach_nickname=profile_coach_name,
+                user_nickname=profile_user_name,
+            ).state
+            if conversation:
+                latest_user = self._latest_user_text(conversation)
+                if latest_user:
+                    state_payload["situation_text"] = latest_user[:400]
+                    state_payload["situation"] = latest_user[:400]
+        profile_snapshot = state_payload.get("profile_snapshot")
+        if not isinstance(profile_snapshot, dict):
+            profile_snapshot = {}
+            state_payload["profile_snapshot"] = profile_snapshot
+        profile_snapshot["coach_nickname"] = (
+            str(profile_snapshot.get("coach_nickname") or "").strip() or profile_coach_name or "마음코치"
+        )
+        profile_snapshot["user_nickname"] = (
+            str(profile_snapshot.get("user_nickname") or "").strip() or profile_user_name or "나"
+        )
+        if conversation:
+            state_payload["turn_log"] = conversation[-80:]
 
         self._validate_schema(self._cbt_state_schema, state_payload)
 
         duration_sec = payload.duration_sec
         if duration_sec is None and conversation:
             duration_sec = max(300, min(3600, len(conversation) * 95))
+        if duration_sec is None:
+            duration_sec = 420
 
         emotion_pre = payload.emotion_intensity_pre_0_100
         emotion_post = payload.emotion_intensity_post_0_100
@@ -991,25 +1197,35 @@ class InsightsStore:
         homework_commitment = payload.homework_commitment_0_10
         helpfulness = payload.session_helpfulness_0_10
 
-        if draft is not None:
-            if emotion_pre is None:
-                emotion_pre = draft.emotion_pre
-            if emotion_post is None:
-                emotion_post = draft.emotion_post
-            if belief_pre is None:
-                belief_pre = draft.belief_pre
-            if belief_post is None:
-                belief_post = draft.belief_post
-            if homework_commitment is None:
-                homework_commitment = draft.homework_commitment
-            if helpfulness is None:
-                helpfulness = draft.helpfulness
+        risk_flags = self._extract_risk_flags(state_payload)
+        risk_level = self._resolve_risk_level(risk_flags)
+        (
+            computed_emotion_pre,
+            computed_emotion_post,
+            computed_belief_pre,
+            computed_belief_post,
+            computed_homework,
+            computed_helpfulness,
+        ) = self._estimate_turn_checkpoints(state_payload, risk_level)
+        if emotion_pre is None:
+            emotion_pre = computed_emotion_pre
+        if emotion_post is None:
+            emotion_post = computed_emotion_post
+        if belief_pre is None:
+            belief_pre = computed_belief_pre
+        if belief_post is None:
+            belief_post = computed_belief_post
+        if homework_commitment is None:
+            homework_commitment = computed_homework
+        if helpfulness is None:
+            helpfulness = computed_helpfulness
 
         planner_action = payload.planner_action
         if planner_action is None:
+            planner_guess = self._cbt_engine._infer_planner_action(state_payload)  # noqa: SLF001
             planner_action = (
-                CbtPlannerAction(draft.planner_action)
-                if draft is not None
+                CbtPlannerAction(planner_guess)
+                if planner_guess in {item.value for item in CbtPlannerAction}
                 else CbtPlannerAction.review_evidence
             )
         (
@@ -1024,12 +1240,25 @@ class InsightsStore:
         session_id = f"cbt_{uuid.uuid4().hex}"
         risk_signal_id = f"risk_{uuid.uuid4().hex}"
         now_iso = self._now_iso()
-
-        risk_flags = self._extract_risk_flags(state_payload)
+        ended_at_iso = now_iso
 
         distortion_total_count = self._distortion_total_count(state_payload)
         topic_label = self._infer_topic_label(state_payload)
         summary_label = self._summary_label(state_payload)
+        context_text = str(state_payload.get("situation_text") or state_payload.get("situation") or "").strip() or None
+        mood_label = str((state_payload.get("today_record") or {}).get("mood_label") or "").strip() or None
+        mood_intensity = (state_payload.get("today_record") or {}).get("mood_intensity_0_100")
+        try:
+            mood_intensity_value = int(mood_intensity) if mood_intensity is not None else None
+        except (TypeError, ValueError):
+            mood_intensity_value = None
+        turn_logs = state_payload.get("turn_diagnostics")
+        turn_log_json = json.dumps(turn_logs if isinstance(turn_logs, list) else [], ensure_ascii=False)
+
+        if selected_action_kind == CbtActionKind.none:
+            state_payload["todo_id"] = None
+        else:
+            state_payload["todo_id"] = f"todo_{session_id}"
 
         with self._connect() as conn:
             conn.execute(
@@ -1039,6 +1268,12 @@ class InsightsStore:
                   user_id,
                   date,
                   started_at,
+                  ended_at,
+                  status,
+                  module_id,
+                  context_text,
+                  mood_label,
+                  mood_intensity_0_100,
                   duration_sec,
                   emotion_intensity_pre_0_100,
                   emotion_intensity_post_0_100,
@@ -1060,15 +1295,25 @@ class InsightsStore:
                   reflection_performed_flag,
                   reflection_note,
                   reflection_completed_at,
+                  turn_log_json,
                   state_json,
                   created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
                 """,
                 (
                     session_id,
                     user_id,
                     target_date.isoformat(),
                     now_iso,
+                    ended_at_iso,
+                    "completed",
+                    "thought_record",
+                    context_text,
+                    mood_label,
+                    mood_intensity_value,
                     duration_sec,
                     emotion_pre,
                     emotion_post,
@@ -1090,6 +1335,7 @@ class InsightsStore:
                     None,
                     None,
                     None,
+                    turn_log_json,
                     json.dumps(state_payload, ensure_ascii=False),
                     now_iso,
                 ),
@@ -1443,7 +1689,7 @@ class InsightsStore:
         with self._connect() as conn:
             target = conn.execute(
                 """
-                SELECT date, selected_action_kind
+                SELECT date, selected_action_kind, state_json
                 FROM cbt_session_summary
                 WHERE user_id = ? AND session_id = ?
                 """,
@@ -1455,20 +1701,46 @@ class InsightsStore:
             if str(target["selected_action_kind"] or CbtActionKind.none.value) == CbtActionKind.none.value:
                 raise ValueError("cbt_reflection_not_applicable")
 
+            state_json = {}
+            if target["state_json"]:
+                try:
+                    state_json = json.loads(str(target["state_json"]))
+                except json.JSONDecodeError:
+                    state_json = {}
+            if not isinstance(state_json, dict):
+                state_json = {}
+            reflection_history = state_json.get("reflection_history")
+            if not isinstance(reflection_history, list):
+                reflection_history = []
+            completed_at = self._now_iso()
+            reflection_history.append(
+                {
+                    "reflection_status": "done" if payload.performed else "declined",
+                    "reflection_note": payload.reflection_note.strip(),
+                    "reflection_at": completed_at,
+                }
+            )
+            state_json["reflection_status"] = "done" if payload.performed else "declined"
+            state_json["reflection_note"] = payload.reflection_note.strip()
+            state_json["reflection_at"] = completed_at
+            state_json["reflection_history"] = reflection_history[-20:]
+
             conn.execute(
                 """
                 UPDATE cbt_session_summary
                 SET reflection_status = ?,
                     reflection_performed_flag = ?,
                     reflection_note = ?,
-                    reflection_completed_at = ?
+                    reflection_completed_at = ?,
+                    state_json = ?
                 WHERE user_id = ? AND session_id = ?
                 """,
                 (
                     CbtReflectionStatus.completed.value,
                     int(payload.performed),
                     payload.reflection_note.strip(),
-                    self._now_iso(),
+                    completed_at,
+                    json.dumps(state_json, ensure_ascii=False),
                     user_id,
                     session_id,
                 ),
@@ -1493,7 +1765,7 @@ class InsightsStore:
         with self._connect() as conn:
             target = conn.execute(
                 """
-                SELECT session_id
+                SELECT session_id, state_json
                 FROM cbt_session_summary
                 WHERE user_id = ? AND session_id = ?
                 """,
@@ -1501,6 +1773,23 @@ class InsightsStore:
             ).fetchone()
             if not target:
                 raise ValueError("cbt_session_not_found")
+
+            state_json = {}
+            if target["state_json"]:
+                try:
+                    state_json = json.loads(str(target["state_json"]))
+                except json.JSONDecodeError:
+                    state_json = {}
+            if not isinstance(state_json, dict):
+                state_json = {}
+            todo_id = state_json.get("todo_id")
+            if not isinstance(todo_id, str) or not todo_id.strip():
+                todo_id = f"todo_{session_id}"
+            state_json["todo_id"] = todo_id
+            state_json["commitment_type"] = (
+                "behavior" if payload.kind == CbtActionKind.challenge else "thought_practice"
+            )
+            state_json["commitment_text"] = title
 
             conn.execute(
                 """
@@ -1512,7 +1801,8 @@ class InsightsStore:
                     reflection_status = ?,
                     reflection_performed_flag = NULL,
                     reflection_note = NULL,
-                    reflection_completed_at = NULL
+                    reflection_completed_at = NULL,
+                    state_json = ?
                 WHERE user_id = ? AND session_id = ?
                 """,
                 (
@@ -1521,6 +1811,7 @@ class InsightsStore:
                     description,
                     route,
                     CbtReflectionStatus.pending.value,
+                    json.dumps(state_json, ensure_ascii=False),
                     user_id,
                     session_id,
                 ),

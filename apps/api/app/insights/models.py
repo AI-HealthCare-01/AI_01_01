@@ -50,12 +50,34 @@ class CbtConversationRole(str, Enum):
 class CbtConversationMessage(BaseModel):
     role: CbtConversationRole
     content: str = Field(min_length=1, max_length=2000)
+    sender_name: str | None = Field(default=None, min_length=1, max_length=60)
+
+
+class CbtConversationActionLink(BaseModel):
+    label: str = Field(min_length=1, max_length=80)
+    route: str = Field(min_length=1, max_length=200)
+
+
+class CbtQuickReplyType(str, Enum):
+    prefill = "prefill"
+    action = "action"
+
+
+class CbtQuickReplyItem(BaseModel):
+    type: CbtQuickReplyType
+    label: str = Field(min_length=1, max_length=80)
+    fill_text: str | None = Field(default=None, min_length=1, max_length=120)
+    action_id: str | None = Field(default=None, min_length=1, max_length=80)
 
 
 class CbtSessionStage(str, Enum):
     situation = "situation"
+    emotion = "emotion"
     thought = "thought"
     evidence = "evidence"
+    alternative_plan = "alternative_plan"
+    summary = "summary"
+    # Backward compatibility for old clients.
     reframe = "reframe"
     action = "action"
 
@@ -64,12 +86,28 @@ class CbtConversationTurnRequest(BaseModel):
     messages: list[CbtConversationMessage] = Field(default_factory=list, min_length=1, max_length=24)
     state: dict[str, Any] = Field(default_factory=dict)
     current_stage: CbtSessionStage | None = None
+    user_input: str | None = Field(default=None, min_length=1, max_length=2000)
+    quick_reply_action_id: str | None = Field(default=None, min_length=1, max_length=80)
+    # Backward compatibility for old web clients.
+    selected_quick_reply: str | None = Field(default=None, min_length=1, max_length=120)
 
 
 class CbtConversationTurnResponse(BaseModel):
     assistant_message: str
+    assistant_messages: list[CbtConversationMessage] = Field(default_factory=list)
     structured_state_draft: dict[str, Any]
     planner_action: CbtPlannerAction
+    current_stage: CbtSessionStage
+    phase_key: CbtSessionStage
+    subphase_key: str = Field(default="main", min_length=1, max_length=60)
+    phase_index: int = Field(ge=0, le=5)
+    quick_replies: list[CbtQuickReplyItem] = Field(default_factory=list)
+    action_links: list[CbtConversationActionLink] = Field(default_factory=list)
+    state_repeat_count: int = 0
+    fallback_reason: str | None = None
+    conversation_closed: bool = False
+    requires_today_record: bool = False
+    today_record_route: str | None = None
     risk_level: int = Field(ge=0, le=3)
     safety_first: bool
     safety_message: str | None
@@ -99,6 +137,19 @@ class CbtSessionCreateRequest(BaseModel):
     selected_action_title: str | None = Field(default=None, min_length=1, max_length=120)
     selected_action_description: str | None = Field(default=None, max_length=400)
     selected_action_route: str | None = Field(default=None, max_length=200)
+
+
+class CbtConversationBootstrapResponse(BaseModel):
+    structured_state_draft: dict[str, Any]
+    current_stage: CbtSessionStage
+    phase_key: CbtSessionStage
+    subphase_key: str = Field(default="main", min_length=1, max_length=60)
+    phase_index: int = Field(ge=0, le=5)
+    assistant_messages: list[CbtConversationMessage]
+    quick_replies: list[CbtQuickReplyItem] = Field(default_factory=list)
+    action_links: list[CbtConversationActionLink] = Field(default_factory=list)
+    requires_today_record: bool = False
+    today_record_route: str | None = None
 
 
 class CbtReflectionUpsertRequest(BaseModel):

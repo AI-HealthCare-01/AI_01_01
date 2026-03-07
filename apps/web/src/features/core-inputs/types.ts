@@ -261,17 +261,47 @@ export interface CbtSessionTodoUpsertRequest {
 export interface CbtConversationMessage {
   role: "user" | "assistant";
   content: string;
+  sender_name?: string | null;
 }
 
 export type CbtSessionStage =
   | "situation"
+  | "emotion"
   | "thought"
   | "evidence"
+  | "alternative_plan"
+  | "summary"
   | "reframe"
   | "action";
 
+export interface CbtQuickReplyItem {
+  type: "prefill" | "action";
+  label: string;
+  fill_text?: string | null;
+  action_id?: string | null;
+}
+
+export interface CbtConversationActionLink {
+  label: string;
+  route: string;
+}
+
+export interface CbtConversationBootstrapResponse {
+  structured_state_draft: Record<string, unknown>;
+  current_stage: CbtSessionStage;
+  phase_key: CbtSessionStage;
+  subphase_key: string;
+  phase_index: number;
+  assistant_messages: CbtConversationMessage[];
+  quick_replies: CbtQuickReplyItem[];
+  action_links: CbtConversationActionLink[];
+  requires_today_record: boolean;
+  today_record_route: string | null;
+}
+
 export interface CbtConversationTurnResponse {
   assistant_message: string;
+  assistant_messages: CbtConversationMessage[];
   structured_state_draft: Record<string, unknown>;
   planner_action:
     | "review_evidence"
@@ -280,6 +310,17 @@ export interface CbtConversationTurnResponse {
     | "activity_scheduling"
     | "sleep_anchor"
     | "support_contact";
+  current_stage: CbtSessionStage;
+  phase_key: CbtSessionStage;
+  subphase_key: string;
+  phase_index: number;
+  quick_replies: CbtQuickReplyItem[];
+  action_links: CbtConversationActionLink[];
+  state_repeat_count: number;
+  fallback_reason: string | null;
+  conversation_closed: boolean;
+  requires_today_record: boolean;
+  today_record_route: string | null;
   risk_level: number;
   safety_first: boolean;
   safety_message: string | null;

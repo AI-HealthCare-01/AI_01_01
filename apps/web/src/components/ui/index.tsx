@@ -428,9 +428,11 @@ export function IconButton({
 }
 
 interface BaseFieldProps {
-  label: string;
+  label: ReactNode;
   helperText?: string;
   errorText?: string;
+  labelHint?: string;
+  hideRequiredMark?: boolean;
 }
 
 export interface InputProps
@@ -441,6 +443,8 @@ export function Input({
   label,
   helperText,
   errorText,
+  labelHint,
+  hideRequiredMark,
   id,
   className,
   required,
@@ -455,8 +459,16 @@ export function Input({
   return (
     <div className={cx("ms-field", errorText && "ms-field--error")}>
       <label htmlFor={fieldId} className="ms-field__label">
-        {label}
-        {required ? " *" : ""}
+        <span>{label}</span>
+        {required && !hideRequiredMark ? <span aria-hidden="true"> *</span> : null}
+        {labelHint ? (
+          <span className="ms-field__label-hint" aria-label={labelHint} tabIndex={0}>
+            i
+            <span className="ms-field__label-tooltip" role="tooltip">
+              {labelHint}
+            </span>
+          </span>
+        ) : null}
       </label>
       <ShadInput
         id={fieldId}
@@ -486,6 +498,8 @@ export function PasswordInput({
   label,
   helperText,
   errorText,
+  labelHint,
+  hideRequiredMark,
   id,
   className,
   required,
@@ -501,8 +515,16 @@ export function PasswordInput({
   return (
     <div className={cx("ms-field", errorText && "ms-field--error")}>
       <label htmlFor={fieldId} className="ms-field__label">
-        {label}
-        {required ? " *" : ""}
+        <span>{label}</span>
+        {required && !hideRequiredMark ? <span aria-hidden="true"> *</span> : null}
+        {labelHint ? (
+          <span className="ms-field__label-hint" aria-label={labelHint} tabIndex={0}>
+            i
+            <span className="ms-field__label-tooltip" role="tooltip">
+              {labelHint}
+            </span>
+          </span>
+        ) : null}
       </label>
       <div className="ms-input-wrap">
         <ShadInput
@@ -547,6 +569,8 @@ export function Textarea({
   label,
   helperText,
   errorText,
+  labelHint,
+  hideRequiredMark,
   maxLengthHint,
   id,
   className,
@@ -563,8 +587,16 @@ export function Textarea({
   return (
     <div className={cx("ms-field", errorText && "ms-field--error")}>
       <label htmlFor={fieldId} className="ms-field__label">
-        {label}
-        {required ? " *" : ""}
+        <span>{label}</span>
+        {required && !hideRequiredMark ? <span aria-hidden="true"> *</span> : null}
+        {labelHint ? (
+          <span className="ms-field__label-hint" aria-label={labelHint} tabIndex={0}>
+            i
+            <span className="ms-field__label-tooltip" role="tooltip">
+              {labelHint}
+            </span>
+          </span>
+        ) : null}
       </label>
       <ShadTextarea
         id={fieldId}
@@ -609,6 +641,8 @@ export function Select({
   label,
   helperText,
   errorText,
+  labelHint,
+  hideRequiredMark,
   options,
   id,
   className,
@@ -624,8 +658,16 @@ export function Select({
   return (
     <div className={cx("ms-field", errorText && "ms-field--error")}>
       <label htmlFor={fieldId} className="ms-field__label">
-        {label}
-        {required ? " *" : ""}
+        <span>{label}</span>
+        {required && !hideRequiredMark ? <span aria-hidden="true"> *</span> : null}
+        {labelHint ? (
+          <span className="ms-field__label-hint" aria-label={labelHint} tabIndex={0}>
+            i
+            <span className="ms-field__label-tooltip" role="tooltip">
+              {labelHint}
+            </span>
+          </span>
+        ) : null}
       </label>
       <ShadSelect
         id={fieldId}

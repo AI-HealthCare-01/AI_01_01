@@ -793,9 +793,63 @@ a {
 }
 
 .ms-field__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   font-size: var(--font-body-sm-size);
   color: var(--color-semantic-text-secondary);
   font-weight: 600;
+}
+
+.ms-field__label-hint {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid var(--color-semantic-border-default);
+  color: var(--color-semantic-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ms-field__label-hint:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+}
+
+.ms-field__label-tooltip {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  transform: translateX(-50%) translateY(-4px);
+  min-width: 220px;
+  max-width: 280px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--color-semantic-border-default);
+  background: var(--color-semantic-surface-bg);
+  color: var(--color-semantic-text-secondary);
+  font-size: var(--font-caption-size);
+  line-height: var(--font-caption-line);
+  box-shadow: var(--shadow-soft);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.ms-field__label-hint:hover .ms-field__label-tooltip,
+.ms-field__label-hint:focus-visible .ms-field__label-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
 }
 
 .ms-field__meta {

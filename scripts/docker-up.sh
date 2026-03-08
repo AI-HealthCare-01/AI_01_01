@@ -5,6 +5,19 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/infra/docker/docker-compose.yml"
 ENV_FILE="${ROOT_DIR}/.env"
 
+run_compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose "$@"
+    return
+  fi
+  if command -v docker-compose >/dev/null 2>&1; then
+    docker-compose "$@"
+    return
+  fi
+  echo "docker compose 또는 docker-compose 명령을 찾을 수 없습니다."
+  exit 1
+}
+
 is_truthy() {
   local value="${1:-}"
   value="$(printf "%s" "${value}" | tr "[:upper:]" "[:lower:]")"
@@ -150,7 +163,7 @@ if [ -f "${ENV_FILE}" ]; then
   compose_args+=(--env-file "${ENV_FILE}")
 fi
 
-docker compose "${compose_args[@]}" up -d --build "${services[@]}"
+run_compose "${compose_args[@]}" up -d --build "${services[@]}"
 
 echo "web: http://localhost:${WEB_PORT}"
 echo "api: http://localhost:${API_PORT}/healthz"

@@ -72,13 +72,15 @@ interface QuestionBlockProps {
 
 function QuestionBlock({ question, selectedScore, onSelect }: QuestionBlockProps) {
   const labelId = `label-${question.code}`;
+  const optionsClassName =
+    question.options.length >= 5 ? "ms-assessment-options ms-assessment-options--5" : "ms-assessment-options";
 
   return (
     <div className="ms-assessment-question" role="radiogroup" aria-labelledby={labelId}>
       <p id={labelId} className="ms-assessment-question__text">
         {question.text}
       </p>
-      <div className="ms-assessment-options">
+      <div className={optionsClassName}>
         {question.options.map((option) => {
           const selected = selectedScore === option.score;
           return (

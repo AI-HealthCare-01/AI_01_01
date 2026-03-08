@@ -2230,6 +2230,10 @@ a {
   gap: var(--space-2);
 }
 
+.ms-assessment-options--5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .ms-assessment-option {
   min-height: 0;
   aspect-ratio: 1 / 1;

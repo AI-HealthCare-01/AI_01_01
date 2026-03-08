@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,9 @@ ACTION_NEXT_STAGE = "next_stage"
 ACTION_CHOOSE_ACTION_COMMITMENT = "choose_action_commitment"
 ACTION_CHOOSE_THOUGHT_PRACTICE = "choose_thought_practice"
 ACTION_FINISH_WITHOUT_TODO = "finish_without_todo"
+ACTION_CONFIRM_CORE_YES = "confirm_core_yes"
+ACTION_CONFIRM_CORE_NO = "confirm_core_no"
+ACTION_CONFIRM_CORE_NOT_SURE = "confirm_core_not_sure"
 THOUGHT_PROBE_QUESTIONS: tuple[str, ...] = (
     "그 생각이 사실이라면, 제일 걱정되는 건 뭐예요?",
     "그 생각의 핵심 메시지를 한마디로 바꾸면 뭐가 될까요?",
@@ -77,6 +81,7 @@ class CbtThoughtRecordEngine:
 
     def __init__(self) -> None:
         self._flow = self._load_flow()
+        self._thinking_patterns = self._load_thinking_patterns()
         self._llm = CbtLimitedLlm()
 
     @staticmethod
@@ -84,6 +89,44 @@ class CbtThoughtRecordEngine:
         path = Path(__file__).resolve().parent / "flows" / "default_v2.json"
         with path.open("r", encoding="utf-8") as handle:
             return json.load(handle)
+
+    @staticmethod
+    def _load_thinking_patterns() -> list[dict[str, Any]]:
+        path = Path(__file__).resolve().parent / "thinking_patterns_ko.json"
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                raw = json.load(handle)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return []
+        if not isinstance(raw, list):
+            return []
+        patterns: list[dict[str, Any]] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            pattern = {
+                "id": str(item.get("id") or "").strip(),
+                "title_ko": str(item.get("title_ko") or "").strip(),
+                "short_desc_ko": str(item.get("short_desc_ko") or "").strip(),
+                "probe_templates_ko": [
+                    str(template).strip()
+                    for template in list(item.get("probe_templates_ko") or [])
+                    if str(template).strip()
+                ],
+                "reframe_guidance_ko": [
+                    str(template).strip()
+                    for template in list(item.get("reframe_guidance_ko") or [])
+                    if str(template).strip()
+                ],
+                "commitment_suggestions_ko": [
+                    str(template).strip()
+                    for template in list(item.get("commitment_suggestions_ko") or [])
+                    if str(template).strip()
+                ],
+            }
+            if pattern["id"] and pattern["title_ko"]:
+                patterns.append(pattern)
+        return patterns
 
     @staticmethod
     def _prefill_item(
@@ -160,6 +203,18 @@ class CbtThoughtRecordEngine:
                 self._prefill_item("통제 못 할까 봐", "통제 못 할까 봐"),
                 self._prefill_item("기타", "기타"),
                 self._action_item("건너뛰기", ACTION_SKIP_STAGE),
+                self._action_item("주제 다시", ACTION_RESET_TOPIC),
+                self._action_item("종료", ACTION_END_SESSION),
+            ],
+            ("thought", "core_confirm"): [
+                self._action_item("맞아요", ACTION_CONFIRM_CORE_YES),
+                self._action_item("조금 달라요", ACTION_CONFIRM_CORE_NO),
+                self._action_item("잘 모르겠어요", ACTION_CONFIRM_CORE_NOT_SURE),
+                self._action_item("주제 다시", ACTION_RESET_TOPIC),
+                self._action_item("종료", ACTION_END_SESSION),
+            ],
+            ("thought", "core_refine"): [
+                self._action_item("다시 답하기", ACTION_RETRY_STAGE),
                 self._action_item("주제 다시", ACTION_RESET_TOPIC),
                 self._action_item("종료", ACTION_END_SESSION),
             ],
@@ -244,6 +299,10 @@ class CbtThoughtRecordEngine:
         if stage == "emotion":
             return "intensity" if subphase == "intensity" else "label"
         if stage == "thought":
+            if subphase == "core_confirm":
+                return "core_confirm"
+            if subphase == "core_refine":
+                return "core_refine"
             if subphase == "core_blocked":
                 return "core_blocked"
             if subphase == "core_probe":
@@ -359,16 +418,27 @@ class CbtThoughtRecordEngine:
         return re.sub(r"[^0-9a-zA-Z가-힣]+", "", text.lower())
 
     @classmethod
+    def _is_near_duplicate(cls, left: str, right: str) -> bool:
+        if not left or not right:
+            return False
+        if left == right:
+            return True
+        ratio = SequenceMatcher(None, left, right).ratio()
+        return ratio >= 0.92
+
+    @classmethod
     def _dedupe_message_lines(cls, text: str) -> str:
         parts = [chunk.strip() for chunk in re.split(r"(?:\n+|(?<=[.!?]))\s*", text) if chunk.strip()]
         kept: list[str] = []
-        seen: set[str] = set()
+        seen: list[str] = []
         for part in parts:
             sig = cls._message_signature(part)
-            if not sig or sig in seen:
+            if not sig:
+                continue
+            if any(cls._is_near_duplicate(sig, item) for item in seen):
                 continue
             kept.append(part)
-            seen.add(sig)
+            seen.append(sig)
         return "\n".join(kept).strip()
 
     @classmethod
@@ -378,7 +448,13 @@ class CbtThoughtRecordEngine:
             meta = {}
             state["meta"] = meta
         previous_sig = cls._message_signature(str(meta.get("last_assistant_text") or ""))
-        seen: set[str] = set()
+        previous_history_raw = meta.get("assistant_history")
+        previous_history = (
+            [cls._message_signature(str(item)) for item in previous_history_raw if str(item).strip()]
+            if isinstance(previous_history_raw, list)
+            else []
+        )
+        seen: list[str] = []
         prepared: list[str] = []
         for raw in messages:
             normalized = cls._normalize_coach_message(raw)
@@ -386,14 +462,20 @@ class CbtThoughtRecordEngine:
             sig = cls._message_signature(compact)
             if not sig:
                 continue
-            if sig == previous_sig or sig in seen:
+            if cls._is_near_duplicate(sig, previous_sig):
+                continue
+            if any(cls._is_near_duplicate(sig, item) for item in seen):
+                continue
+            if any(cls._is_near_duplicate(sig, item) for item in previous_history):
                 continue
             prepared.append(compact)
-            seen.add(sig)
+            seen.append(sig)
             previous_sig = sig
         if not prepared:
             prepared = [cls._normalize_coach_message("좋아요. 이어서 진행해볼게요.")]
         meta["last_assistant_text"] = prepared[-1]
+        history = previous_history + [cls._message_signature(item) for item in prepared]
+        meta["assistant_history"] = history[-20:]
         return prepared
 
     @staticmethod
@@ -437,6 +519,14 @@ class CbtThoughtRecordEngine:
             "지금 가장 마음을 힘들게 하는 상황을 한 줄로 말해줄래요?"
         )
         assistant_messages = self._prepare_assistant_messages(state, assistant_messages)
+        for content in assistant_messages:
+            self._append_turn_log(
+                state,
+                role="assistant",
+                content=content,
+                stage="situation",
+                subphase="topic",
+            )
         return CbtStateMachineTurn(
             state=state,
             assistant_messages=assistant_messages,
@@ -470,6 +560,15 @@ class CbtThoughtRecordEngine:
         subphase = self._normalize_subphase(stage, str(state["meta"].get("subphase_key") or ""))
         action_id = (quick_reply_action_id or "").strip().lower()
         text = (user_input or selected_quick_reply or "").strip()
+        user_log = text or (f"[action] {action_id}" if action_id else "")
+        if user_log:
+            self._append_turn_log(
+                state,
+                role="user",
+                content=user_log,
+                stage=stage,
+                subphase=subphase,
+            )
 
         if action_id == ACTION_END_SESSION:
             return self._close_turn(
@@ -499,6 +598,14 @@ class CbtThoughtRecordEngine:
                     "새 주제로 다시 시작하고 싶다면 ‘주제 다시 선택하기’를 눌러주세요.",
                 ],
             )
+            for content in assistant_messages:
+                self._append_turn_log(
+                    state,
+                    role="assistant",
+                    content=content,
+                    stage=stage,
+                    subphase=subphase,
+                )
             return CbtStateMachineTurn(
                 state=state,
                 assistant_messages=assistant_messages,
@@ -586,11 +693,21 @@ class CbtThoughtRecordEngine:
         else:
             first_message = empathy
         second_message = str(composer.get("next_question") or "").strip() or next_question
+        if stage == "evidence":
+            second_message = next_question
         base_messages = self._prepare_assistant_messages(state, [first_message, second_message])
         if len(base_messages) == 1:
             fallback_question = self._normalize_coach_message(next_question)
             if self._message_signature(base_messages[0]) != self._message_signature(fallback_question):
                 base_messages.append(fallback_question)
+        for content in base_messages:
+            self._append_turn_log(
+                state,
+                role="assistant",
+                content=content,
+                stage=next_stage,
+                subphase=next_subphase,
+            )
 
         if next_stage == "summary":
             state["summary_text"] = self._build_summary_text(state)
@@ -600,11 +717,12 @@ class CbtThoughtRecordEngine:
         if conversation_closed:
             state["meta"]["conversation_closed"] = True
 
-        fallback_reason = self._merge_fallback_reasons(risk_meta, extract_meta, compose_meta)
+        aux_metas = self._consume_aux_llm_meta(state)
+        fallback_reason = self._merge_fallback_reasons(risk_meta, extract_meta, compose_meta, *aux_metas)
         self._append_turn_diagnostics(
             state,
             stage=stage,
-            llm_meta=[risk_meta, extract_meta, compose_meta],
+            llm_meta=[risk_meta, extract_meta, compose_meta, *aux_metas],
             fallback_reason=fallback_reason,
             user_input=text,
         )
@@ -647,6 +765,10 @@ class CbtThoughtRecordEngine:
             "emotion_intensity_0_100": None,
             "auto_thought_text": "",
             "core_message_text": "",
+            "core_thought_candidates": [],
+            "pattern_ranked": [],
+            "pattern_probe_question": "",
+            "possible_core_belief_hint": "",
             "evidence_for": [],
             "evidence_against": [],
             "alternative_thought": "",
@@ -654,6 +776,7 @@ class CbtThoughtRecordEngine:
             "commitment_text": "",
             "summary_text": "",
             "todo_id": None,
+            "turn_log": [],
             # Backward-compatible keys.
             "situation": "",
             "automatic_thoughts": [],
@@ -693,6 +816,8 @@ class CbtThoughtRecordEngine:
                 "conversation_closed": False,
                 "last_reflected_slot": None,
                 "last_assistant_text": "",
+                "assistant_history": [],
+                "aux_llm_meta": [],
             },
             "turn_diagnostics": [],
         }
@@ -715,6 +840,8 @@ class CbtThoughtRecordEngine:
             "emotion_intensity_0_100",
             "auto_thought_text",
             "core_message_text",
+            "pattern_probe_question",
+            "possible_core_belief_hint",
             "alternative_thought",
             "commitment_type",
             "commitment_text",
@@ -726,10 +853,37 @@ class CbtThoughtRecordEngine:
             if key in raw:
                 state[key] = raw[key]
 
-        for key in ("evidence_for", "evidence_against", "automatic_thoughts", "emotions", "behaviors"):
+        for key in (
+            "evidence_for",
+            "evidence_against",
+            "automatic_thoughts",
+            "emotions",
+            "behaviors",
+            "core_thought_candidates",
+            "pattern_ranked",
+            "turn_log",
+        ):
             value = raw.get(key)
             if isinstance(value, list):
                 state[key] = value
+        if isinstance(state.get("turn_log"), list):
+            turn_log_clean: list[dict[str, str]] = []
+            for item in state["turn_log"][-80:]:
+                if not isinstance(item, dict):
+                    continue
+                role = str(item.get("role") or "").strip().lower()
+                content = str(item.get("content") or "").strip()
+                if role not in {"user", "assistant"} or not content:
+                    continue
+                turn_log_clean.append(
+                    {
+                        "role": role,
+                        "content": content[:1200],
+                        "stage": str(item.get("stage") or ""),
+                        "subphase": str(item.get("subphase") or ""),
+                    }
+                )
+            state["turn_log"] = turn_log_clean[-80:]
 
         if isinstance(raw.get("profile_snapshot"), dict):
             state["profile_snapshot"]["coach_nickname"] = (
@@ -797,6 +951,20 @@ class CbtThoughtRecordEngine:
         state["meta"]["thought_substep"] = str(state["meta"].get("thought_substep") or "auto_thought")
         state["meta"]["alternative_substep"] = str(state["meta"].get("alternative_substep") or "alternative")
         state["meta"]["thought_probe_count"] = int(state["meta"].get("thought_probe_count", 0) or 0)
+        history = state["meta"].get("assistant_history")
+        if not isinstance(history, list):
+            state["meta"]["assistant_history"] = []
+        else:
+            state["meta"]["assistant_history"] = [str(item) for item in history if str(item).strip()][-20:]
+        aux_llm_meta = state["meta"].get("aux_llm_meta")
+        if not isinstance(aux_llm_meta, list):
+            state["meta"]["aux_llm_meta"] = []
+        else:
+            state["meta"]["aux_llm_meta"] = [
+                item
+                for item in aux_llm_meta
+                if isinstance(item, dict)
+            ][-12:]
         state["meta"]["subphase_key"] = self._normalize_subphase(
             state["current_stage"], str(state["meta"].get("subphase_key") or "")
         )
@@ -836,6 +1004,8 @@ class CbtThoughtRecordEngine:
             "emotion_intensity_0_100",
             "auto_thought_text",
             "core_message_text",
+            "pattern_probe_question",
+            "possible_core_belief_hint",
             "alternative_thought",
             "commitment_type",
             "commitment_text",
@@ -847,9 +1017,12 @@ class CbtThoughtRecordEngine:
             state[key] = "" if key not in {"emotion_intensity_0_100", "todo_id"} else None
         state["evidence_for"] = []
         state["evidence_against"] = []
+        state["core_thought_candidates"] = []
+        state["pattern_ranked"] = []
         state["automatic_thoughts"] = []
         state["emotions"] = []
         state["behaviors"] = []
+        state["turn_log"] = []
         state["meta"]["evidence_substep"] = "for"
         state["meta"]["emotion_substep"] = "label"
         state["meta"]["thought_substep"] = "auto_thought"
@@ -860,6 +1033,34 @@ class CbtThoughtRecordEngine:
         state["meta"]["state_repeat_count"] = 0
         state["meta"]["conversation_closed"] = False
         state["meta"]["last_reflected_slot"] = None
+        state["meta"]["assistant_history"] = []
+        state["meta"]["aux_llm_meta"] = []
+
+    @staticmethod
+    def _append_turn_log(
+        state: dict[str, Any],
+        *,
+        role: str,
+        content: str,
+        stage: str,
+        subphase: str,
+    ) -> None:
+        text = str(content or "").strip()
+        if not text:
+            return
+        turn_log = state.get("turn_log")
+        if not isinstance(turn_log, list):
+            turn_log = []
+            state["turn_log"] = turn_log
+        turn_log.append(
+            {
+                "role": role,
+                "content": text[:1200],
+                "stage": stage,
+                "subphase": subphase,
+            }
+        )
+        state["turn_log"] = turn_log[-80:]
 
     def _reflection_slot(self, *, stage: str, subphase: str, state: dict[str, Any]) -> str:
         if stage == "emotion":
@@ -876,11 +1077,21 @@ class CbtThoughtRecordEngine:
         prompt = self._current_stage_prompt(stage=stage, subphase=subphase, state=state)
         if stage == "alternative_plan" and subphase == "alternative":
             quick_replies = self._alternative_quick_set(state)
+        elif stage == "thought" and subphase == "core_refine":
+            quick_replies = self._core_refine_quick_set(state)
         else:
             quick_replies = self._quick_set(stage, subphase)
         message = "좋아요. 같은 단계를 다른 방식으로 다시 정리해볼게요."
         question = prompt
         assistant_messages = self._prepare_assistant_messages(state, [message, question])
+        for content in assistant_messages:
+            self._append_turn_log(
+                state,
+                role="assistant",
+                content=content,
+                stage=stage,
+                subphase=subphase,
+            )
         return CbtStateMachineTurn(
             state=state,
             assistant_messages=assistant_messages,
@@ -921,6 +1132,14 @@ class CbtThoughtRecordEngine:
                 "필요할 때 다시 시작해도 괜찮아요.",
             ],
         )
+        for content in assistant_messages:
+            self._append_turn_log(
+                state,
+                role="assistant",
+                content=content,
+                stage="summary",
+                subphase="summary",
+            )
         return CbtStateMachineTurn(
             state=state,
             assistant_messages=assistant_messages,
@@ -954,12 +1173,16 @@ class CbtThoughtRecordEngine:
         if stage == "thought" and subphase == "core_probe":
             probe_count = int(state["meta"].get("thought_probe_count", 0) or 0)
             return THOUGHT_PROBE_QUESTIONS[min(probe_count, len(THOUGHT_PROBE_QUESTIONS) - 1)]
+        if stage == "thought" and subphase == "core_confirm":
+            return self._core_confirm_prompt(state)
+        if stage == "thought" and subphase == "core_refine":
+            return "조금 다르게 표현해볼게요. 더 맞는 표현으로 핵심 생각을 한 줄만 적어볼까요?"
         if stage == "thought" and subphase == "core_blocked":
             return "핵심 생각이 아직 흐릿해요. 같은 질문을 다시 보거나 주제를 다시 고를 수 있어요."
         if stage == "evidence" and subphase == "evidence_for":
-            return "먼저, 이 생각이 맞아 보이는 이유를 1개 적어볼까요?"
+            return self._evidence_prompt(state, mode="for")
         if stage == "evidence" and subphase == "evidence_against":
-            return "이번에는 그 생각이 꼭 그렇지 않을 수 있는 이유를 적어볼까요?"
+            return self._evidence_prompt(state, mode="against")
         if stage == "alternative_plan" and subphase == "alternative":
             return "양쪽 이유를 함께 보고, 조금 더 균형 잡힌 생각을 한 문장으로 적어볼까요?"
         if stage == "alternative_plan" and subphase == "commitment":
@@ -969,6 +1192,221 @@ class CbtThoughtRecordEngine:
         if stage == "alternative_plan" and subphase == "commitment_thought":
             return "생각 연습 약속을 한 줄로 정리해볼까요?"
         return "세션을 저장하면 요약과 TO DO가 기록됩니다."
+
+    def _core_confirm_prompt(self, state: dict[str, Any]) -> str:
+        core = str(state.get("core_message_text") or "").strip()
+        if not core:
+            return "지금 마음을 건드리는 핵심 생각을 한 문장으로 정리해볼까요?"
+        probe = str(state.get("pattern_probe_question") or "").strip()
+        lines = [
+            "지금 마음속에서 제일 크게 걸리는 결론을 한 문장으로 정리해보면,",
+            f"‘{core}’에 가까워 보여요.",
+        ]
+        if probe:
+            lines.append(probe)
+        lines.append("이렇게 정리해도 맞을까요?")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _evidence_prompt(state: dict[str, Any], *, mode: str) -> str:
+        core = str(state.get("core_message_text") or "").strip() or "지금 떠오른 생각"
+        if mode == "for":
+            return (
+                f"‘{core}’라고 느끼게 만든 이유가 있다면 어떤 게 떠오르세요?\n"
+                "먼저, 맞아 보이는 이유를 하나 적어볼까요?"
+            )
+        return (
+            f"만약 ‘{core}’가 꼭 사실이 아닐 수도 있다면, 그럴 만한 이유가 있을까요?\n"
+            "이번에는 꼭 그렇지 않을 수 있는 이유를 하나 적어볼까요?"
+        )
+
+    @staticmethod
+    def _sanitize_candidate_text(value: Any, *, max_len: int = 220) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        if len(text) > max_len:
+            return text[:max_len].rstrip()
+        return text
+
+    @staticmethod
+    def _sanitize_candidates(values: Any, *, max_count: int = 3, max_len: int = 220) -> list[str]:
+        if not isinstance(values, list):
+            return []
+        dedup: list[str] = []
+        seen: set[str] = set()
+        for item in values:
+            text = CbtThoughtRecordEngine._sanitize_candidate_text(item, max_len=max_len)
+            if not text:
+                continue
+            sig = CbtThoughtRecordEngine._message_signature(text)
+            if not sig or sig in seen:
+                continue
+            seen.add(sig)
+            dedup.append(text)
+            if len(dedup) >= max_count:
+                break
+        return dedup
+
+    def _pattern_by_id(self) -> dict[str, dict[str, Any]]:
+        return {
+            str(item.get("id") or "").strip(): item
+            for item in self._thinking_patterns
+            if isinstance(item, dict) and str(item.get("id") or "").strip()
+        }
+
+    def _top_pattern(self, state: dict[str, Any]) -> dict[str, Any] | None:
+        ranked = state.get("pattern_ranked")
+        if not isinstance(ranked, list) or not ranked:
+            return None
+        top = ranked[0]
+        if not isinstance(top, dict):
+            return None
+        pid = str(top.get("id") or "").strip()
+        if not pid:
+            return None
+        return self._pattern_by_id().get(pid)
+
+    @staticmethod
+    def _safe_pattern_ranked(value: Any) -> list[dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+        ranked: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            pid = str(item.get("id") or "").strip()
+            if not pid or pid in seen:
+                continue
+            try:
+                confidence = float(item.get("confidence", 0))
+            except (TypeError, ValueError):
+                confidence = 0.0
+            ranked.append(
+                {
+                    "id": pid,
+                    "confidence": max(0.0, min(1.0, confidence)),
+                }
+            )
+            seen.add(pid)
+            if len(ranked) >= 3:
+                break
+        return ranked
+
+    def _fallback_pattern_ranked(self, thought_text: str) -> list[dict[str, Any]]:
+        lowered = thought_text.lower()
+        candidates: list[tuple[str, float]] = []
+        if any(token in lowered for token in ("최악", "끝장", "망할")):
+            candidates.append(("catastrophizing", 0.72))
+        if any(token in lowered for token in ("항상", "절대", "매번")):
+            candidates.append(("overgeneralization", 0.64))
+        if any(token in lowered for token in ("해야", "반드시", "꼭")):
+            candidates.append(("should_statements", 0.61))
+        if any(token in lowered for token in ("내 탓", "내가 문제", "잘못은 다")):
+            candidates.append(("personalization", 0.67))
+        if any(token in lowered for token in ("분명", "속뜻", "생각할 거")):
+            candidates.append(("mind_reading", 0.58))
+        if not candidates:
+            candidates.append(("rumination_general", 0.42))
+        return [{"id": pid, "confidence": conf} for pid, conf in candidates[:2]]
+
+    def _pattern_probe_from_catalog(self, pattern_id: str, state: dict[str, Any]) -> str:
+        pattern = self._pattern_by_id().get(pattern_id)
+        if not pattern:
+            return "이 생각을 조금 더 또렷하게 보면, 제일 걱정되는 핵심은 무엇인가요?"
+        templates = pattern.get("probe_templates_ko")
+        if not isinstance(templates, list) or not templates:
+            return "이 생각을 조금 더 또렷하게 보면, 제일 걱정되는 핵심은 무엇인가요?"
+        template = str(templates[0]).strip()
+        if not template:
+            return "이 생각을 조금 더 또렷하게 보면, 제일 걱정되는 핵심은 무엇인가요?"
+        nickname = str((state.get("profile_snapshot") or {}).get("user_nickname") or DEFAULT_USER_NAME)
+        core = str(state.get("core_message_text") or "").strip() or "지금 떠오른 생각"
+        situation = str(state.get("situation_text") or "").strip() or "오늘 상황"
+        return (
+            template.replace("{nickname}", nickname)
+            .replace("{core_thought}", core)
+            .replace("{situation_hint}", situation)
+        )
+
+    def _analyze_core_pattern(self, state: dict[str, Any], thought_text: str) -> None:
+        situation = str(state.get("situation_text") or "").strip()
+        emotion = str(state.get("emotion_label") or "").strip()
+        intensity = state.get("emotion_intensity_0_100")
+        try:
+            intensity_int = int(intensity) if intensity is not None else None
+        except (TypeError, ValueError):
+            intensity_int = None
+
+        recent_turns = state.get("turn_log")
+        recent_user: list[str] = []
+        if isinstance(recent_turns, list):
+            for item in recent_turns[-8:]:
+                if not isinstance(item, dict):
+                    continue
+                if str(item.get("role") or "") != "user":
+                    continue
+                content = str(item.get("content") or "").strip()
+                if content:
+                    recent_user.append(content[:300])
+
+        nickname = str((state.get("profile_snapshot") or {}).get("user_nickname") or DEFAULT_USER_NAME)
+        analyzed, meta = self._llm.analyze_core_pattern(
+            situation_text=situation,
+            emotion_label=emotion,
+            emotion_intensity=intensity_int,
+            auto_thought_text=thought_text,
+            recent_user_texts=recent_user,
+            thinking_patterns=self._thinking_patterns,
+            nickname=nickname,
+        )
+        self._remember_aux_llm_meta(state, meta)
+
+        if not isinstance(analyzed, dict):
+            analyzed = {}
+        candidates = self._sanitize_candidates(analyzed.get("core_thought_candidates"), max_count=3)
+        best = self._sanitize_candidate_text(analyzed.get("best_core_thought"), max_len=220)
+        if not best and candidates:
+            best = candidates[0]
+        if not best:
+            best = thought_text[:220]
+        if best and not candidates:
+            candidates = [best]
+        ranked = self._safe_pattern_ranked(analyzed.get("pattern_ranked"))
+        if not ranked:
+            ranked = self._fallback_pattern_ranked(thought_text)
+        probe_question = self._sanitize_candidate_text(analyzed.get("pattern_probe_question"), max_len=260)
+        if not probe_question and ranked:
+            probe_question = self._pattern_probe_from_catalog(str(ranked[0].get("id") or ""), state)
+        if not probe_question:
+            probe_question = "이 생각이 맞다고 느껴지는 이유를 하나만 더 짚어보면 어떤 말이 나오나요?"
+
+        belief_hint = self._sanitize_candidate_text(analyzed.get("possible_core_belief_hint"), max_len=220)
+        if belief_hint:
+            state["possible_core_belief_hint"] = belief_hint
+        state["core_thought_candidates"] = candidates
+        state["core_message_text"] = best
+        state["pattern_ranked"] = ranked
+        state["pattern_probe_question"] = probe_question
+
+    def _core_refine_quick_set(self, state: dict[str, Any]) -> list[dict[str, str]]:
+        candidates = self._sanitize_candidates(state.get("core_thought_candidates"), max_count=3)
+        items: list[dict[str, str]] = []
+        if candidates:
+            for index, candidate in enumerate(candidates):
+                label = candidate if len(candidate) <= 18 else f"후보 {index + 1}"
+                items.append(self._prefill_item(label, candidate))
+        else:
+            items.extend(
+                [
+                    self._prefill_item("무능해 보일까 봐", "무능해 보일까 봐"),
+                    self._prefill_item("신뢰를 잃을까 봐", "신뢰를 잃을까 봐"),
+                    self._prefill_item("미움받을까 봐", "미움받을까 봐"),
+                ]
+            )
+        items.extend(self._quick_set("thought", "core_refine"))
+        return items
 
     def _extract(
         self,
@@ -1073,6 +1511,14 @@ class CbtThoughtRecordEngine:
                 safety_message,
             ],
         )
+        for content in assistant_messages:
+            self._append_turn_log(
+                state,
+                role="assistant",
+                content=content,
+                stage="summary",
+                subphase="summary",
+            )
         return CbtStateMachineTurn(
             state=state,
             assistant_messages=assistant_messages,
@@ -1253,45 +1699,96 @@ class CbtThoughtRecordEngine:
                     [],
                 )
 
-            if not thought:
-                thought = str(extracted.get("auto_thought_text") or user_text).strip()
-                thought = self._strip_prefill_seed(thought, allow_prefix_only=True)
-                if len(thought) < 2:
-                    return None
-                state["auto_thought_text"] = thought[:300]
-                state["automatic_thoughts"] = [state["auto_thought_text"]]
-                state["meta"]["thought_probe_count"] = 0
-                state["core_message_text"] = ""
-
-            has_core = bool(str(state.get("core_message_text") or "").strip())
-            if not has_core and self._looks_core_message(thought):
-                state["core_message_text"] = thought[:220]
-                has_core = True
-
-            if has_core:
-                state["meta"]["evidence_substep"] = "for"
-                core = str(state.get("core_message_text") or "").strip()
-                state["meta"]["thought_substep"] = "auto_thought"
-                core_bridge = (
-                    f"정리하면 지금 마음을 건드린 핵심 생각은 ‘{core}’에 가까워요.\n"
-                    "이 생각이 맞아 보이는 이유부터 살펴볼게요.\n"
-                    "먼저, 맞아 보이는 이유를 1개 적어볼까요?"
+            thought = str(extracted.get("auto_thought_text") or user_text).strip()
+            thought = self._strip_prefill_seed(thought, allow_prefix_only=True)
+            if len(thought) < 2:
+                return None
+            state["auto_thought_text"] = thought[:300]
+            state["automatic_thoughts"] = [state["auto_thought_text"]]
+            state["meta"]["thought_probe_count"] = 0
+            state["core_message_text"] = ""
+            self._analyze_core_pattern(state, state["auto_thought_text"])
+            if not str(state.get("core_message_text") or "").strip():
+                state["meta"]["thought_substep"] = "core_probe"
+                return (
+                    "thought",
+                    "core_probe",
+                    THOUGHT_PROBE_QUESTIONS[0],
+                    self._quick_set("thought", "core_probe"),
+                    [],
                 )
+            state["meta"]["thought_substep"] = "core_confirm"
+            return (
+                "thought",
+                "core_confirm",
+                self._core_confirm_prompt(state),
+                self._quick_set("thought", "core_confirm"),
+                [],
+            )
+
+        if thought_substep == "core_confirm":
+            if action_id == ACTION_CONFIRM_CORE_YES:
+                state["meta"]["evidence_substep"] = "for"
+                state["meta"]["thought_substep"] = "auto_thought"
                 return (
                     "evidence",
                     "evidence_for",
-                    core_bridge,
+                    self._evidence_prompt(state, mode="for"),
                     self._quick_set("evidence", "evidence_for"),
                     [],
                 )
-
-            state["meta"]["thought_substep"] = "core_probe"
-            state["meta"]["thought_probe_count"] = 0
+            if action_id in {ACTION_CONFIRM_CORE_NO, ACTION_CONFIRM_CORE_NOT_SURE}:
+                state["meta"]["thought_substep"] = "core_refine"
+                return (
+                    "thought",
+                    "core_refine",
+                    "좋아요. 조금 다르게 표현해볼게요.\n더 맞는 핵심 생각으로 한 줄만 바꿔볼까요?",
+                    self._core_refine_quick_set(state),
+                    [],
+                )
+            if is_skip:
+                state["meta"]["thought_substep"] = "core_refine"
+                return (
+                    "thought",
+                    "core_refine",
+                    "괜찮아요. 지금 더 자연스럽게 느껴지는 표현으로 다시 적어볼까요?",
+                    self._core_refine_quick_set(state),
+                    [],
+                )
+            manual = self._strip_prefill_seed(user_text, allow_prefix_only=True)
+            if manual and manual not in {"기타", "기타:"}:
+                state["core_message_text"] = manual[:220]
+                self._analyze_core_pattern(state, str(state.get("auto_thought_text") or manual))
             return (
                 "thought",
-                "core_probe",
-                THOUGHT_PROBE_QUESTIONS[0],
-                self._quick_set("thought", "core_probe"),
+                "core_confirm",
+                self._core_confirm_prompt(state),
+                self._quick_set("thought", "core_confirm"),
+                [],
+            )
+
+        if thought_substep == "core_refine":
+            if is_skip:
+                state["meta"]["thought_substep"] = "core_blocked"
+                return (
+                    "thought",
+                    "core_blocked",
+                    "지금은 핵심 생각을 또렷하게 잡기 어렵다면, 주제를 다시 선택하거나 여기서 마무리해도 괜찮아요.",
+                    self._quick_set("thought", "core_blocked"),
+                    [],
+                )
+            candidate = str(extracted.get("core_belief_hint") or user_text).strip()
+            candidate = self._strip_prefill_seed(candidate, allow_prefix_only=True)
+            if len(candidate) < 2 or candidate in {"기타", "기타:"}:
+                return None
+            state["core_message_text"] = candidate[:220]
+            self._analyze_core_pattern(state, str(state.get("auto_thought_text") or candidate))
+            state["meta"]["thought_substep"] = "core_confirm"
+            return (
+                "thought",
+                "core_confirm",
+                self._core_confirm_prompt(state),
+                self._quick_set("thought", "core_confirm"),
                 [],
             )
 
@@ -1306,12 +1803,21 @@ class CbtThoughtRecordEngine:
 
         probe_count = int(state["meta"].get("thought_probe_count", 0) or 0)
         if is_skip:
+            if probe_count + 1 < THOUGHT_PROBE_MAX:
+                state["meta"]["thought_probe_count"] = probe_count + 1
+                return (
+                    "thought",
+                    "core_probe",
+                    THOUGHT_PROBE_QUESTIONS[min(probe_count + 1, len(THOUGHT_PROBE_QUESTIONS) - 1)],
+                    self._quick_set("thought", "core_probe"),
+                    [],
+                )
             state["meta"]["thought_substep"] = "core_blocked"
+            state["meta"]["thought_probe_count"] = THOUGHT_PROBE_MAX
             return (
                 "thought",
                 "core_blocked",
-                "지금은 핵심 생각을 바로 잡기 어려울 수 있어요.\n"
-                "같은 단계를 다시 시도하거나 주제를 다시 골라도 괜찮아요.",
+                "핵심 생각이 아직 흐릿해요. 한 번 더 시도하거나 주제를 다시 잡아볼까요?",
                 self._quick_set("thought", "core_blocked"),
                 [],
             )
@@ -1320,21 +1826,13 @@ class CbtThoughtRecordEngine:
         candidate = self._strip_prefill_seed(candidate, allow_prefix_only=True)
         if candidate and candidate not in {"기타", "기타:"}:
             state["core_message_text"] = candidate[:220]
-
-        if str(state.get("core_message_text") or "").strip():
-            state["meta"]["evidence_substep"] = "for"
-            core = str(state.get("core_message_text") or "").strip()
-            state["meta"]["thought_substep"] = "auto_thought"
-            core_bridge = (
-                f"정리하면 지금 마음을 건드린 핵심 생각은 ‘{core}’에 가까워요.\n"
-                "이 생각이 맞아 보이는 이유부터 살펴볼게요.\n"
-                "먼저, 맞아 보이는 이유를 1개 적어볼까요?"
-            )
+            self._analyze_core_pattern(state, str(state.get("auto_thought_text") or candidate))
+            state["meta"]["thought_substep"] = "core_confirm"
             return (
-                "evidence",
-                "evidence_for",
-                core_bridge,
-                self._quick_set("evidence", "evidence_for"),
+                "thought",
+                "core_confirm",
+                self._core_confirm_prompt(state),
+                self._quick_set("thought", "core_confirm"),
                 [],
             )
 
@@ -1349,6 +1847,7 @@ class CbtThoughtRecordEngine:
             )
 
         state["meta"]["thought_probe_count"] = THOUGHT_PROBE_MAX
+        state["meta"]["thought_substep"] = "core_blocked"
         return (
             "thought",
             "core_blocked",
@@ -1377,7 +1876,11 @@ class CbtThoughtRecordEngine:
             if not is_skip and item not in state["evidence_for"] and len(state["evidence_for"]) < EVIDENCE_TARGET_MAX:
                 state["evidence_for"].append(item[:260])
             if len(state["evidence_for"]) < EVIDENCE_TARGET_DEFAULT and not is_skip and not is_next:
-                next_question = "좋아요. 한 가지만 더 적어볼까요? 이 생각이 맞다고 느껴진 이유를 한 줄로 써주세요."
+                core = str(state.get("core_message_text") or "").strip() or "그 생각"
+                next_question = (
+                    f"좋아요. ‘{core}’라고 느껴진 이유를 한 가지만 더 적어볼까요?\n"
+                    "맞아 보이는 근거를 짧게 한 줄로 써주세요."
+                )
                 return (
                     "evidence",
                     "evidence_for",
@@ -1386,7 +1889,7 @@ class CbtThoughtRecordEngine:
                     [],
                 )
             state["meta"]["evidence_substep"] = "against"
-            next_question = "이번에는 같은 생각이 꼭 맞지는 않을 수 있는 이유를 1~2개 적어볼까요?"
+            next_question = self._evidence_prompt(state, mode="against")
             return (
                 "evidence",
                 "evidence_against",
@@ -1403,7 +1906,11 @@ class CbtThoughtRecordEngine:
         ):
             state["evidence_against"].append(item[:260])
         if len(state["evidence_against"]) < EVIDENCE_TARGET_DEFAULT and not is_skip and not is_next:
-            next_question = "좋아요. 한 가지만 더 적어볼까요? 다르게 볼 수 있는 이유를 한 줄로 써주세요."
+            core = str(state.get("core_message_text") or "").strip() or "그 생각"
+            next_question = (
+                f"좋아요. ‘{core}’가 꼭 사실이 아닐 수도 있는 이유를 한 가지만 더 적어볼까요?\n"
+                "다르게 볼 수 있는 근거를 한 줄로 적어주세요."
+            )
             return (
                 "evidence",
                 "evidence_against",
@@ -1460,7 +1967,7 @@ class CbtThoughtRecordEngine:
                     "alternative_plan",
                     "commitment_action",
                     "좋아요. 오늘 바로 해볼 수 있는 행동 약속을 한 줄로 적어볼까요?",
-                    self._quick_set("alternative_plan", "commitment_action"),
+                    self._commitment_quick_set(state, mode="action"),
                     [],
                 )
             if action_id == ACTION_CHOOSE_THOUGHT_PRACTICE:
@@ -1469,7 +1976,7 @@ class CbtThoughtRecordEngine:
                     "alternative_plan",
                     "commitment_thought",
                     "좋아요. 오늘 해볼 생각 연습 약속을 한 줄로 적어볼까요?",
-                    self._quick_set("alternative_plan", "commitment_thought"),
+                    self._commitment_quick_set(state, mode="thought"),
                     [],
                 )
             if action_id == ACTION_FINISH_WITHOUT_TODO or is_skip:
@@ -1561,6 +2068,17 @@ class CbtThoughtRecordEngine:
         user_input: str,
         extra_meta: list[LimitedLlmMeta] | None = None,
     ) -> CbtStateMachineTurn:
+        repair_payload, repair_meta = self._llm.compose_repair_message(
+            stage=stage,
+            subphase=subphase,
+            fallback_reason=fallback_reason,
+        )
+        self._remember_aux_llm_meta(state, repair_meta)
+        repair_message = ""
+        retry_prompt = ""
+        if isinstance(repair_payload, dict):
+            repair_message = self._sanitize_candidate_text(repair_payload.get("repair_message"), max_len=240)
+            retry_prompt = self._sanitize_candidate_text(repair_payload.get("retry_prompt"), max_len=220)
         count = int(state["meta"].get("stage_repeat_count", 0)) + 1
         state["meta"]["stage_repeat_count"] = count
         state["meta"]["state_repeat_count"] = count
@@ -1580,8 +2098,8 @@ class CbtThoughtRecordEngine:
         else:
             state["current_stage"] = stage
             assistant_messages = [
-                "지금은 딱 맞는 답이 바로 안 떠오를 수도 있어요.",
-                "같은 질문으로 다시 해보거나, 주제를 다시 잡아도 괜찮아요.",
+                repair_message or "지금은 딱 맞는 답이 바로 안 떠오를 수도 있어요.",
+                retry_prompt or "같은 질문으로 다시 해보거나, 주제를 다시 잡아도 괜찮아요.",
             ]
             if stage == "situation":
                 quick = self._quick_set("fallback", "hard_required")
@@ -1592,6 +2110,7 @@ class CbtThoughtRecordEngine:
             closed = False
 
         metas = list(extra_meta or [])
+        metas.extend(self._consume_aux_llm_meta(state))
         self._append_turn_diagnostics(
             state,
             stage=stage,
@@ -1600,6 +2119,14 @@ class CbtThoughtRecordEngine:
             user_input=user_input,
         )
         assistant_messages = self._prepare_assistant_messages(state, assistant_messages)
+        for content in assistant_messages:
+            self._append_turn_log(
+                state,
+                role="assistant",
+                content=content,
+                stage=stage_out,
+                subphase=subphase_out,
+            )
         return CbtStateMachineTurn(
             state=state,
             assistant_messages=assistant_messages,
@@ -1640,6 +2167,54 @@ class CbtThoughtRecordEngine:
         if not reasons:
             return None
         return ",".join(dict.fromkeys(reasons))
+
+    @staticmethod
+    def _remember_aux_llm_meta(state: dict[str, Any], meta: LimitedLlmMeta) -> None:
+        raw_meta = state.get("meta")
+        if not isinstance(raw_meta, dict):
+            return
+        bucket = raw_meta.get("aux_llm_meta")
+        if not isinstance(bucket, list):
+            bucket = []
+            raw_meta["aux_llm_meta"] = bucket
+        bucket.append(
+            {
+                "llm_used": bool(meta.llm_used),
+                "model": meta.model,
+                "latency_ms": meta.latency_ms,
+                "fallback_reason": meta.fallback_reason,
+            }
+        )
+        raw_meta["aux_llm_meta"] = bucket[-12:]
+
+    @staticmethod
+    def _consume_aux_llm_meta(state: dict[str, Any]) -> list[LimitedLlmMeta]:
+        raw_meta = state.get("meta")
+        if not isinstance(raw_meta, dict):
+            return []
+        bucket = raw_meta.get("aux_llm_meta")
+        if not isinstance(bucket, list):
+            raw_meta["aux_llm_meta"] = []
+            return []
+        metas: list[LimitedLlmMeta] = []
+        for item in bucket:
+            if not isinstance(item, dict):
+                continue
+            latency_raw = item.get("latency_ms")
+            try:
+                latency = int(latency_raw) if latency_raw is not None else None
+            except (TypeError, ValueError):
+                latency = None
+            metas.append(
+                LimitedLlmMeta(
+                    llm_used=bool(item.get("llm_used", False)),
+                    model=str(item.get("model") or "") or None,
+                    latency_ms=latency,
+                    fallback_reason=str(item.get("fallback_reason") or "") or None,
+                )
+            )
+        raw_meta["aux_llm_meta"] = []
+        return metas
 
     def _append_turn_diagnostics(
         self,
@@ -1694,13 +2269,30 @@ class CbtThoughtRecordEngine:
         ]
         return items
 
-    @staticmethod
-    def _build_alternative_candidates(state: dict[str, Any]) -> list[str]:
+    def _build_alternative_candidates(self, state: dict[str, Any]) -> list[str]:
         core = str(state.get("core_message_text") or "").strip()
         for_list = state.get("evidence_for")
         against_list = state.get("evidence_against")
         for_first = for_list[0] if isinstance(for_list, list) and for_list else ""
         against_first = against_list[0] if isinstance(against_list, list) and against_list else ""
+
+        ranked = state.get("pattern_ranked")
+        llm_suggestions, llm_meta = self._llm.suggest_alternative_candidates(
+            core_thought=core,
+            evidence_for=[str(item) for item in for_list[:5]] if isinstance(for_list, list) else [],
+            evidence_against=[str(item) for item in against_list[:5]] if isinstance(against_list, list) else [],
+            pattern_ranked=ranked if isinstance(ranked, list) else [],
+        )
+        self._remember_aux_llm_meta(state, llm_meta)
+        llm_candidates = self._sanitize_candidates(
+            llm_suggestions.get("candidates") if isinstance(llm_suggestions, dict) else None,
+            max_count=3,
+            max_len=220,
+        )
+        if len(llm_candidates) >= 2:
+            while len(llm_candidates) < 3:
+                llm_candidates.append("지금 할 수 있는 작은 행동부터 해보고, 결과를 보고 생각을 다시 조정해보겠어요.")
+            return llm_candidates[:3]
 
         if core and against_first:
             c1 = f"{core}라는 생각이 들지만, {against_first}는 점도 함께 볼 수 있어요."
@@ -1720,6 +2312,54 @@ class CbtThoughtRecordEngine:
 
         c3 = "지금 할 수 있는 작은 행동부터 해보며, 결과를 보고 생각을 다시 조정해보겠어요."
         return [c1[:220], c2[:220], c3[:220]]
+
+    def _commitment_quick_set(self, state: dict[str, Any], *, mode: str) -> list[dict[str, str]]:
+        core = str(state.get("core_message_text") or "").strip()
+        ranked = state.get("pattern_ranked")
+        llm_suggestions, llm_meta = self._llm.suggest_commitment_candidates(
+            core_thought=core,
+            pattern_ranked=ranked if isinstance(ranked, list) else [],
+            commitment_mode=mode,
+        )
+        self._remember_aux_llm_meta(state, llm_meta)
+        candidates = self._sanitize_candidates(
+            llm_suggestions.get("candidates") if isinstance(llm_suggestions, dict) else None,
+            max_count=3,
+            max_len=120,
+        )
+        if not candidates:
+            pattern = self._top_pattern(state)
+            fallback = (
+                pattern.get("commitment_suggestions_ko")
+                if isinstance(pattern, dict)
+                else None
+            )
+            if isinstance(fallback, list):
+                candidates = [
+                    self._sanitize_candidate_text(item, max_len=120)
+                    for item in fallback
+                    if self._sanitize_candidate_text(item, max_len=120)
+                ][:3]
+        if not candidates:
+            if mode == "action":
+                candidates = [
+                    "10분만 준비/정리하기",
+                    "확인 메시지 1줄 보내기",
+                    "5분만 시작하기",
+                ]
+            else:
+                candidates = [
+                    "예외 1개 찾기",
+                    "반대 근거 1개 추가",
+                    "'항상/절대' 표현 줄이기",
+                ]
+
+        items = [self._prefill_item(f"후보 {index + 1}", candidate) for index, candidate in enumerate(candidates[:3])]
+        if mode == "action":
+            items.extend(self._quick_set("alternative_plan", "commitment_action"))
+        else:
+            items.extend(self._quick_set("alternative_plan", "commitment_thought"))
+        return items
 
     @staticmethod
     def _looks_challenge_commitment(commitment_text: str) -> bool:

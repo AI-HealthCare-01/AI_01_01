@@ -3463,7 +3463,7 @@ a {
 .ms-cbt-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
+  gap: var(--space-2);
   align-items: stretch;
 }
 
@@ -3708,9 +3708,11 @@ a {
 
 .ms-cbt-quick-replies {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
-  overflow-x: auto;
-  padding-bottom: var(--space-1);
+  overflow-x: hidden;
+  overflow-y: visible;
+  padding-bottom: 0;
 }
 
 .ms-cbt-quick-replies__item {
@@ -3725,6 +3727,7 @@ a {
   min-height: 34px;
   padding: 0 var(--space-3);
   cursor: pointer;
+  max-width: 100%;
 }
 
 .ms-cbt-quick-replies__item:disabled {
@@ -5512,7 +5515,7 @@ a {
   }
 
   .ms-cbt-workspace {
-    grid-template-columns: minmax(220px, 0.74fr) minmax(0, 2.15fr) minmax(272px, 0.8fr);
+    grid-template-columns: minmax(196px, 0.56fr) minmax(0, 2.38fr) minmax(256px, 0.76fr);
     align-items: start;
   }
 

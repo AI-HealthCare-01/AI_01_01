@@ -1,4 +1,5 @@
 from app.insights.cbt.engine import (
+    ACTION_CONFIRM_CORE_YES,
     ACTION_SKIP_STAGE,
     CbtThoughtRecordEngine,
 )
@@ -77,9 +78,18 @@ def test_evidence_quick_sets_are_strictly_separated_by_subphase() -> None:
         raw_state=to_thought.state,
         user_input="실패할까 봐 무서워요.",
     )
-    to_evidence_for = engine.process_turn(
+    to_core_confirm = engine.process_turn(
         raw_state=to_probe.state,
         user_input="나는 무가치해요",
+    )
+    assert to_core_confirm.phase_key == "thought"
+    assert to_core_confirm.subphase_key == "core_confirm"
+    assert any(item.get("action_id") == ACTION_CONFIRM_CORE_YES for item in to_core_confirm.quick_replies)
+
+    to_evidence_for = engine.process_turn(
+        raw_state=to_core_confirm.state,
+        user_input="",
+        quick_reply_action_id=ACTION_CONFIRM_CORE_YES,
     )
 
     assert to_evidence_for.phase_key == "evidence"
@@ -103,7 +113,7 @@ def test_evidence_quick_sets_are_strictly_separated_by_subphase() -> None:
     assert "관찰한 사실" not in labels_against
 
 
-def test_auto_thought_skip_moves_to_core_probe_and_second_skip_blocks() -> None:
+def test_auto_thought_skip_moves_to_core_probe_and_third_skip_blocks() -> None:
     engine = CbtThoughtRecordEngine()
     bootstrap = engine.bootstrap(
         today_record=_today_record(),
@@ -133,6 +143,14 @@ def test_auto_thought_skip_moves_to_core_probe_and_second_skip_blocks() -> None:
 
     blocked = engine.process_turn(
         raw_state=to_core_probe.state,
+        user_input="",
+        quick_reply_action_id=ACTION_SKIP_STAGE,
+    )
+    assert blocked.phase_key == "thought"
+    assert blocked.subphase_key == "core_probe"
+
+    blocked = engine.process_turn(
+        raw_state=blocked.state,
         user_input="",
         quick_reply_action_id=ACTION_SKIP_STAGE,
     )
@@ -180,3 +198,31 @@ def test_prefill_rules_append_colon_except_numeric_intensity() -> None:
     to_intensity = engine.process_turn(raw_state=to_emotion.state, user_input="불안: ")
     intensity_prefill = [item for item in to_intensity.quick_replies if item.get("type") == "prefill"]
     assert {item.get("fill_text") for item in intensity_prefill} == {"30", "50", "70", "90"}
+
+
+def test_core_confirm_step_is_shown_before_evidence_and_prompt_contains_core() -> None:
+    engine = CbtThoughtRecordEngine()
+    bootstrap = engine.bootstrap(
+        today_record=_today_record(),
+        coach_nickname="은하코치",
+        user_nickname="지음",
+    )
+    to_emotion = engine.process_turn(raw_state=bootstrap.state, user_input="발표 직전에 숨이 막히는 느낌이 들어요.")
+    to_intensity = engine.process_turn(raw_state=to_emotion.state, user_input="불안: ")
+    to_thought = engine.process_turn(raw_state=to_intensity.state, user_input="70")
+    to_confirm = engine.process_turn(raw_state=to_thought.state, user_input="결국 실수해서 신뢰를 잃을 것 같아요.")
+
+    assert to_confirm.phase_key == "thought"
+    assert to_confirm.subphase_key == "core_confirm"
+    assert any("맞을까요" in message for message in to_confirm.assistant_messages)
+
+    to_evidence = engine.process_turn(
+        raw_state=to_confirm.state,
+        user_input="",
+        quick_reply_action_id=ACTION_CONFIRM_CORE_YES,
+    )
+    assert to_evidence.phase_key == "evidence"
+    assert to_evidence.subphase_key == "evidence_for"
+    core = str(to_evidence.state.get("core_message_text") or "").strip()
+    assert core
+    assert any(core in message for message in to_evidence.assistant_messages)

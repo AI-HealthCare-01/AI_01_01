@@ -262,6 +262,7 @@ export interface CbtConversationMessage {
   role: "user" | "assistant";
   content: string;
   sender_name?: string | null;
+  message_id?: string | null;
 }
 
 export type CbtSessionStage =

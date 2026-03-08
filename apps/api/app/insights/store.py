@@ -167,6 +167,15 @@ class InsightsStore:
         return datetime.now(UTC).isoformat()
 
     @staticmethod
+    def _assistant_message(content: str, sender_name: str) -> CbtConversationMessage:
+        return CbtConversationMessage(
+            role="assistant",
+            content=content,
+            sender_name=sender_name,
+            message_id=f"asst_{uuid.uuid4().hex}",
+        )
+
+    @staticmethod
     def _load_cbt_state_schema() -> dict[str, object]:
         schema_path = (
             Path(__file__).resolve().parents[4]
@@ -999,7 +1008,7 @@ class InsightsStore:
             subphase_key=bootstrap.subphase_key,
             phase_index=bootstrap.phase_index,
             assistant_messages=[
-                CbtConversationMessage(role="assistant", content=content, sender_name=coach_name)
+                self._assistant_message(content, coach_name)
                 for content in bootstrap.assistant_messages
             ],
             quick_replies=bootstrap.quick_replies,
@@ -1121,7 +1130,7 @@ class InsightsStore:
         return CbtConversationTurnResponse(
             assistant_message=assistant_message,
             assistant_messages=[
-                CbtConversationMessage(role="assistant", content=content, sender_name=coach_name)
+                self._assistant_message(content, coach_name)
                 for content in turn.assistant_messages
             ],
             structured_state_draft=turn.state,

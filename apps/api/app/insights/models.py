@@ -51,6 +51,7 @@ class CbtConversationMessage(BaseModel):
     role: CbtConversationRole
     content: str = Field(min_length=1, max_length=2000)
     sender_name: str | None = Field(default=None, min_length=1, max_length=60)
+    message_id: str | None = Field(default=None, min_length=1, max_length=80)
 
 
 class CbtConversationActionLink(BaseModel):

@@ -1,51 +1,71 @@
-# CBT Flow Spec (v3.1)
+# CBT Flow Spec (v5)
 
 ## 목적
-- 기존 채팅 레이아웃(타임라인 + 하단 입력)을 유지한 상태에서, CBT 대화 흐름만 상태기계로 운영합니다.
-- CBT는 인지 재구성(Thought Record)만 수행합니다.
-- 호흡/그라운딩/주간 돌아보기는 CBT 내부 기능으로 구현하지 않고 필요 시 링크만 제공합니다.
+- CBT는 기존 채팅 레이아웃(타임라인 + 하단 입력창)을 유지한 채 상태기계로 운영합니다.
+- 기능 범위는 인지 재구성(Thought Record)만 포함합니다.
+- 호흡/그라운딩/주간 돌아보기는 CBT 내부에서 직접 수행하지 않고 필요 시 링크만 제공합니다.
 
-## 단계(6단계 고정)
-1. `situation` (상황)
-2. `emotion` (감정 라벨 + 강도)
-3. `thought` (순간 떠오른 생각 + 핵심 메시지 유도)
-4. `evidence` (맞아 보이는 이유 / 꼭 그렇지 않을 수 있는 이유)
-5. `alternative_plan` (새 생각 + 약속)
-6. `summary` (요약/저장)
+## 고정 단계(6단계)
+1. `situation` : 지금 다룰 상황 한 줄
+2. `emotion` : 그 상황의 감정 라벨 + 강도(0~100)
+3. `thought` : 순간 떠오른 생각 → 핵심생각 정교화 → 확인
+4. `evidence` : 맞아 보이는 이유(`evidence_for`) / 꼭 그렇지 않을 수 있는 이유(`evidence_against`)
+5. `alternative_plan` : 균형 생각 + 약속(행동 또는 생각 연습)
+6. `summary` : 요약/저장/마무리
 
-상단 단계 UI는 서버 응답값 `phase_key`, `phase_index`, `subphase_key`를 기준으로만 이동합니다.
+진행 단계 UI는 서버의 `phase_key`, `subphase_key`, `phase_index`와 1:1 동기화합니다.
 
-## 대화 턴 규칙
-- 매 사용자 입력마다 assistant 메시지는 최소 2턴으로 구성합니다.
-  - 1턴: 공감/재진술
-  - 2턴: 다음 질문 또는 다음 입력 안내
-- 메시지 톤은 해요체로 통일합니다.
-- 전문 용어는 사용자 문구에서 일상어로 치환합니다.
+## 핵심생각 정교화(Thought v5)
+- `auto_thought` 입력 후 LLM 분석으로 아래를 생성합니다.
+  - `core_thought_candidates`(2~3개)
+  - `best_core_thought`(핵심생각 1개)
+  - `pattern_ranked`(내부 생각패턴 추정)
+  - `pattern_probe_question`(라벨 노출 없이 부드러운 확인 질문)
+- 근거 단계로 넘어가기 전에 `core_confirm` 단계를 반드시 거칩니다.
+  - 코치 요약 + 패턴 예시 질문 + 확인 질문
+  - action: `confirm_core_yes`, `confirm_core_no`, `confirm_core_not_sure`
+- `no/not_sure`면 `core_refine`으로 이동하여 후보 prefill 기반으로 재정리합니다.
+
+## LLM 관여 범위
+- `extract_fields`: 단계별 구조화 추출(JSON)
+- `analyze_core_pattern`: 핵심생각 + 내부 생각패턴 분석(JSON)
+- `compose_response`: 공감/재진술/다음 질문 생성(JSON)
+- `suggest_alternative_candidates`: 새 생각 후보 추천(JSON)
+- `suggest_commitment_candidates`: 약속 후보 추천(JSON)
+- `compose_repair_message`: 맥락 이탈 복구 문장(JSON)
+- `classify_risk`: 위험 보조 분류(JSON)
+
+모든 LLM 응답은 JSON 파싱 실패 시 규칙 기반 fallback으로 대체합니다.
+
+## 대화 메시지 규칙
+- 매 사용자 입력마다 assistant는 최소 2개 메시지를 반환합니다.
+  - 공감/정리
+  - 다음 질문/입력 유도
+- 코치 문체는 해요체로 통일합니다.
+- 전문용어는 사용자 노출 문구에서 일상 표현으로 치환합니다.
+- 동일/유사 메시지 반복 방지:
+  - 서버 중복 문장 제거
+  - 최근 assistant 히스토리 유사도 차단
+  - 비문(`되죠요` 등) 후처리 정규화
 
 ## Quick Reply 정책
-- quick reply는 입력창 위 `QuickReplyBar`에서만 노출합니다.
-- `prefill`: 입력창 채우기만 수행(자동 전송 금지)
-- `action`: 즉시 실행
-- 숫자 강도 버튼 외 prefill은 기본적으로 `": "` 형태를 사용합니다.
-- 단계별 세트는 `/docs/cbt_quick_reply_registry.md`를 단일 기준으로 사용합니다.
+- `prefill`: 입력창에 텍스트만 채우고 전송하지 않습니다.
+- `action`: 즉시 이벤트로 처리합니다.
+- 숫자 강도 버튼을 제외한 prefill은 기본 `: ` 형태를 사용합니다.
+- 단계별 버튼 세트는 `docs/cbt_quick_reply_registry.md`를 단일 기준으로 사용합니다.
 
-## 핵심 메시지(core message) 유도
-- `thought/auto_thought` 입력 후 핵심 메시지가 부족하면 `core_probe`로 진입합니다.
-- probe는 최대 2회, 언제든 skip 가능.
-- core가 확정되면 evidence 이전에 1회 요약 확인 메시지를 제공합니다.
+## Skip / Repair / 루프 방지
+- `situation`은 hard-required이며 skip으로 다음 단계 이동 불가입니다.
+- 입력이 비어있거나 맥락 이탈이면 Repair 메시지를 먼저 제공합니다.
+  - action: `retry_stage`, `reset_topic`, `end_session`
+- 동일 단계 실패 카운트가 3회 이상이면 요약 단계로 안전 종료할 수 있습니다.
 
-## Skip/Repair 정책
-- `situation`은 hard-required: skip으로 다음 단계로 넘어갈 수 없습니다.
-- 맥락 이탈/무효 입력 시 즉시 종료 대신 복구 메시지를 먼저 제공합니다.
-- 기본 복구 선택지: `다시 답하기`, `주제 다시`, `종료`
-- 동일 단계 반복 실패가 누적되면 요약 단계로 안전 종료할 수 있습니다.
+## TO DO / 회고 연동
+- `alternative_plan`에서 약속 텍스트가 확정되면 `commitment_text`와 `commitment_type`이 state에 저장됩니다.
+- 세션 저장 시 TO DO는 state 기반으로 자동 생성됩니다(수동 선택 UI 없음).
+- 회고 완료 시 TO DO pending 목록에서 제거되고, 회고 내용이 세션 요약에 append 저장됩니다.
 
-## TO DO 연동
-- 약속 확정 시 `commitment_text`/`commitment_type`을 state에 저장합니다.
-- 세션 저장 시 TO DO는 사용자 선택 UI 없이 state 기반으로 자동 생성됩니다.
-- 회고 완료 시 TO DO pending 목록에서 제거되고, 회고 내용이 세션 state에 append 저장됩니다.
-
-## 금지/제약
-- CBT 화면에서 `체크인` 용어 사용 금지 (`오늘 기록`만 사용)
-- CBT 시작에서 기분 재수집 금지 (오늘 기록 참조만 허용)
-- UI에서 `[버튼]` 같은 텍스트 버튼 표현 금지
+## 용어/제약
+- CBT 화면에서는 `체크인`이라는 단어를 사용하지 않습니다. `오늘 기록`만 허용합니다.
+- CBT 시작 시 기분을 재수집하지 않고 오늘 기록을 참조만 합니다.
+- UI에 `[버튼]` 같은 텍스트형 가짜 버튼을 표시하지 않습니다.

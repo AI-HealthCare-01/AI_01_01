@@ -168,6 +168,13 @@ function splitIntoChunks(source: string, chunkSize: number): string[] {
   return chunks;
 }
 
+function createLocalMessageId(prefix: "usr" | "asst"): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${prefix}_${crypto.randomUUID()}`;
+  }
+  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+}
+
 function normalizeScore(value: number | null | undefined, minimum: number, maximum: number): number | null {
   if (typeof value !== "number" || Number.isNaN(value)) {
     return null;
@@ -203,6 +210,7 @@ export default function CbtSessionScreen() {
   const { firebaseUser, session: authSession } = useAuthContext();
   const threadRef = useRef<HTMLDivElement | null>(null);
   const isMountedRef = useRef(true);
+  const seenAssistantMessageIdsRef = useRef<Set<string>>(new Set());
 
   const [activeTab, setActiveTab] = useState<CbtTab>("chat");
   const [messages, setMessages] = useState<CbtConversationMessage[]>([]);
@@ -536,10 +544,17 @@ export default function CbtSessionScreen() {
         setHelpfulness(null);
         setRequiresTodayRecord(bootstrap.requires_today_record);
         setTodayRecordRoute(bootstrap.today_record_route);
+        seenAssistantMessageIdsRef.current.clear();
+        for (const item of bootstrap.assistant_messages) {
+          if (item.message_id && item.message_id.trim()) {
+            seenAssistantMessageIdsRef.current.add(item.message_id.trim());
+          }
+        }
         setMessages(
           bootstrap.assistant_messages.map((item) => ({
             ...item,
             sender_name: item.sender_name || coachName,
+            message_id: item.message_id || createLocalMessageId("asst"),
           })),
         );
         setConversationClosed(false);
@@ -600,6 +615,10 @@ export default function CbtSessionScreen() {
 
   const appendAssistantMessages = async (assistantMessages: CbtConversationMessage[]) => {
     for (const message of assistantMessages) {
+      const resolvedId = message.message_id?.trim() || createLocalMessageId("asst");
+      if (seenAssistantMessageIdsRef.current.has(resolvedId)) {
+        continue;
+      }
       const content = message.content.trim();
       if (!content) {
         continue;
@@ -614,8 +633,10 @@ export default function CbtSessionScreen() {
           role: "assistant",
           content,
           sender_name: message.sender_name || coachName,
+          message_id: resolvedId,
         },
       ]);
+      seenAssistantMessageIdsRef.current.add(resolvedId);
       setAssistantDraftText("");
       await new Promise((resolve) => {
         window.setTimeout(resolve, 42);
@@ -636,6 +657,7 @@ export default function CbtSessionScreen() {
       role: "user",
       content: userContent,
       sender_name: userNickname,
+      message_id: createLocalMessageId("usr"),
     };
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
@@ -917,7 +939,7 @@ export default function CbtSessionScreen() {
                     <div ref={threadRef} className="ms-cbt-thread" role="log" aria-live="polite" aria-label="CBT 대화 내용">
                       {messages.map((item, index) => (
                         <article
-                          key={`${item.role}-${index}`}
+                          key={item.message_id || `${item.role}-${index}`}
                           className={`ms-cbt-message ms-cbt-message--${item.role}`}
                         >
                           <p className="ms-cbt-message__role">

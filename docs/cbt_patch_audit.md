@@ -1,28 +1,30 @@
-# CBT Patch Audit (v3.1)
+# CBT Patch Audit (v5)
 
 ## 점검 대상
 - `/Users/parkjieum/Desktop/AI/98_프젝5/project/apps/api/app/insights/cbt/engine.py`
-- `/Users/parkjieum/Desktop/AI/98_프젝5/project/apps/api/tests/test_cbt_state_machine_flow.py`
+- `/Users/parkjieum/Desktop/AI/98_프젝5/project/apps/api/app/insights/cbt/llm_limited.py`
+- `/Users/parkjieum/Desktop/AI/98_프젝5/project/apps/api/app/insights/store.py`
+- `/Users/parkjieum/Desktop/AI/98_프젝5/project/apps/api/app/insights/models.py`
 - `/Users/parkjieum/Desktop/AI/98_프젝5/project/apps/web/src/features/cbt/session-screen.tsx`
 - `/Users/parkjieum/Desktop/AI/98_프젝5/project/apps/web/src/styles/theme.css`
 - `/Users/parkjieum/Desktop/AI/98_프젝5/project/docs/cbt_flow_spec.md`
 - `/Users/parkjieum/Desktop/AI/98_프젝5/project/docs/cbt_quick_reply_registry.md`
+- `/Users/parkjieum/Desktop/AI/98_프젝5/project/docs/cbt/thinking_patterns_ko.md`
 
-## 요구사항별 반영 결과
-| 항목 | 현재 상태 | 수정 파일 | 결과 |
+## 요구사항별 반영 현황
+| 항목 | 반영 상태 | 반영 파일 | 비고 |
 |---|---|---|---|
-| Quick Reply prefill/action 분리 | 반영 | `engine.py`, `session-screen.tsx` | prefill은 입력창 채우기만, action만 즉시 실행 |
-| 단계별 버튼 세트 엄격 분리 | 반영 | `engine.py` | `evidence_for`/`evidence_against` 세트 분리 고정 |
-| prefill 콜론 규칙 | 반영 | `engine.py` | 숫자 강도 제외 prefill 기본 `: ` 유지 |
-| 감정 강도 질문 문구 개선 | 반영 | `engine.py` | “버튼으로 고르세요” 제거, `{감정}의 정도(0~100)` 형태 |
-| 핵심 생각 확정 요약 후 근거 단계 진입 | 반영 | `engine.py` | core 메시지 1회 정리 후 evidence 진입 |
-| 반복 문장 제거 | 반영 | `engine.py` | turn 내부/직전턴 중복 제거 + slot 반복 억제 |
-| 비문(되죠요 등) 보정 | 반영 | `engine.py` | 후처리 normalize 적용 |
-| 유연한 복구(Repair) | 반영 | `engine.py` | 무효 입력 시 완곡 안내 + retry/reset/end 제공 |
-| TO DO 수동 선택 UI 제거 | 반영 | `session-screen.tsx` | 수동 선택/직접추가 제거, state 기반 자동 TO DO 표시 |
-| 단계 박스 과도한 높이 | 반영 | `theme.css` | 데스크톱 강제 min-height/height 제거 |
+| 생각패턴(19종) 카탈로그 추가 | 완료 | `thinking_patterns_ko.json`, `thinking_patterns_ko.ts`, `docs/cbt/thinking_patterns_ko.md` | 문서/런타임/머신리더블 동시 반영 |
+| 핵심생각 정교화 + 확인 단계 | 완료 | `engine.py`, `llm_limited.py` | `core_confirm` 단계에서 확인 액션 분기 |
+| evidence 질문에 핵심생각 포함 | 완료 | `engine.py` | for/against 질문 모두 core 포함 |
+| LLM 관여 확대(분석/추천/복구) | 완료 | `llm_limited.py`, `engine.py` | JSON 기반 fallback 포함 |
+| Quick Reply prefill/action 분리 유지 | 완료 | `engine.py`, `session-screen.tsx` | prefill은 입력창 채우기만 수행 |
+| 반복 문장 방지(서버) | 완료 | `engine.py` | 유사도 기반 중복 제거 + slot 반복 억제 |
+| 비문 후처리(되죠요 등) | 완료 | `engine.py` | `normalize_korean_polite` 적용 |
+| 중복 append 방지(클라) | 완료 | `session-screen.tsx`, `models.py`, `store.py`, `types.ts` | `message_id` 기반 dedupe |
+| 진행단계 폭 축소 + 채팅폭 확장 | 완료 | `theme.css` | 데스크톱 컬럼 재비율 조정 |
+| Quick Reply 스크롤 완화 | 완료 | `theme.css` | `flex-wrap`로 전환, 수평 스크롤 제거 |
 
-## 추가 확인 사항
-- TO DO 저장은 세션 저장 시 `draftState.commitment_*`를 기반으로 자동 매핑합니다.
-- 기존 회고 탭/저장 append 구조는 유지합니다.
-- CBT 화면에서 `체크인` 용어는 사용하지 않습니다.
+## 남은 확인 포인트
+- 실제 브라우저에서 긴 quick reply 세트가 2줄 내에서 자연스럽게 보이는지 시각 검증 필요
+- LLM 활성화 환경에서 `core_confirm` 문장 품질(반복/중복 감소) 추가 샘플 점검 필요

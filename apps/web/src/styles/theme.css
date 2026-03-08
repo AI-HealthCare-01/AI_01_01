@@ -2192,6 +2192,20 @@ a {
   transform: translateY(2px);
 }
 
+.ms-consent-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ms-consent-item__caption {
+  margin: 0;
+  padding-left: calc(var(--space-4) + var(--space-2));
+  color: var(--color-semantic-text-muted);
+  font-size: var(--font-caption-size);
+  line-height: var(--font-caption-line);
+}
+
 .ms-assessment-question {
   border: 1px solid var(--color-semantic-border-default);
   border-radius: var(--radius-md);

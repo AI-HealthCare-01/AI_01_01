@@ -104,6 +104,8 @@ SUPPORT_SENSITIVE_KEYWORDS = [
     "violence",
 ]
 
+BOARD_POST_BODY_MAX_BYTES = 4500
+
 CONSENT_TYPE_TO_FIELD = {
     "terms": "terms_required",
     "privacy": "privacy_required",
@@ -576,6 +578,18 @@ class CommunityStore:
         lowered = text.lower()
         return any(word.lower() in lowered for word in words)
 
+    @staticmethod
+    def _utf8_len(text: str) -> int:
+        return len(text.encode("utf-8"))
+
+    def _validate_post_body(self, body_text: str) -> str:
+        normalized = body_text.strip()
+        if not normalized:
+            raise ValueError("invalid_post_body")
+        if self._utf8_len(normalized) > BOARD_POST_BODY_MAX_BYTES:
+            raise ValueError("invalid_post_body_bytes")
+        return normalized
+
     def _detect_text_queue_types(self, text: str) -> set[ModerationQueueType]:
         queue_types: set[ModerationQueueType] = set()
         if self._text_contains_any(text, HATE_KEYWORDS):
@@ -676,7 +690,7 @@ class CommunityStore:
                     "bp.feed_public_id LIKE ? OR "
                     "COALESCE(bp.title, '') LIKE ? OR "
                     "bp.body_text LIKE ? OR "
-                    "COALESCE(au.nickname, '') LIKE ?"
+                    "COALESCE(NULLIF(au.nickname, ''), NULLIF(au.coach_name, ''), '') LIKE ?"
                     ")"
                 )
                 params.extend([pattern, pattern, pattern, pattern])
@@ -693,7 +707,8 @@ class CommunityStore:
                 params.append(tag_name)
 
             query = (
-                "SELECT bp.*, au.nickname "
+                "SELECT bp.*, "
+                "COALESCE(NULLIF(au.nickname, ''), NULLIF(au.coach_name, ''), '사용자') AS nickname "
                 "FROM board_post bp "
                 "LEFT JOIN account_user au ON au.user_id = bp.author_user_id "
                 f"WHERE {' AND '.join(where_clauses)} "
@@ -711,7 +726,8 @@ class CommunityStore:
             if offset == 0:
                 pinned_row = conn.execute(
                     """
-                    SELECT bp.*, au.nickname
+                    SELECT bp.*,
+                           COALESCE(NULLIF(au.nickname, ''), NULLIF(au.coach_name, ''), '사용자') AS nickname
                     FROM board_post bp
                     LEFT JOIN account_user au ON au.user_id = bp.author_user_id
                     WHERE bp.visibility_status = 'visible'
@@ -743,7 +759,8 @@ class CommunityStore:
             self._ensure_demo_feed(conn, user_id)
             rows = conn.execute(
                 """
-                SELECT bp.*, au.nickname
+                SELECT bp.*,
+                       COALESCE(NULLIF(au.nickname, ''), NULLIF(au.coach_name, ''), '사용자') AS nickname
                 FROM board_post bp
                 LEFT JOIN account_user au ON au.user_id = bp.author_user_id
                 WHERE bp.visibility_status = 'visible'
@@ -776,7 +793,8 @@ class CommunityStore:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT bp.*, au.nickname
+                SELECT bp.*,
+                       COALESCE(NULLIF(au.nickname, ''), NULLIF(au.coach_name, ''), '사용자') AS nickname
                 FROM board_bookmark bb
                 JOIN board_post bp ON bp.post_id = bb.post_id
                 LEFT JOIN account_user au ON au.user_id = bp.author_user_id
@@ -819,6 +837,7 @@ class CommunityStore:
         payload: BoardPostCreateRequest,
     ) -> BoardFeedItem:
         title = (payload.title or "").strip() or None
+        body_text = self._validate_post_body(payload.body_text)
         now = self._now_iso()
 
         with self._connect() as conn:
@@ -850,8 +869,8 @@ class CommunityStore:
                     user_id,
                     title,
                     title,
-                    payload.body_text,
-                    self._preview_text(payload.body_text),
+                    body_text,
+                    self._preview_text(body_text),
                     int(payload.is_anonymous),
                     int(payload.is_notice),
                     int(payload.is_pinned_notice),
@@ -879,7 +898,7 @@ class CommunityStore:
                     (f"img_{uuid.uuid4().hex}", post_id, image_url, index),
                 )
 
-            queue_types = self._detect_text_queue_types(payload.body_text)
+            queue_types = self._detect_text_queue_types(body_text)
             for queue_type in queue_types:
                 self._insert_moderation_queue(
                     conn,
@@ -906,7 +925,8 @@ class CommunityStore:
 
             row = conn.execute(
                 """
-                SELECT bp.*, au.nickname
+                SELECT bp.*,
+                       COALESCE(NULLIF(au.nickname, ''), NULLIF(au.coach_name, ''), '사용자') AS nickname
                 FROM board_post bp
                 LEFT JOIN account_user au ON au.user_id = bp.author_user_id
                 WHERE bp.post_id = ?
@@ -924,9 +944,7 @@ class CommunityStore:
         payload: BoardPostUpdateRequest,
     ) -> BoardFeedItem:
         title = (payload.title or "").strip() or None
-        body_text = payload.body_text.strip()
-        if not body_text:
-            raise ValueError("invalid_post_body")
+        body_text = self._validate_post_body(payload.body_text)
 
         now = self._now_iso()
 
@@ -989,7 +1007,8 @@ class CommunityStore:
 
             updated_row = conn.execute(
                 """
-                SELECT bp.*, au.nickname
+                SELECT bp.*,
+                       COALESCE(NULLIF(au.nickname, ''), NULLIF(au.coach_name, ''), '사용자') AS nickname
                 FROM board_post bp
                 LEFT JOIN account_user au ON au.user_id = bp.author_user_id
                 WHERE bp.post_id = ?
@@ -1158,7 +1177,8 @@ class CommunityStore:
             self._ensure_post_exists(conn, post_id)
             rows = conn.execute(
                 """
-                SELECT bc.*, au.nickname
+                SELECT bc.*,
+                       COALESCE(NULLIF(au.nickname, ''), NULLIF(au.coach_name, ''), '사용자') AS nickname
                 FROM board_comment bc
                 LEFT JOIN account_user au ON au.user_id = bc.author_user_id
                 WHERE bc.post_id = ?
@@ -1209,6 +1229,17 @@ class CommunityStore:
 
         with self._connect() as conn:
             self._ensure_post_exists(conn, post_id)
+            already_reported = conn.execute(
+                """
+                SELECT 1
+                FROM board_report
+                WHERE target_type = 'post' AND target_id = ? AND reporter_user_id = ?
+                LIMIT 1
+                """,
+                (post_id, user_id),
+            ).fetchone()
+            if already_reported is not None:
+                raise ValueError("already_reported")
 
             conn.execute(
                 """

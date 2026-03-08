@@ -20,9 +20,6 @@ import { useAuthContext, AuthRouteGuard } from "../../../src/features/auth";
 const COOLDOWN_MS = 800;
 
 function mapSignupError(code: string): string {
-  if (code.includes("auth/email-already-in-use-password-mismatch")) {
-    return "이미 가입된 이메일입니다. 비밀번호가 다르면 비밀번호 재설정을 이용해주세요.";
-  }
   if (code.includes("auth/email-already-in-use")) {
     return "이미 사용 중인 이메일입니다.";
   }

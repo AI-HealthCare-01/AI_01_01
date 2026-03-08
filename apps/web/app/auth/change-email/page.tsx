@@ -62,9 +62,12 @@ export default function ChangeEmailPage() {
       setSubmitting(true);
       setErrorMessage(null);
       setNotice(null);
-      await changeEmailWithReauth(nextEmail.trim(), password);
+      const normalizedEmail = nextEmail.trim().toLowerCase();
+      await changeEmailWithReauth(normalizedEmail, password);
+      window.sessionStorage.setItem("ms_pending_email_change", normalizedEmail);
       setNotice("새 이메일로 확인 메일을 보냈습니다. 메일 확인 후 다시 진행해주세요.");
       setPassword("");
+      router.push(`/auth/verify-email?source=email-change&pending_email=${encodeURIComponent(normalizedEmail)}`);
     } catch (error) {
       const code = error instanceof Error ? error.message : "unknown_error";
       setErrorMessage(mapError(code));

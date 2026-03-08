@@ -81,6 +81,10 @@ async function sendVerificationWithContinueFallback(
   user: User,
   continueUrl: string | undefined
 ): Promise<void> {
+  const languageCode = (process.env.NEXT_PUBLIC_FIREBASE_AUTH_LANGUAGE_CODE ?? "ko").trim() || "ko";
+  const auth = getFirebaseAuthClient();
+  auth.languageCode = languageCode;
+
   if (!continueUrl) {
     await sendEmailVerification(user);
     return;
@@ -101,6 +105,9 @@ async function sendPasswordResetWithContinueFallback(
   email: string,
   continueUrl: string | undefined
 ): Promise<void> {
+  const languageCode = (process.env.NEXT_PUBLIC_FIREBASE_AUTH_LANGUAGE_CODE ?? "ko").trim() || "ko";
+  auth.languageCode = languageCode;
+
   if (!continueUrl) {
     await sendPasswordResetEmail(auth, email);
     return;
@@ -204,7 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUpWithEmail = useCallback(
     async (email: string, password: string, request: SignupBootstrapRequest) => {
       const auth = getFirebaseAuthClient();
-      const continueUrl = resolveContinueUrl("/auth/verify-email?source=email-action");
+      const continueUrl = resolveContinueUrl("/auth/email-action-complete?source=email-action");
       let credential: Awaited<ReturnType<typeof createUserWithEmailAndPassword>> | null = null;
 
       try {
@@ -218,20 +225,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const existingCredential = await signInWithEmailAndPassword(auth, email, password);
           const existingUser = existingCredential.user;
+          await existingUser.reload();
           if (!existingUser.emailVerified) {
             await sendVerificationWithContinueFallback(existingUser, continueUrl);
+            await bootstrapForUser(existingUser);
+            return;
           }
-          await bootstrapForUser(existingUser);
-          return;
+          await signOut(auth);
+          throw new Error("auth/email-already-in-use");
         } catch (signInError) {
-          const signInCode = mapErrorCode(signInError);
-          if (
-            signInCode.includes("auth/wrong-password") ||
-            signInCode.includes("auth/invalid-credential")
-          ) {
-            throw new Error("auth/email-already-in-use-password-mismatch");
-          }
-          throw signInError;
+          throw new Error("auth/email-already-in-use");
         }
       }
 
@@ -297,7 +300,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
       await reauthenticateWithCredential(firebaseUser, credential);
 
-      const continueUrl = resolveContinueUrl("/auth/verify-email?source=email-action");
+      const continueUrl = resolveContinueUrl("/auth/email-action-complete?source=email-action");
       if (!continueUrl) {
         await verifyBeforeUpdateEmail(firebaseUser, newEmail);
         return;
@@ -319,7 +322,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!firebaseUser) {
       throw new Error("auth/no-current-user");
     }
-    const continueUrl = resolveContinueUrl("/auth/verify-email?source=email-action");
+    const continueUrl = resolveContinueUrl("/auth/email-action-complete?source=email-action");
     await sendVerificationWithContinueFallback(firebaseUser, continueUrl);
   }, [firebaseUser]);
 

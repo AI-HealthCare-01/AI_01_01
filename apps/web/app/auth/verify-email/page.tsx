@@ -24,6 +24,7 @@ export default function VerifyEmailPage() {
   const [isSending, setIsSending] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [sourceNotice, setSourceNotice] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -35,7 +36,76 @@ export default function VerifyEmailPage() {
     if (params.get("source") === "email-action") {
       setSourceNotice("인증 버튼을 통해 돌아왔습니다. 아래 버튼으로 확인 상태를 동기화하세요.");
     }
+
+    const pendingFromQuery = params.get("pending_email")?.trim().toLowerCase() || "";
+    if (pendingFromQuery) {
+      setPendingEmail(pendingFromQuery);
+      window.sessionStorage.setItem("ms_pending_email_change", pendingFromQuery);
+      return;
+    }
+
+    const pendingFromStorage = window.sessionStorage.getItem("ms_pending_email_change")?.trim().toLowerCase() || "";
+    if (pendingFromStorage) {
+      setPendingEmail(pendingFromStorage);
+    }
   }, []);
+
+  useEffect(() => {
+    if (!firebaseUser) {
+      return;
+    }
+
+    let active = true;
+    let syncing = false;
+
+    const syncIfNeeded = async () => {
+      if (!active || syncing) {
+        return;
+      }
+      syncing = true;
+      try {
+        await firebaseUser.reload();
+        const nextSession = await refreshSession();
+        if (!active) {
+          return;
+        }
+        if (firebaseUser.emailVerified && nextSession) {
+          window.sessionStorage.removeItem("ms_pending_email_change");
+          setPendingEmail(null);
+          if (nextSession.account.account_status === "active") {
+            router.replace("/");
+          } else {
+            router.replace("/onboarding");
+          }
+        }
+      } catch {
+        // no-op: user can still manually trigger check button.
+      } finally {
+        syncing = false;
+      }
+    };
+
+    const onFocus = () => {
+      void syncIfNeeded();
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        void syncIfNeeded();
+      }
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+
+    void syncIfNeeded();
+
+    return () => {
+      active = false;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [firebaseUser, refreshSession, router]);
 
   const startCooldown = () => {
     setCooldown(RESEND_COOLDOWN_SECONDS);
@@ -81,6 +151,8 @@ export default function VerifyEmailPage() {
       const nextSession = await refreshSession();
 
       if (firebaseUser.emailVerified && nextSession) {
+        window.sessionStorage.removeItem("ms_pending_email_change");
+        setPendingEmail(null);
         if (nextSession.account.account_status === "active") {
           router.replace("/");
         } else {
@@ -117,7 +189,7 @@ export default function VerifyEmailPage() {
             <Card>
               <div className="ms-stack">
                 <p className="ms-card__desc">
-                  가입한 이메일 <strong>{email || "(이메일 없음)"}</strong> 로 확인 메일을 보냈습니다.
+                  가입한 이메일 <strong>{pendingEmail || email || "(이메일 없음)"}</strong> 로 확인 메일을 보냈습니다.
                 </p>
                 <Banner
                   variant="warning"

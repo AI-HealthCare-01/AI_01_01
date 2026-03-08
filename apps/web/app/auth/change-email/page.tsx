@@ -19,7 +19,7 @@ import { AuthRouteGuard, useAuthContext } from "../../../src/features/auth";
 
 function mapError(code: string): string {
   if (code.includes("auth/invalid-email")) {
-    return "새 이메일 형식을 확인해주세요.";
+    return "변경할 이메일 형식을 확인해주세요.";
   }
   if (code.includes("auth/email-already-in-use")) {
     return "이미 사용 중인 이메일입니다.";
@@ -88,7 +88,7 @@ export default function ChangeEmailPage() {
               <form className="ms-stack" onSubmit={onSubmit}>
                 <Input label="현재 이메일" value={currentEmail} readOnly />
                 <Input
-                  label="새 이메일"
+                  label="변경할 이메일"
                   type="email"
                   required
                   value={nextEmail}

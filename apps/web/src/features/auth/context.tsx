@@ -13,6 +13,7 @@ import {
 import {
   createUserWithEmailAndPassword,
   EmailAuthProvider,
+  fetchSignInMethodsForEmail,
   onAuthStateChanged,
   reauthenticateWithCredential,
   sendEmailVerification,
@@ -244,6 +245,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (newEmail: string, currentPassword: string) => {
       if (!firebaseUser || !firebaseUser.email) {
         throw new Error("auth/no-current-user");
+      }
+
+      const auth = getFirebaseAuthClient();
+      const normalizedCurrent = firebaseUser.email.trim().toLowerCase();
+      const normalizedTarget = newEmail.trim().toLowerCase();
+
+      if (normalizedTarget !== normalizedCurrent) {
+        const signInMethods = await fetchSignInMethodsForEmail(auth, newEmail);
+        if (signInMethods.length > 0) {
+          throw new Error("auth/email-already-in-use");
+        }
       }
 
       const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);

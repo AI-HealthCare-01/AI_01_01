@@ -54,6 +54,7 @@ interface AuthContextValue {
   signUpWithEmail: (email: string, password: string, request: SignupBootstrapRequest) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<SessionContract | null>;
   changeEmailWithReauth: (newEmail: string, currentPassword: string) => Promise<void>;
+  deleteAccountWithReauth: (currentPassword: string) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   saveOnboardingProfile: (request: OnboardingProfileRequest) => Promise<SessionContract>;
@@ -318,6 +319,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [firebaseUser]
   );
 
+  const deleteAccountWithReauth = useCallback(
+    async (currentPassword: string) => {
+      if (!firebaseUser || !firebaseUser.email) {
+        throw new Error("auth/no-current-user");
+      }
+
+      const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
+      await reauthenticateWithCredential(firebaseUser, credential);
+      await deleteUser(firebaseUser);
+      setSession(null);
+      clearSessionCookies();
+    },
+    [firebaseUser]
+  );
+
   const resendVerificationEmail = useCallback(async () => {
     if (!firebaseUser) {
       throw new Error("auth/no-current-user");
@@ -381,6 +397,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUpWithEmail,
       signInWithEmail,
       changeEmailWithReauth,
+      deleteAccountWithReauth,
       resendVerificationEmail,
       sendPasswordReset,
       saveOnboardingProfile: saveProfile,
@@ -397,6 +414,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       phase,
       refreshSession,
       changeEmailWithReauth,
+      deleteAccountWithReauth,
       resendVerificationEmail,
       saveProfile,
       sendPasswordReset,

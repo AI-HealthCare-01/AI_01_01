@@ -204,9 +204,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUpWithEmail = useCallback(
     async (email: string, password: string, request: SignupBootstrapRequest) => {
       const auth = getFirebaseAuthClient();
-      const credential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = credential.user;
       const continueUrl = resolveContinueUrl("/auth/verify-email?source=email-action");
+      let credential: Awaited<ReturnType<typeof createUserWithEmailAndPassword>> | null = null;
+
+      try {
+        credential = await createUserWithEmailAndPassword(auth, email, password);
+      } catch (error) {
+        const code = mapErrorCode(error);
+        if (!code.includes("auth/email-already-in-use")) {
+          throw error;
+        }
+
+        try {
+          const existingCredential = await signInWithEmailAndPassword(auth, email, password);
+          const existingUser = existingCredential.user;
+          if (!existingUser.emailVerified) {
+            await sendVerificationWithContinueFallback(existingUser, continueUrl);
+          }
+          await bootstrapForUser(existingUser);
+          return;
+        } catch (signInError) {
+          const signInCode = mapErrorCode(signInError);
+          if (
+            signInCode.includes("auth/wrong-password") ||
+            signInCode.includes("auth/invalid-credential")
+          ) {
+            throw new Error("auth/email-already-in-use-password-mismatch");
+          }
+          throw signInError;
+        }
+      }
+
+      const user = credential.user;
       let signupShellSaved = false;
 
       try {

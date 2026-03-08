@@ -266,8 +266,18 @@ export default function OnboardingPage() {
                 <div className="ms-stack">
                   <Banner
                     variant="info"
+                    title="검사 구성"
+                    description="우울(PHQ-9) 9문항, 불안(GAD-7) 7문항, 수면(ISI) 7문항으로 최근 2주 상태를 자기보고 방식으로 점검합니다."
+                  />
+                  <Banner
+                    variant="warning"
+                    title="중요 고지"
+                    description="본 검사는 의료적 진단이나 치료를 대체하지 않습니다. 증상이 심하거나 위기 상황이면 의료기관·전문가 상담을 우선 이용해주세요."
+                  />
+                  <Banner
+                    variant="info"
                     title="진행 안내"
-                    description="문항별 선택 응답을 완료하면 온보딩이 종료되고 홈으로 이동합니다."
+                    description="총 23문항을 모두 선택하면 결과가 저장되고 온보딩이 종료됩니다."
                   />
                   <Button type="button" fullWidth onClick={() => router.push("/onboarding/assessment")}>
                     초기 진단 검사 시작

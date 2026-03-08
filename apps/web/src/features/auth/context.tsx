@@ -29,6 +29,7 @@ import {
 import {
   ApiError,
   bootstrapSession,
+  checkChangeEmailAvailability,
   completeBaselineAssessment,
   saveOnboardingProfile,
   signupBootstrap
@@ -252,6 +253,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const normalizedTarget = newEmail.trim().toLowerCase();
 
       if (normalizedTarget !== normalizedCurrent) {
+        const isAvailable = await checkChangeEmailAvailability(firebaseUser, newEmail);
+        if (!isAvailable) {
+          throw new Error("auth/email-already-in-use");
+        }
+
+        // Firebase settings can vary by project. Keep this as a secondary guard.
         const signInMethods = await fetchSignInMethodsForEmail(auth, newEmail);
         if (signInMethods.length > 0) {
           throw new Error("auth/email-already-in-use");

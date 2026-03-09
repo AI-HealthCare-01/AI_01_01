@@ -231,3 +231,25 @@ def test_core_confirm_step_is_shown_before_evidence_and_prompt_contains_core() -
     core = str(to_evidence.state.get("core_message_text") or "").strip()
     assert core
     assert any(core in message for message in to_evidence.assistant_messages)
+
+
+def test_core_confirm_accepts_manual_yes_text_and_advances() -> None:
+    engine = CbtThoughtRecordEngine()
+    bootstrap = engine.bootstrap(
+        today_record=_today_record(),
+        coach_nickname="은하코치",
+        user_nickname="지음",
+    )
+    to_emotion = engine.process_turn(raw_state=bootstrap.state, user_input="시험 결과를 보고 스스로가 너무 초라하게 느껴졌어요.")
+    to_intensity = engine.process_turn(raw_state=to_emotion.state, user_input="불안")
+    to_thought = engine.process_turn(raw_state=to_intensity.state, user_input="80")
+    to_probe = engine.process_turn(raw_state=to_thought.state, user_input="나는 실패작 같아요.")
+    to_confirm = engine.process_turn(raw_state=to_probe.state, user_input="나는 실패작이야.")
+
+    assert to_confirm.phase_key == "thought"
+    assert to_confirm.subphase_key == "core_confirm"
+
+    to_evidence = engine.process_turn(raw_state=to_confirm.state, user_input="맞아요")
+
+    assert to_evidence.phase_key == "evidence"
+    assert to_evidence.subphase_key == "evidence_for"

@@ -390,6 +390,48 @@ class CbtThoughtRecordEngine:
         return any(marker in normalized for marker in markers)
 
     @staticmethod
+    def _resolve_core_confirm_action(text: str) -> str | None:
+        normalized = re.sub(r"[^0-9a-zA-Z가-힣]+", "", text.lower())
+        if not normalized:
+            return None
+        if normalized in {
+            "맞아요",
+            "맞아",
+            "네",
+            "넵",
+            "예",
+            "응",
+            "ㅇㅇ",
+            "맞습니다",
+            "맞는것같아요",
+            "맞는거같아요",
+            "그런것같아요",
+            "그런거같아요",
+        }:
+            return ACTION_CONFIRM_CORE_YES
+        if normalized in {
+            "아니요",
+            "아니에요",
+            "아뇨",
+            "조금달라요",
+            "달라요",
+            "조금다른것같아요",
+            "조금다른거같아요",
+        }:
+            return ACTION_CONFIRM_CORE_NO
+        if normalized in {
+            "잘모르겠어요",
+            "잘모르겠네요",
+            "모르겠어요",
+            "모르겠네요",
+            "애매해요",
+            "애매하네요",
+            "헷갈려요",
+        }:
+            return ACTION_CONFIRM_CORE_NOT_SURE
+        return None
+
+    @staticmethod
     def _looks_valid_label(text: str) -> bool:
         value = text.strip()
         if len(value) < 1:
@@ -1753,7 +1795,9 @@ class CbtThoughtRecordEngine:
             )
 
         if thought_substep == "core_confirm":
-            if action_id == ACTION_CONFIRM_CORE_YES:
+            manual = self._strip_prefill_seed(user_text, allow_prefix_only=True)
+            resolved_action_id = action_id or self._resolve_core_confirm_action(manual)
+            if resolved_action_id == ACTION_CONFIRM_CORE_YES:
                 state["meta"]["evidence_substep"] = "for"
                 state["meta"]["thought_substep"] = "auto_thought"
                 return (
@@ -1763,7 +1807,7 @@ class CbtThoughtRecordEngine:
                     self._quick_set("evidence", "evidence_for"),
                     [],
                 )
-            if action_id in {ACTION_CONFIRM_CORE_NO, ACTION_CONFIRM_CORE_NOT_SURE}:
+            if resolved_action_id in {ACTION_CONFIRM_CORE_NO, ACTION_CONFIRM_CORE_NOT_SURE}:
                 state["meta"]["thought_substep"] = "core_refine"
                 return (
                     "thought",
@@ -1781,7 +1825,6 @@ class CbtThoughtRecordEngine:
                     self._core_refine_quick_set(state),
                     [],
                 )
-            manual = self._strip_prefill_seed(user_text, allow_prefix_only=True)
             if manual and manual not in {"기타", "기타:"}:
                 state["core_message_text"] = manual[:220]
                 self._analyze_core_pattern(state, str(state.get("auto_thought_text") or manual))

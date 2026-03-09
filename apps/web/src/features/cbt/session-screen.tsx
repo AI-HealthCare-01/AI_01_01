@@ -55,6 +55,12 @@ const CBT_STAGE_INDEX: Record<string, number> = {
   action: 4,
 };
 
+const CBT_SUMMARY_FLOW = [
+  { key: "commitment", label: "유형 정하기" },
+  { key: "commitment_entry", label: "TO DO 정하기" },
+  { key: "summary", label: "세션 마무리" },
+] as const;
+
 const TODO_NONE_LABEL = "정하지 않음";
 const CBT_HISTORY_WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
 const CBT_TURN_PAYLOAD_LIMIT = 120;
@@ -288,6 +294,22 @@ export default function CbtSessionScreen() {
     const serverIndex = Number.isFinite(currentPhaseIndex) ? currentPhaseIndex : CBT_STAGE_INDEX[currentStage] ?? 0;
     return Math.max(0, Math.min(CBT_STEPS.length - 1, serverIndex));
   }, [conversationClosed, currentPhaseIndex, currentStage, savedSession]);
+
+  const summaryFlowIndex = useMemo(() => {
+    if (savedSession || conversationClosed || currentStage === "summary") {
+      return 2;
+    }
+    if (currentStage !== "alternative_plan") {
+      return -1;
+    }
+    if (currentSubphase === "commitment_action" || currentSubphase === "commitment_thought") {
+      return 1;
+    }
+    if (currentSubphase === "commitment") {
+      return 0;
+    }
+    return -1;
+  }, [conversationClosed, currentStage, currentSubphase, savedSession]);
 
   const safeRiskLevel = Math.max(0, Math.min(3, riskLevel)) as 0 | 1 | 2 | 3;
   const riskMeta = RISK_LEVEL_META[safeRiskLevel];
@@ -942,6 +964,27 @@ export default function CbtSessionScreen() {
                             </div>
                           );
                         })}
+                        {summaryFlowIndex >= 0 ? (
+                          <div className="ms-cbt-step-flow" aria-label="약속과 마무리 세부 단계">
+                            <p className="ms-cbt-step-flow__title">현재 포커스</p>
+                            <div className="ms-cbt-step-flow__items">
+                              {CBT_SUMMARY_FLOW.map((item, index) => {
+                                const status =
+                                  index < summaryFlowIndex
+                                    ? "complete"
+                                    : index === summaryFlowIndex
+                                      ? "active"
+                                      : "pending";
+                                return (
+                                  <div key={item.key} className={`ms-cbt-step-flow__item ms-cbt-step-flow__item--${status}`}>
+                                    <span className="ms-cbt-step-flow__index">{index + 1}</span>
+                                    <span>{item.label}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </aside>

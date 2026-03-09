@@ -33,7 +33,7 @@ import {
   saveOnboardingProfile,
   signupBootstrap
 } from "./api-client";
-import { getFirebaseAuthClient, isFirebaseConfigured } from "./firebase";
+import { getFirebaseAuthClient, isAuthEmulatorEnabled, isFirebaseConfigured } from "./firebase";
 import { clearSessionCookies, setSessionCookies } from "./session-cookie";
 import type {
   BaselineAssessmentRequest,
@@ -154,7 +154,9 @@ async function classifySignInErrorCode(
       return "auth/account-exists-with-different-credential";
     }
 
-    return "auth/user-not-found";
+    // Firebase Email Enumeration Protection이 활성화된 프로젝트는
+    // fetchSignInMethodsForEmail이 빈 배열을 반환할 수 있어 원인 단정이 어렵다.
+    return rawCode;
   } catch (lookupError) {
     const lookupCode = mapErrorCode(lookupError);
     if (lookupCode.includes("auth/too-many-requests")) {
@@ -167,13 +169,28 @@ async function classifySignInErrorCode(
   }
 }
 
+function isLocalHostUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+
 function resolveContinueUrl(pathname: string): string | undefined {
   const baseFromEnv = process.env.NEXT_PUBLIC_AUTH_CONTINUE_BASE_URL?.trim();
   if (baseFromEnv) {
+    if (!isAuthEmulatorEnabled() && isLocalHostUrl(baseFromEnv)) {
+      return undefined;
+    }
     return new URL(pathname, baseFromEnv).toString();
   }
 
   if (typeof window !== "undefined") {
+    if (!isAuthEmulatorEnabled() && isLocalHostUrl(window.location.origin)) {
+      return undefined;
+    }
     return new URL(pathname, window.location.origin).toString();
   }
 

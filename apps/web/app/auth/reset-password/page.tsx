@@ -83,7 +83,7 @@ export default function ResetPasswordPage() {
       setNotice(
         emulatorEnabled
           ? "요청을 처리했습니다. 에뮬레이터 모드에서는 실제 메일이 발송되지 않으며 Emulator UI에서 링크를 확인할 수 있습니다."
-          : "비밀번호 재설정 메일을 보냈습니다. 받은편지함에 없으면 스팸함도 확인해주세요."
+          : "비밀번호 재설정 메일을 보냈습니다. 받은편지함에 없으면 스팸함도 확인해주세요. 등록된 이메일이 아닐 경우 보안 정책상 메일이 오지 않을 수 있습니다."
       );
       startCooldown();
     } catch (error) {

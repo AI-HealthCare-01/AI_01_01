@@ -18,6 +18,9 @@ from .models import (
     BoardReportRequest,
     BoardToggleResponse,
     ModerationQueuesResponse,
+    ModerationQueueActionRequest,
+    ModerationQueueActionResponse,
+    ModerationQueueDetailResponse,
     MyPageCommentSummary,
     MyPageConsentResponse,
     MyPageConsentUpdateRequest,
@@ -52,6 +55,8 @@ def _map_store_error(error: ValueError) -> HTTPException:
         "ticket_not_found",
         "notification_not_found",
         "account_not_found",
+        "moderation_queue_item_not_found",
+        "comment_not_found",
     }:
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=code)
 
@@ -67,6 +72,7 @@ def _map_store_error(error: ValueError) -> HTTPException:
         "coach_name_invalid",
         "invalid_post_body",
         "invalid_post_body_bytes",
+        "moderation_target_unsupported",
     }:
         return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=code)
 
@@ -275,6 +281,48 @@ def list_moderation_queues(
             detail="admin_or_owner_required",
         )
     return store.list_moderation_queues(limit)
+
+
+@router.get("/v1/admin/moderation/queues/{queue_item_id}", response_model=ModerationQueueDetailResponse)
+def get_moderation_queue_detail(
+    queue_item_id: str,
+    user_id: str = Depends(get_verified_user_id),
+    store: CommunityStore = Depends(get_community_store),
+    admin_store: AdminConsoleStore = Depends(get_admin_console_store),
+) -> ModerationQueueDetailResponse:
+    actor = _ensure_admin_console_actor(user_id, admin_store)
+    if actor.base_role == AdminBaseRole.support:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="admin_or_owner_required",
+        )
+    try:
+        return store.get_moderation_queue_detail(user_id, queue_item_id)
+    except ValueError as error:
+        raise _map_store_error(error) from error
+
+
+@router.post(
+    "/v1/admin/moderation/queues/{queue_item_id}/action",
+    response_model=ModerationQueueActionResponse,
+)
+def apply_moderation_queue_action(
+    queue_item_id: str,
+    payload: ModerationQueueActionRequest,
+    user_id: str = Depends(get_verified_user_id),
+    store: CommunityStore = Depends(get_community_store),
+    admin_store: AdminConsoleStore = Depends(get_admin_console_store),
+) -> ModerationQueueActionResponse:
+    actor = _ensure_admin_console_actor(user_id, admin_store)
+    if actor.base_role == AdminBaseRole.support:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="admin_or_owner_required",
+        )
+    try:
+        return store.apply_moderation_queue_action(user_id, queue_item_id, payload)
+    except ValueError as error:
+        raise _map_store_error(error) from error
 
 
 @router.post("/v1/support/tickets", response_model=SupportTicketDetailResponse)

@@ -7,6 +7,7 @@ export type BoardVisibilityStatus =
 export type BoardModerationStatus = "clear" | "under_review" | "auto_hidden" | "actioned";
 
 export type ModerationQueueType = "report" | "hate" | "safety";
+export type ModerationActionCode = "hide" | "restore" | "delete" | "dismiss";
 
 export interface BoardFeedItem {
   post: {
@@ -89,6 +90,50 @@ export interface ModerationQueuesResponse {
     queued_count: number;
     items: ModerationQueueItem[];
   }>;
+}
+
+export interface ModerationQueueTargetAuthor {
+  user_id: string;
+  display_name: string;
+  is_anonymous: boolean;
+}
+
+export interface ModerationQueuePostTarget {
+  post_id: string;
+  feed_public_id: string;
+  title: string | null;
+  body_text: string;
+  visibility_status: BoardVisibilityStatus;
+  moderation_status: BoardModerationStatus;
+  created_at: string;
+  updated_at: string | null;
+  author: ModerationQueueTargetAuthor;
+}
+
+export interface ModerationQueueCommentTarget {
+  comment_id: string;
+  post_id: string;
+  post_feed_public_id: string | null;
+  body_text: string;
+  visibility_status: string;
+  created_at: string;
+  updated_at: string | null;
+  author: ModerationQueueTargetAuthor;
+}
+
+export interface ModerationQueueDetailResponse {
+  item: ModerationQueueItem;
+  post: ModerationQueuePostTarget | null;
+  comment: ModerationQueueCommentTarget | null;
+}
+
+export interface ModerationQueueActionResponse {
+  result: string;
+  queue_item_id: string;
+  status: string;
+  post_visibility_status: BoardVisibilityStatus | null;
+  post_moderation_status: BoardModerationStatus | null;
+  comment_visibility_status: string | null;
 }
 
 export type SupportTicketType = "inquiry" | "feedback";

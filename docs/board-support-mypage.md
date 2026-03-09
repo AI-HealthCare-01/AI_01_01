@@ -32,6 +32,8 @@
 
 ### Moderation / Admin
 - `GET /v1/admin/moderation/queues`
+- `GET /v1/admin/moderation/queues/{queue_item_id}`
+- `POST /v1/admin/moderation/queues/{queue_item_id}/action`
 - `GET /v1/admin/support/queue-summary`
 - `POST /v1/admin/support/tickets/{ticket_id}/reply`
 

@@ -10,13 +10,18 @@ import {
   EmptyState,
   ErrorState,
   LoadingSkeleton,
+  Modal,
   SectionContainer,
   StatCard,
 } from "../../../src/components/ui";
 import { useAuthContext } from "../../../src/features/auth";
 import {
+  applyModerationQueueAction,
   CommunityApiError,
+  getModerationQueueDetail,
   listModerationQueues,
+  type ModerationActionCode,
+  type ModerationQueueDetailResponse,
   type ModerationQueuesResponse,
 } from "../../../src/features/community";
 
@@ -65,6 +70,11 @@ export default function AdminModerationPage() {
   const [data, setData] = useState<ModerationQueuesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedQueueItemId, setSelectedQueueItemId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<ModerationQueueDetailResponse | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailErrorMessage, setDetailErrorMessage] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<ModerationActionCode | null>(null);
 
   const load = useCallback(async () => {
     if (!firebaseUser) {
@@ -88,6 +98,45 @@ export default function AdminModerationPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!firebaseUser || !selectedQueueItemId) {
+      setDetail(null);
+      setDetailErrorMessage(null);
+      setDetailLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        setDetailLoading(true);
+        setDetailErrorMessage(null);
+        const response = await getModerationQueueDetail(firebaseUser, selectedQueueItemId);
+        if (cancelled) {
+          return;
+        }
+        setDetail(response);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setDetail(null);
+        setDetailErrorMessage(parseError(error));
+      } finally {
+        if (!cancelled) {
+          setDetailLoading(false);
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [firebaseUser, selectedQueueItemId]);
+
   const summary = useMemo(() => {
     const groups = data?.groups ?? [];
     const totalQueued = groups.reduce((acc, group) => acc + group.queued_count, 0);
@@ -98,6 +147,35 @@ export default function AdminModerationPage() {
       groups.find((group) => group.queue_type === "report")?.queued_count ?? 0;
     return { totalQueued, safetyQueued, hateQueued, reportQueued };
   }, [data]);
+
+  const onCloseDetail = useCallback(() => {
+    if (actionLoading) {
+      return;
+    }
+    setSelectedQueueItemId(null);
+    setDetail(null);
+    setDetailErrorMessage(null);
+  }, [actionLoading]);
+
+  const onApplyAction = useCallback(
+    async (actionCode: ModerationActionCode) => {
+      if (!firebaseUser || !detail) {
+        return;
+      }
+      try {
+        setActionLoading(actionCode);
+        await applyModerationQueueAction(firebaseUser, detail.item.queue_item_id, actionCode);
+        await load();
+        setSelectedQueueItemId(null);
+        setDetail(null);
+      } catch (error) {
+        setDetailErrorMessage(parseError(error));
+      } finally {
+        setActionLoading(null);
+      }
+    },
+    [detail, firebaseUser, load]
+  );
 
   return (
     <SectionContainer
@@ -146,7 +224,19 @@ export default function AdminModerationPage() {
               ) : (
                 <div className="ms-admin-list">
                   {group.items.slice(0, 5).map((item) => (
-                    <article key={item.queue_item_id} className="ms-admin-list__item">
+                    <article
+                      key={item.queue_item_id}
+                      className="ms-admin-list__item"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedQueueItemId(item.queue_item_id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedQueueItemId(item.queue_item_id);
+                        }
+                      }}
+                    >
                       <div>
                         <p className="ms-admin-list__title">{item.target_type}</p>
                         <p className="ms-card__desc">
@@ -163,6 +253,96 @@ export default function AdminModerationPage() {
           ))}
         </div>
       )}
+      <Modal
+        open={Boolean(selectedQueueItemId)}
+        title="모더레이션 상세"
+        description="대상 게시물/댓글 원문을 확인하고 즉시 조치할 수 있습니다."
+        onClose={onCloseDetail}
+        footer={
+          detail ? (
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => void onApplyAction("dismiss")}
+                loading={actionLoading === "dismiss"}
+              >
+                큐 종료
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => void onApplyAction("restore")}
+                loading={actionLoading === "restore"}
+              >
+                복구
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => void onApplyAction("hide")}
+                loading={actionLoading === "hide"}
+              >
+                숨김
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => void onApplyAction("delete")}
+                loading={actionLoading === "delete"}
+              >
+                삭제
+              </Button>
+            </>
+          ) : undefined
+        }
+      >
+        {detailLoading ? <LoadingSkeleton lines={8} /> : null}
+        {detailErrorMessage ? (
+          <Banner variant="danger" title="상세 조회 실패" description={detailErrorMessage} />
+        ) : null}
+        {!detailLoading && !detailErrorMessage && detail?.post ? (
+          <div className="ms-stack">
+            <div className="ms-grid ms-grid--two">
+              <StatCard label="큐 유형" value={queueTypeLabel(detail.item.queue_type)} />
+              <StatCard label="작성자" value={detail.post.author.display_name} />
+            </div>
+            <Card
+              title={detail.post.title ?? "(제목 없음)"}
+              description={`${detail.post.feed_public_id} · ${detail.post.created_at.slice(0, 16).replace("T", " ")}`}
+            >
+              <p style={{ whiteSpace: "pre-wrap" }}>{detail.post.body_text}</p>
+              <div className="ms-stack-sm" style={{ marginTop: 16 }}>
+                <p className="ms-card__desc">현재 노출 상태: {detail.post.visibility_status}</p>
+                <p className="ms-card__desc">모더레이션 상태: {detail.post.moderation_status}</p>
+                <p className="ms-card__desc">탐지 소스: {detail.item.source_type}</p>
+                <p className="ms-card__desc">사유: {detail.item.reason_code ?? "no_reason"}</p>
+                <p className="ms-card__desc">
+                  신뢰도: {detail.item.confidence !== null ? detail.item.confidence.toFixed(2) : "-"}
+                </p>
+              </div>
+            </Card>
+          </div>
+        ) : null}
+        {!detailLoading && !detailErrorMessage && detail?.comment ? (
+          <div className="ms-stack">
+            <div className="ms-grid ms-grid--two">
+              <StatCard label="큐 유형" value={queueTypeLabel(detail.item.queue_type)} />
+              <StatCard label="작성자" value={detail.comment.author.display_name} />
+            </div>
+            <Card
+              title="댓글 원문"
+              description={`${detail.comment.post_feed_public_id ?? detail.comment.post_id} · ${detail.comment.created_at.slice(0, 16).replace("T", " ")}`}
+            >
+              <p style={{ whiteSpace: "pre-wrap" }}>{detail.comment.body_text}</p>
+              <div className="ms-stack-sm" style={{ marginTop: 16 }}>
+                <p className="ms-card__desc">현재 노출 상태: {detail.comment.visibility_status}</p>
+                <p className="ms-card__desc">탐지 소스: {detail.item.source_type}</p>
+                <p className="ms-card__desc">사유: {detail.item.reason_code ?? "no_reason"}</p>
+                <p className="ms-card__desc">
+                  신뢰도: {detail.item.confidence !== null ? detail.item.confidence.toFixed(2) : "-"}
+                </p>
+              </div>
+            </Card>
+          </div>
+        ) : null}
+      </Modal>
     </SectionContainer>
   );
 }

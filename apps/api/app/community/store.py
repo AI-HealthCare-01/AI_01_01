@@ -8,6 +8,7 @@ from pathlib import Path
 from app.auth.store import AuthStore
 from app.core_inputs.store import CoreInputStore
 
+from .moderation import ToxicPrediction, ToxicTextClassifier
 from .models import (
     BoardCommentCreateRequest,
     BoardCommentListItem,
@@ -63,6 +64,12 @@ HATE_KEYWORDS = [
     "혐오",
     "차별",
     "죽어",
+    "개새끼",
+    "씨발",
+    "시발",
+    "병신",
+    "좆",
+    "지랄",
     "fuck",
     "bitch",
     "asshole",
@@ -117,8 +124,9 @@ CONSENT_TYPE_TO_FIELD = {
 
 
 class CommunityStore:
-    def __init__(self, database_path: Path):
+    def __init__(self, database_path: Path, toxic_text_classifier: ToxicTextClassifier | None = None):
         self.database_path = database_path
+        self._toxic_text_classifier = toxic_text_classifier
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Ensure shared auth/core tables are ready.
@@ -590,12 +598,29 @@ class CommunityStore:
             raise ValueError("invalid_post_body_bytes")
         return normalized
 
-    def _detect_text_queue_types(self, text: str) -> set[ModerationQueueType]:
-        queue_types: set[ModerationQueueType] = set()
+    def _classify_toxic_text(self, text: str) -> ToxicPrediction | None:
+        if self._toxic_text_classifier is None:
+            return None
+        return self._toxic_text_classifier.classify(text)
+
+    def _detect_text_queue_types(
+        self,
+        text: str,
+    ) -> dict[ModerationQueueType, tuple[str, float]]:
+        queue_types: dict[ModerationQueueType, tuple[str, float]] = {}
         if self._text_contains_any(text, HATE_KEYWORDS):
-            queue_types.add(ModerationQueueType.hate)
+            queue_types[ModerationQueueType.hate] = ("rule_text_scan", 0.72)
         if self._text_contains_any(text, SAFETY_KEYWORDS):
-            queue_types.add(ModerationQueueType.safety)
+            queue_types[ModerationQueueType.safety] = ("rule_text_scan", 0.81)
+
+        toxic_prediction = self._classify_toxic_text(text)
+        if toxic_prediction is not None:
+            existing = queue_types.get(ModerationQueueType.hate)
+            source_type = "model_text_scan" if existing is None else "rule_model_text_scan"
+            confidence = toxic_prediction.score
+            if existing is not None:
+                confidence = max(confidence, existing[1])
+            queue_types[ModerationQueueType.hate] = (source_type, confidence)
         return queue_types
 
     def _insert_moderation_queue(
@@ -899,16 +924,16 @@ class CommunityStore:
                 )
 
             queue_types = self._detect_text_queue_types(body_text)
-            for queue_type in queue_types:
+            for queue_type, (source_type, confidence) in queue_types.items():
                 self._insert_moderation_queue(
                     conn,
                     queue_type=queue_type,
                     target_type="post",
                     target_id=post_id,
-                    source_type="model_text_scan",
+                    source_type=source_type,
                     reason_code=None,
                     detail_text=None,
-                    confidence=0.72 if queue_type == ModerationQueueType.hate else 0.81,
+                    confidence=confidence,
                 )
 
             if queue_types:
@@ -991,16 +1016,16 @@ class CommunityStore:
                 ),
             )
 
-            for queue_type in queue_types:
+            for queue_type, (source_type, confidence) in queue_types.items():
                 self._insert_moderation_queue(
                     conn,
                     queue_type=queue_type,
                     target_type="post",
                     target_id=post_id,
-                    source_type="model_text_scan",
+                    source_type=source_type,
                     reason_code=None,
                     detail_text=None,
-                    confidence=0.72 if queue_type == ModerationQueueType.hate else 0.81,
+                    confidence=confidence,
                 )
 
             conn.commit()
@@ -1140,16 +1165,16 @@ class CommunityStore:
             )
 
             queue_types = self._detect_text_queue_types(payload.body_text)
-            for queue_type in queue_types:
+            for queue_type, (source_type, confidence) in queue_types.items():
                 self._insert_moderation_queue(
                     conn,
                     queue_type=queue_type,
                     target_type="comment",
                     target_id=comment_id,
-                    source_type="model_text_scan",
+                    source_type=source_type,
                     reason_code=None,
                     detail_text=None,
-                    confidence=0.69 if queue_type == ModerationQueueType.hate else 0.78,
+                    confidence=confidence,
                 )
 
             conn.commit()

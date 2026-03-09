@@ -13,6 +13,11 @@ Python API scaffold for MindSight.
 모델 서빙까지 로컬에서 검증하려면:
 - `pip install -e .[dev,ml]`
 
+커뮤니티 유해언어 모델(`kcELECTRA`)까지 함께 검증하려면:
+- `.env`에 `BOARD_TOXIC_MODEL_ENABLED=true`
+- 필요 시 `BOARD_TOXIC_MODEL_NAME`, `BOARD_TOXIC_MODEL_THRESHOLD` 조정
+- 첫 실행 시 Hugging Face 모델 다운로드가 발생할 수 있다.
+
 ## Auth/Onboarding Endpoints
 
 - `POST /v1/auth/signup`

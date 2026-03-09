@@ -1662,6 +1662,59 @@ class CoreInputStore:
             "ordered_dimensions": ["dep", "anx", "ins"],
         }
 
+    @staticmethod
+    def _build_recommendation_reason_copy(
+        *,
+        challenge_id: str,
+        challenge_name: str,
+        primary_dim: str,
+        signal_score: float | None,
+        signal_source: str,
+    ) -> str | None:
+        if signal_source not in {"model_nowcast", "assessment_score"}:
+            return None
+
+        score_suffix = f" ({signal_score:.1f})" if isinstance(signal_score, (int, float)) else ""
+
+        if primary_dim == "ins":
+            per_challenge = {
+                "CH_SLEEP_001": f"최근 수면 지표{score_suffix}가 가장 높게 나타나, '{challenge_name}'로 수면 리듬을 먼저 안정시키는 편이 좋습니다.",
+                "CH_REG_001": f"최근 수면 지표{score_suffix}가 높고 긴장 신호도 함께 보여, '{challenge_name}'로 잠들기 전 긴장을 먼저 낮춰보는 것을 권합니다.",
+                "CH_ACT_002": f"최근 수면 지표{score_suffix}가 높아, '{challenge_name}'처럼 아침 빛 노출을 늘려 수면 리듬을 다시 맞추는 데 도움을 줄 수 있습니다.",
+                "CH_REG_002": f"최근 수면 지표{score_suffix}가 높아 몸이 예민해진 상태로 보여, '{challenge_name}'로 저녁 긴장을 가볍게 풀어보는 것이 도움이 될 수 있습니다.",
+            }
+            return per_challenge.get(
+                challenge_id,
+                f"최근 수면 지표{score_suffix}를 기준으로 '{challenge_name}'를 추천합니다.",
+            )
+
+        if primary_dim == "anx":
+            per_challenge = {
+                "CH_REG_001": f"최근 긴장·불안 지표{score_suffix}가 가장 높게 나타나, '{challenge_name}'로 몸의 긴장을 먼저 낮추는 편이 좋습니다.",
+                "CH_REG_002": f"최근 긴장·불안 지표{score_suffix}가 높아, '{challenge_name}'로 주변 감각에 다시 집중해보는 것을 권합니다.",
+                "CH_SOC_001": f"최근 긴장·불안 지표{score_suffix}가 높고 혼자 버티는 부담이 커 보여, '{challenge_name}'로 지지 연결을 떠올려보는 것이 도움이 될 수 있습니다.",
+                "CH_SLEEP_001": f"최근 긴장·불안 지표{score_suffix}가 수면에도 영향을 주는 흐름으로 보여, '{challenge_name}'로 밤 루틴을 함께 안정시키는 것을 권합니다.",
+            }
+            return per_challenge.get(
+                challenge_id,
+                f"최근 긴장·불안 지표{score_suffix}를 기준으로 '{challenge_name}'를 추천합니다.",
+            )
+
+        if primary_dim == "dep":
+            per_challenge = {
+                "CH_ACT_001": f"최근 기분·활기 지표{score_suffix}가 가장 높게 나타나, '{challenge_name}'처럼 아침의 작은 시작점을 만드는 루틴이 도움이 될 수 있습니다.",
+                "CH_ACT_002": f"최근 기분·활기 지표{score_suffix}가 높아, '{challenge_name}'로 햇빛과 함께 몸을 조금 깨워보는 것을 권합니다.",
+                "CH_ACT_003": f"최근 기분·활기 지표{score_suffix}가 높아, '{challenge_name}'처럼 짧고 가벼운 움직임부터 시작해보는 편이 좋습니다.",
+                "CH_WELL_001": f"최근 기분·활기 지표{score_suffix}가 높고 자기평가가 내려간 흐름이 보여, '{challenge_name}'로 해낸 경험을 다시 확인해보는 것이 도움이 될 수 있습니다.",
+                "CH_SOC_001": f"최근 기분·활기 지표{score_suffix}가 높고 혼자 버티는 느낌이 커 보여, '{challenge_name}'로 연결 가능한 사람을 떠올려보는 것을 권합니다.",
+            }
+            return per_challenge.get(
+                challenge_id,
+                f"최근 기분·활기 지표{score_suffix}를 기준으로 '{challenge_name}'를 추천합니다.",
+            )
+
+        return None
+
     def get_today_recommendations(self, user_id: str) -> dict[str, object]:
         self._refresh_nowcast_prediction(
             user_id=user_id,
@@ -1765,7 +1818,13 @@ class CoreInputStore:
 
                 if signal_source in {"model_nowcast", "assessment_score"} and challenge_id in priority_index:
                     reason_code = f"{signal_source}_{primary_dim}"
-                    reason_copy = f"{reason_prefix} '{str(row['name_ko'])}'를 추천합니다."
+                    reason_copy = self._build_recommendation_reason_copy(
+                        challenge_id=challenge_id,
+                        challenge_name=str(row["name_ko"]),
+                        primary_dim=primary_dim,
+                        signal_score=float(primary_signal_score) if isinstance(primary_signal_score, (int, float)) else None,
+                        signal_source=signal_source,
+                    ) or f"{reason_prefix} '{str(row['name_ko'])}'를 추천합니다."
 
                 selected.append(
                     ChallengeRecommendationItem(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import uuid
 from datetime import UTC, date, datetime, timedelta
@@ -179,6 +180,7 @@ class CoreInputStore:
     def __init__(self, database_path: Path):
         self.database_path = database_path
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        self._modeling_store = None
         self._initialize_schema()
 
     def _connect(self) -> sqlite3.Connection:
@@ -189,6 +191,38 @@ class CoreInputStore:
     @staticmethod
     def _now_iso() -> str:
         return datetime.now(UTC).isoformat()
+
+    def _get_modeling_store(self):
+        if self._modeling_store is not None:
+            return self._modeling_store
+
+        from app.modeling.store import ModelingStore
+
+        default_bundle_dir = Path(__file__).resolve().parents[4] / "model"
+        model_bundle_dir = Path(
+            os.getenv("MODEL_BUNDLE_DIR", str(default_bundle_dir))
+        ).resolve()
+        self._modeling_store = ModelingStore(
+            database_path=self.database_path,
+            model_bundle_dir=model_bundle_dir,
+        )
+        return self._modeling_store
+
+    def _refresh_nowcast_prediction(
+        self,
+        user_id: str,
+        reference_date: date,
+        *,
+        force: bool,
+    ) -> None:
+        try:
+            self._get_modeling_store().ensure_nowcast_prediction_from_sources(
+                user_id=user_id,
+                reference_date=reference_date,
+                force=force,
+            )
+        except ValueError:
+            return
 
     def _initialize_schema(self) -> None:
         with self._connect() as conn:
@@ -739,6 +773,11 @@ class CoreInputStore:
             self._recalculate_user_day_activity_log(conn, user_id, checkin_date)
             conn.commit()
 
+        self._refresh_nowcast_prediction(
+            user_id=user_id,
+            reference_date=checkin_date,
+            force=True,
+        )
         return self.get_checkin_today(user_id, checkin_date)
 
     def _upsert_checkin_features(
@@ -1081,6 +1120,7 @@ class CoreInputStore:
         return None
 
     def complete_assessment(self, user_id: str, assessment_id: str) -> AssessmentSessionResponse:
+        completed_date = date.today()
         with self._connect() as conn:
             session = conn.execute(
                 """
@@ -1126,6 +1166,7 @@ class CoreInputStore:
             item9_nonzero = int(phq9_item9_nonzero["response_score"]) > 0 if phq9_item9_nonzero else False
 
             now_iso = self._now_iso()
+            completed_date = datetime.fromisoformat(now_iso).date()
             conn.execute(
                 """
                 INSERT INTO assessment_score (
@@ -1173,6 +1214,11 @@ class CoreInputStore:
             self._recalculate_user_day_activity_log(conn, user_id, datetime.fromisoformat(now_iso).date())
             conn.commit()
 
+        self._refresh_nowcast_prediction(
+            user_id=user_id,
+            reference_date=completed_date,
+            force=True,
+        )
         return self.get_assessment_session(user_id, assessment_id)
 
     def get_assessment_session(self, user_id: str, assessment_id: str) -> AssessmentSessionResponse:
@@ -1560,7 +1606,8 @@ class CoreInputStore:
                 SELECT dep_score, anx_score, ins_score, created_at
                 FROM model_nowcast_prediction
                 WHERE user_id = ?
-                ORDER BY datetime(created_at) DESC
+                ORDER BY date(COALESCE(reference_date, substr(created_at, 1, 10))) DESC,
+                         datetime(created_at) DESC
                 LIMIT 1
                 """,
                 (user_id,),
@@ -1616,6 +1663,11 @@ class CoreInputStore:
         }
 
     def get_today_recommendations(self, user_id: str) -> dict[str, object]:
+        self._refresh_nowcast_prediction(
+            user_id=user_id,
+            reference_date=date.today(),
+            force=False,
+        )
         with self._connect() as conn:
             risk_level = self._risk_level_for_challenge(conn, user_id)
             if risk_level >= 3:

@@ -34,7 +34,17 @@ Python API scaffold for MindSight.
 - `POST /v1/modeling/nowcast/predict`
 - `GET /v1/modeling/nowcast/history`
 
-모델 아티팩트 경로는 `MODEL_BUNDLE_DIR` 환경변수로 지정할 수 있다.
+모델 런타임은 계약 기반 provider를 사용한다.
+
+- 기본 동작: `MODEL_BACKEND=baseline` (가중치 없이 동작)
+- 선택 동작: `MODEL_BACKEND=artifact` + `MODEL_ARTIFACT_PATH=/abs/path/to/artifact`
+  - artifact 로딩 실패 시 자동으로 baseline fallback
+- 계약 파일:
+  - `model/contracts/feature_schema.json`
+  - `model/contracts/output_schema.json`
+  - `model/contracts/manifest.json`
+
+모델 번들 루트는 `MODEL_BUNDLE_DIR` 환경변수로 지정할 수 있다.
 지정하지 않으면 루트 `model/` 폴더를 기본값으로 사용한다.
 
 ## Firebase Emulator Support

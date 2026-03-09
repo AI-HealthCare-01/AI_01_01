@@ -1,0 +1,797 @@
+{
+  "schema_version": "2026-03-09",
+  "id_field": "ml_subject_id",
+  "missingness": {
+    "policy": "allow_with_default",
+    "record_missing_features": true,
+    "record_unknown_features": true
+  },
+  "privacy": {
+    "forbidden_fields": [
+      "email",
+      "nickname",
+      "ip",
+      "firebase_uid",
+      "user_id"
+    ],
+    "notes": "Only pseudonymous model subject id is allowed for linkage."
+  },
+  "features": [
+    {
+      "name": "mood_1_5",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "mood_1_5 input feature"
+    },
+    {
+      "name": "anxiety_1_5",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "anxiety_1_5 input feature"
+    },
+    {
+      "name": "energy_1_5",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "energy_1_5 input feature"
+    },
+    {
+      "name": "alcohol_bucket",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "alcohol_bucket input feature"
+    },
+    {
+      "name": "caffeine_after_2pm_flag",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "caffeine_after_2pm_flag input feature"
+    },
+    {
+      "name": "sleep_total_bucket_num",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "sleep_total_bucket_num input feature"
+    },
+    {
+      "name": "sleep_latency_bucket_num",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "sleep_latency_bucket_num input feature"
+    },
+    {
+      "name": "daylight_bucket_num",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "daylight_bucket_num input feature"
+    },
+    {
+      "name": "exercise_bucket_num",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "exercise_bucket_num input feature"
+    },
+    {
+      "name": "wake_hour",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "wake_hour input feature"
+    },
+    {
+      "name": "timezone",
+      "dtype": "string",
+      "required": false,
+      "nullable": true,
+      "default": "",
+      "description": "timezone input feature"
+    },
+    {
+      "name": "age_band",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "age_band input feature"
+    },
+    {
+      "name": "gender",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "gender input feature"
+    },
+    {
+      "name": "employment_status",
+      "dtype": "string",
+      "required": false,
+      "nullable": true,
+      "default": "",
+      "description": "employment_status input feature"
+    },
+    {
+      "name": "relationship_status",
+      "dtype": "string",
+      "required": false,
+      "nullable": true,
+      "default": "",
+      "description": "relationship_status input feature"
+    },
+    {
+      "name": "cohort_id",
+      "dtype": "string",
+      "required": false,
+      "nullable": true,
+      "default": "",
+      "description": "cohort_id input feature"
+    },
+    {
+      "name": "adherence_0_1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "adherence_0_1 input feature"
+    },
+    {
+      "name": "phq9_total",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "phq9_total input feature"
+    },
+    {
+      "name": "gad7_total",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "gad7_total input feature"
+    },
+    {
+      "name": "isi_total",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "isi_total input feature"
+    },
+    {
+      "name": "medication_flag",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "medication_flag input feature"
+    },
+    {
+      "name": "therapy_flag",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "therapy_flag input feature"
+    },
+    {
+      "name": "days_since_onboarding",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "days_since_onboarding input feature"
+    },
+    {
+      "name": "dep_week_avg",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "dep_week_avg input feature"
+    },
+    {
+      "name": "anx_week_avg",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "anx_week_avg input feature"
+    },
+    {
+      "name": "ins_week_avg",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "ins_week_avg input feature"
+    },
+    {
+      "name": "dep_month_avg",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "dep_month_avg input feature"
+    },
+    {
+      "name": "anx_month_avg",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "anx_month_avg input feature"
+    },
+    {
+      "name": "ins_month_avg",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "ins_month_avg input feature"
+    },
+    {
+      "name": "phq9_last_score",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "phq9_last_score input feature"
+    },
+    {
+      "name": "gad7_last_score",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "gad7_last_score input feature"
+    },
+    {
+      "name": "isi_last_score",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "isi_last_score input feature"
+    },
+    {
+      "name": "days_since_last_assessment",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "days_since_last_assessment input feature"
+    },
+    {
+      "name": "assessment_overdue_flag",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "assessment_overdue_flag input feature"
+    },
+    {
+      "name": "challenge_shown_count_today",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "challenge_shown_count_today input feature"
+    },
+    {
+      "name": "challenge_accept_count_today",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "challenge_accept_count_today input feature"
+    },
+    {
+      "name": "challenge_completed_count_today",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "challenge_completed_count_today input feature"
+    },
+    {
+      "name": "challenge_helpfulness_mean_today",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "challenge_helpfulness_mean_today input feature"
+    },
+    {
+      "name": "challenge_dropout_count_today",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "challenge_dropout_count_today input feature"
+    },
+    {
+      "name": "cbt_session_count_today",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "cbt_session_count_today input feature"
+    },
+    {
+      "name": "cbt_helpfulness_mean_today",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "cbt_helpfulness_mean_today input feature"
+    },
+    {
+      "name": "cbt_homework_commitment_mean_today",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "cbt_homework_commitment_mean_today input feature"
+    },
+    {
+      "name": "risk_any_today",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "risk_any_today input feature"
+    },
+    {
+      "name": "suicide_risk_level_today",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "suicide_risk_level_today input feature"
+    },
+    {
+      "name": "functional_impairment_today",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "functional_impairment_today input feature"
+    },
+    {
+      "name": "self_harm_today",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "self_harm_today input feature"
+    },
+    {
+      "name": "days_since_prev_checkin",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "days_since_prev_checkin input feature"
+    },
+    {
+      "name": "sleep_total_bucket_num_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "sleep_total_bucket_num_lag1 input feature"
+    },
+    {
+      "name": "sleep_total_bucket_num_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "sleep_total_bucket_num_mean_last3obs input feature"
+    },
+    {
+      "name": "sleep_latency_bucket_num_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "sleep_latency_bucket_num_lag1 input feature"
+    },
+    {
+      "name": "sleep_latency_bucket_num_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "sleep_latency_bucket_num_mean_last3obs input feature"
+    },
+    {
+      "name": "mood_1_5_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "mood_1_5_lag1 input feature"
+    },
+    {
+      "name": "mood_1_5_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "mood_1_5_mean_last3obs input feature"
+    },
+    {
+      "name": "anxiety_1_5_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "anxiety_1_5_lag1 input feature"
+    },
+    {
+      "name": "anxiety_1_5_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "anxiety_1_5_mean_last3obs input feature"
+    },
+    {
+      "name": "energy_1_5_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "energy_1_5_lag1 input feature"
+    },
+    {
+      "name": "energy_1_5_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "energy_1_5_mean_last3obs input feature"
+    },
+    {
+      "name": "daylight_bucket_num_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "daylight_bucket_num_lag1 input feature"
+    },
+    {
+      "name": "daylight_bucket_num_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "daylight_bucket_num_mean_last3obs input feature"
+    },
+    {
+      "name": "exercise_bucket_num_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "exercise_bucket_num_lag1 input feature"
+    },
+    {
+      "name": "exercise_bucket_num_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "exercise_bucket_num_mean_last3obs input feature"
+    },
+    {
+      "name": "alcohol_bucket_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "alcohol_bucket_lag1 input feature"
+    },
+    {
+      "name": "alcohol_bucket_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "alcohol_bucket_mean_last3obs input feature"
+    },
+    {
+      "name": "caffeine_after_2pm_flag_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "caffeine_after_2pm_flag_lag1 input feature"
+    },
+    {
+      "name": "caffeine_after_2pm_flag_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "caffeine_after_2pm_flag_mean_last3obs input feature"
+    },
+    {
+      "name": "wake_hour_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "wake_hour_lag1 input feature"
+    },
+    {
+      "name": "wake_hour_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "wake_hour_mean_last3obs input feature"
+    },
+    {
+      "name": "challenge_shown_count_today_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "challenge_shown_count_today_lag1 input feature"
+    },
+    {
+      "name": "challenge_shown_count_today_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "challenge_shown_count_today_mean_last3obs input feature"
+    },
+    {
+      "name": "challenge_accept_count_today_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "challenge_accept_count_today_lag1 input feature"
+    },
+    {
+      "name": "challenge_accept_count_today_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "challenge_accept_count_today_mean_last3obs input feature"
+    },
+    {
+      "name": "challenge_completed_count_today_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "challenge_completed_count_today_lag1 input feature"
+    },
+    {
+      "name": "challenge_completed_count_today_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "challenge_completed_count_today_mean_last3obs input feature"
+    },
+    {
+      "name": "challenge_helpfulness_mean_today_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "challenge_helpfulness_mean_today_lag1 input feature"
+    },
+    {
+      "name": "challenge_helpfulness_mean_today_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "challenge_helpfulness_mean_today_mean_last3obs input feature"
+    },
+    {
+      "name": "challenge_dropout_count_today_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "challenge_dropout_count_today_lag1 input feature"
+    },
+    {
+      "name": "challenge_dropout_count_today_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "challenge_dropout_count_today_mean_last3obs input feature"
+    },
+    {
+      "name": "cbt_session_count_today_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "cbt_session_count_today_lag1 input feature"
+    },
+    {
+      "name": "cbt_session_count_today_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "cbt_session_count_today_mean_last3obs input feature"
+    },
+    {
+      "name": "cbt_helpfulness_mean_today_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "cbt_helpfulness_mean_today_lag1 input feature"
+    },
+    {
+      "name": "cbt_helpfulness_mean_today_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "cbt_helpfulness_mean_today_mean_last3obs input feature"
+    },
+    {
+      "name": "cbt_homework_commitment_mean_today_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "cbt_homework_commitment_mean_today_lag1 input feature"
+    },
+    {
+      "name": "cbt_homework_commitment_mean_today_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "cbt_homework_commitment_mean_today_mean_last3obs input feature"
+    },
+    {
+      "name": "risk_any_today_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "risk_any_today_lag1 input feature"
+    },
+    {
+      "name": "risk_any_today_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "risk_any_today_mean_last3obs input feature"
+    },
+    {
+      "name": "suicide_risk_level_today_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "suicide_risk_level_today_lag1 input feature"
+    },
+    {
+      "name": "suicide_risk_level_today_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "suicide_risk_level_today_mean_last3obs input feature"
+    },
+    {
+      "name": "functional_impairment_today_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "functional_impairment_today_lag1 input feature"
+    },
+    {
+      "name": "functional_impairment_today_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "functional_impairment_today_mean_last3obs input feature"
+    },
+    {
+      "name": "self_harm_today_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "self_harm_today_lag1 input feature"
+    },
+    {
+      "name": "self_harm_today_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "self_harm_today_mean_last3obs input feature"
+    },
+    {
+      "name": "dep_target_state_today_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "dep_target_state_today_lag1 input feature"
+    },
+    {
+      "name": "dep_target_state_today_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "dep_target_state_today_mean_last3obs input feature"
+    },
+    {
+      "name": "anx_target_state_today_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "anx_target_state_today_lag1 input feature"
+    },
+    {
+      "name": "anx_target_state_today_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "anx_target_state_today_mean_last3obs input feature"
+    },
+    {
+      "name": "ins_target_state_today_lag1",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "ins_target_state_today_lag1 input feature"
+    },
+    {
+      "name": "ins_target_state_today_mean_last3obs",
+      "dtype": "number",
+      "required": false,
+      "nullable": true,
+      "default": 0,
+      "description": "ins_target_state_today_mean_last3obs input feature"
+    }
+  ]
+}

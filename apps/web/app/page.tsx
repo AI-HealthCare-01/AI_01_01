@@ -18,6 +18,8 @@ import {
   SectionContainer,
 } from "../src/components/ui";
 import { useAuthContext } from "../src/features/auth";
+import { mapLoginErrorMessage } from "../src/features/auth/login-error";
+import { isOnboardingComplete, shouldGoOnboarding } from "../src/features/auth/status";
 import {
   CoreApiError,
   getActivityLog,
@@ -127,6 +129,13 @@ const CALENDAR_TONE_LABEL: Record<CalendarMoodTone, string> = {
   sleep: "수면 부족 경향",
 };
 
+const HOME_CALENDAR_LEGEND: Array<{ tone: CalendarMoodTone; copy: string }> = [
+  { tone: "happy", copy: "마음이 한결 가벼웠던 날" },
+  { tone: "anxious", copy: "긴장이 조금 높았던 날" },
+  { tone: "depressed", copy: "마음이 무겁게 느껴진 날" },
+  { tone: "sleep", copy: "수면 회복이 더 필요한 날" },
+];
+
 function toDateString(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
@@ -174,32 +183,11 @@ function parseError(error: unknown): string {
   return "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 }
 
-function mapLoginError(code: string): string {
-  if (code.includes("auth/invalid-credential") || code.includes("auth/wrong-password")) {
-    return "이메일 또는 비밀번호를 다시 확인해주세요.";
-  }
-  if (code.includes("auth/user-not-found")) {
-    return "등록되지 않은 계정입니다.";
-  }
-  if (code.includes("firebase_token_invalid")) {
-    return "로그인은 되었지만 서버 세션 확인에 실패했습니다. 잠시 후 다시 시도해주세요.";
-  }
-  if (code.includes("missing_firebase_auth")) {
-    return "인증 토큰이 누락되었습니다. 페이지를 새로고침 후 다시 시도해주세요.";
-  }
-  if (code.includes("account_not_found")) {
-    return "계정 동기화가 완료되지 않았습니다. 잠시 후 다시 시도하거나 로그인 화면에서 재시도해주세요.";
-  }
-  if (code.includes("session_bootstrap_failed")) {
-    return "로그인 후 계정 상태를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.";
-  }
-  return "로그인에 실패했습니다. 잠시 후 다시 시도해주세요.";
-}
-
 function getAccessGuide(
   phase: "loading" | "signed_out" | "signed_in",
   emailVerified: boolean,
-  accountStatus: string | undefined,
+  onboardingComplete: boolean,
+  needsOnboarding: boolean,
 ): { title: string; description: string; route: string; cta: string } {
   if (phase !== "signed_in") {
     return {
@@ -219,7 +207,7 @@ function getAccessGuide(
     };
   }
 
-  if (accountStatus !== "active") {
+  if (needsOnboarding || !onboardingComplete) {
     return {
       title: "온보딩을 완료해 주세요",
       description: "출생년도, 동의, 초기 진단척도 입력이 끝나면 홈 데이터가 표시됩니다.",
@@ -484,8 +472,10 @@ export default function HomePage() {
 
   const accountStatus = session?.account.account_status;
   const emailVerified = Boolean(firebaseUser?.emailVerified);
-  const isActive = phase === "signed_in" && emailVerified && accountStatus === "active";
-  const accessGuide = getAccessGuide(phase, emailVerified, accountStatus);
+  const onboardingComplete = isOnboardingComplete(session);
+  const onboardingNeeded = shouldGoOnboarding(session);
+  const isActive = phase === "signed_in" && emailVerified && onboardingComplete && !onboardingNeeded;
+  const accessGuide = getAccessGuide(phase, emailVerified, onboardingComplete, onboardingNeeded);
 
   const kstNow = getKstDateInfo();
   const dayGreetingMessage = getDayGreetingMessage(kstNow.hour);
@@ -553,9 +543,31 @@ export default function HomePage() {
   const cbtReflectionDone = pendingCbtReflectionCount === 0;
   const cbtFullyDone = cbtDialogueDone && cbtReflectionDone;
   const nextAssessmentDate = useMemo(() => resolveNextAssessmentDate(assessmentHistory), [assessmentHistory]);
-  const assessmentDue = !nextAssessmentDate || kstNow.date >= nextAssessmentDate;
+  const completedAssessmentToday = useMemo(() => {
+    if (todaySummary?.has_assessment) {
+      return true;
+    }
+    return assessmentHistory.some((item) => {
+      if (item.status !== "completed") {
+        return false;
+      }
+      const completedDate = normalizeIsoDate(item.completed_at) ?? normalizeIsoDate(item.started_at);
+      return completedDate === kstNow.date;
+    });
+  }, [assessmentHistory, kstNow.date, todaySummary?.has_assessment]);
+  const fallbackNextAssessmentDate = useMemo(
+    () => (completedAssessmentToday ? addDaysToIsoDate(kstNow.date, 28) : null),
+    [completedAssessmentToday, kstNow.date],
+  );
+  const effectiveNextAssessmentDate = nextAssessmentDate ?? fallbackNextAssessmentDate;
+  const assessmentScheduled = Boolean(
+    effectiveNextAssessmentDate &&
+      (completedAssessmentToday || kstNow.date < effectiveNextAssessmentDate),
+  );
   const assessmentPendingLabel =
-    assessmentDue || !nextAssessmentDate ? "검사하기" : `예정: ${formatDayMonth(nextAssessmentDate)}`;
+    assessmentScheduled && effectiveNextAssessmentDate
+      ? `예정: ${formatDayMonth(effectiveNextAssessmentDate)}`
+      : "검사하기";
 
   const todayActions = [
     {
@@ -590,8 +602,8 @@ export default function HomePage() {
       key: "assessment",
       label: "심리상태 검사",
       pendingActionLabel: assessmentPendingLabel,
-      done: Boolean(todaySummary?.has_assessment),
-      disabled: !assessmentDue,
+      done: false,
+      disabled: assessmentScheduled,
       href: "/assessments",
     },
   ] as const;
@@ -606,15 +618,15 @@ export default function HomePage() {
       return;
     }
 
-    if (accountStatus === "active_onboarding_required") {
+    if (onboardingNeeded) {
       router.replace("/onboarding");
       return;
     }
 
-    if (accountStatus && accountStatus !== "active") {
+    if (accountStatus && ["restricted", "suspended", "deleted"].includes(accountStatus)) {
       router.replace("/auth/login");
     }
-  }, [accountStatus, emailVerified, firebaseUser, phase, router]);
+  }, [accountStatus, emailVerified, firebaseUser, onboardingNeeded, phase, router]);
 
   const onLandingLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -636,7 +648,7 @@ export default function HomePage() {
         return;
       }
 
-      if (nextSession.account.account_status === "active") {
+      if (isOnboardingComplete(nextSession)) {
         router.replace("/");
         return;
       }
@@ -644,7 +656,7 @@ export default function HomePage() {
       router.replace("/onboarding");
     } catch (error) {
       const code = error instanceof Error ? error.message : "unknown";
-      setLandingError(mapLoginError(code));
+      setLandingError(mapLoginErrorMessage(code));
     } finally {
       setLandingSubmitting(false);
     }
@@ -1127,6 +1139,17 @@ export default function HomePage() {
                             </span>
                           );
                         })}
+                      </div>
+                      <div className="ms-home-calendar-legend" aria-label="월간 출석 캘린더 색상 설명">
+                        {HOME_CALENDAR_LEGEND.map((item) => (
+                          <div key={item.tone} className="ms-home-calendar-legend__item">
+                            <span
+                              className={`ms-home-calendar-legend__dot ms-home-calendar-legend__dot--${item.tone}`}
+                              aria-hidden="true"
+                            />
+                            <span className="ms-home-calendar-legend__text">{item.copy}</span>
+                          </div>
+                        ))}
                       </div>
                     </>
                   )}

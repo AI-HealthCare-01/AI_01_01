@@ -120,8 +120,11 @@ Docker로 한번에 실행(권장):
   - `POST /v1/modeling/nowcast/predict`
   - `GET /v1/modeling/nowcast/history`
 - `make api-install`은 API 기본 개발 의존성과 함께 모델 런타임 extra(`ml`)를 설치
-- `model/` 번들(`docs/model_feature_columns.json`, `models/*.joblib`)을 API에서 직접 로딩
-- 누락 feature는 번들 샘플 row(`model/data/train_user_day_nowcast.csv`) 기반 기본값 보정
+- 모델 계약(`model/contracts/*.json`)을 단일 진실원천으로 사용
+- 기본 백엔드는 `baseline`이며, 가중치 없이도 API/웹 동작
+- `MODEL_BACKEND=artifact` + `MODEL_ARTIFACT_PATH`가 설정된 경우에만 가중치 로딩 시도
+  - artifact 로딩 실패 시 자동 baseline fallback
+- 누락 feature는 계약의 default 값으로 보정
 - 예측 이력은 `model_nowcast_prediction` 테이블에 저장(옵션)
 - 모델 재학습은 승인형 job 스캐폴드로 관리
   - `POST /v1/admin/model-ops/{model_change_id}/retraining-jobs`
@@ -141,6 +144,8 @@ Docker로 한번에 실행(권장):
   - `FIREBASE_PROJECT_ID`
   - `FIREBASE_ADMIN_PROJECT_ID`(미설정 시 `FIREBASE_PROJECT_ID` 사용)
   - `MODEL_BUNDLE_DIR=./model`
+  - `MODEL_BACKEND=baseline` (기본)
+  - `MODEL_ARTIFACT_PATH` (artifact 모드에서만)
 
 실 Firebase 실행 예시:
 - 로컬 프로세스: `make web-dev-real` + `make api-dev-real`

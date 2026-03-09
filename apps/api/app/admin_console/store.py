@@ -142,6 +142,11 @@ class AdminConsoleStore:
         return row is not None
 
     @staticmethod
+    def _table_has_column(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        return any(str(row["name"]) == column_name for row in rows)
+
+    @staticmethod
     def _owner_seed_email() -> str | None:
         value = os.getenv("ADMIN_OWNER_EMAIL", "").strip().lower()
         return value or None
@@ -689,9 +694,9 @@ class AdminConsoleStore:
             raise ValueError("invalid_retraining_range")
 
         selection_window_days = ((selection_end_date - selection_start_date).days + 1)
-        assessment_window_days = (
-            28 if payload.use_pre_assessment_window_28d else max(1, min(payload.training_window_days, 365))
-        )
+        # Retraining rows are always defined as:
+        # one completed assessment(target) + prior 28-day activity inputs.
+        assessment_window_days = 28
         min_assessment_count = 2 if payload.require_second_assessment_completion else 1
         selection_parts = []
         if payload.require_min_account_age_days_28:
@@ -701,6 +706,7 @@ class AdminConsoleStore:
         selection_parts.append(
             f"진단 완료일 {selection_start_date.isoformat()}~{selection_end_date.isoformat()}"
         )
+        selection_parts.append("입력 윈도우: 진단일 이전 28일(체크인/CBT/챌린지)")
 
         return {
             "assessment_window_days": assessment_window_days,
@@ -710,6 +716,7 @@ class AdminConsoleStore:
             "selection_end_date": selection_end_date.isoformat(),
             "selection_window_days": selection_window_days,
             "selection_rule_summary": " + ".join(selection_parts) if selection_parts else "기본 조건",
+            "input_window_locked_28d": True,
         }
 
     def _build_retraining_eligible_user_ids(
@@ -721,27 +728,56 @@ class AdminConsoleStore:
             return []
 
         config = self._resolve_retraining_rule_config(payload)
-        min_assessment_count = int(config["min_assessment_count"])
         selection_start_date = str(config["selection_start_date"])
         selection_end_date = str(config["selection_end_date"])
-        where_clauses = ["pa.status IN ('completed', 'late')", "pa.completed_at IS NOT NULL"]
-        params: list[object] = []
+
+        base_where = ["1 = 1"]
+        base_params: list[object] = []
         if payload.require_min_account_age_days_28:
             cutoff_iso = (datetime.now(UTC) - timedelta(days=28)).isoformat()
-            where_clauses.append("datetime(au.created_at) <= datetime(?)")
-            params.append(cutoff_iso)
-        where_clauses.append("date(pa.completed_at) BETWEEN ? AND ?")
-        params.extend([selection_start_date, selection_end_date])
+            base_where.append("datetime(au.created_at) <= datetime(?)")
+            base_params.append(cutoff_iso)
 
-        eligible_query = f"""
-            SELECT au.user_id
-            FROM account_user au
-            JOIN periodic_assessment pa ON pa.user_id = au.user_id
-            WHERE {' AND '.join(where_clauses)}
-            GROUP BY au.user_id
-            HAVING COUNT(*) >= ?
-        """
-        rows = conn.execute(eligible_query, tuple([*params, min_assessment_count])).fetchall()
+        eligibility_clauses = ["in_range_completed_count >= 1"]
+        if payload.require_second_assessment_completion:
+            if payload.keep_user_after_eligibility:
+                eligibility_clauses.append("total_completed_count >= 2")
+            else:
+                eligibility_clauses.append("in_range_completed_count >= 2")
+        else:
+            eligibility_clauses.append("total_completed_count >= 1")
+
+        rows = conn.execute(
+            f"""
+            WITH user_assessment_stats AS (
+              SELECT
+                au.user_id AS user_id,
+                SUM(
+                  CASE
+                    WHEN pa.status IN ('completed', 'late') AND pa.completed_at IS NOT NULL
+                    THEN 1 ELSE 0
+                  END
+                ) AS total_completed_count,
+                SUM(
+                  CASE
+                    WHEN pa.status IN ('completed', 'late')
+                      AND pa.completed_at IS NOT NULL
+                      AND date(pa.completed_at) BETWEEN ? AND ?
+                    THEN 1 ELSE 0
+                  END
+                ) AS in_range_completed_count
+              FROM account_user au
+              LEFT JOIN periodic_assessment pa ON pa.user_id = au.user_id
+              WHERE {' AND '.join(base_where)}
+              GROUP BY au.user_id
+            )
+            SELECT user_id
+            FROM user_assessment_stats
+            WHERE {' AND '.join(eligibility_clauses)}
+            ORDER BY user_id ASC
+            """,
+            (selection_start_date, selection_end_date, *base_params),
+        ).fetchall()
         return [str(row["user_id"]) for row in rows]
 
     def _load_retraining_assessment_rows(
@@ -767,8 +803,24 @@ class AdminConsoleStore:
         placeholders = ", ".join(["?"] * len(resolved_user_ids))
         has_checkin = self._table_exists(conn, "daily_checkin")
         has_checkin_features = self._table_exists(conn, "daily_checkin_features_daily")
+        has_checkin_version = has_checkin and self._table_exists(conn, "daily_checkin_version")
         has_challenge_logs = self._table_exists(conn, "challenge_day_log")
         has_cbt_summary = self._table_exists(conn, "cbt_session_summary")
+        has_challenge_helpfulness_0_10 = (
+            has_challenge_logs and self._table_has_column(conn, "challenge_day_log", "helpfulness_0_10")
+        )
+        has_challenge_helpfulness_1_5 = (
+            has_challenge_logs and self._table_has_column(conn, "challenge_day_log", "helpfulness_score_1_5")
+        )
+        has_challenge_effort_0_10 = (
+            has_challenge_logs and self._table_has_column(conn, "challenge_day_log", "effort_0_10")
+        )
+        has_cbt_helpfulness = (
+            has_cbt_summary and self._table_has_column(conn, "cbt_session_summary", "session_helpfulness_0_10")
+        )
+        has_cbt_homework = (
+            has_cbt_summary and self._table_has_column(conn, "cbt_session_summary", "homework_commitment_0_10")
+        )
 
         checkin_days_expr = (
             "(SELECT COUNT(*) FROM daily_checkin dc "
@@ -813,6 +865,49 @@ class AdminConsoleStore:
             if has_checkin_features
             else "NULL"
         )
+        avg_daylight_expr = (
+            "(SELECT AVG(CASE json_extract(dcv.payload_json, '$.daylight_bucket') "
+            "  WHEN 'm0' THEN 0 WHEN 'm1_9' THEN 1 WHEN 'm10_29' THEN 2 WHEN 'ge_30' THEN 3 END) "
+            " FROM daily_checkin dc "
+            " LEFT JOIN daily_checkin_version dcv ON dcv.checkin_version_id = dc.current_version_id "
+            " WHERE dc.user_id = pa.user_id "
+            "   AND dc.status = 'submitted' "
+            f"   AND dc.date BETWEEN date(pa.completed_at, '-{start_offset_days} day') AND date(pa.completed_at))"
+            if has_checkin_version
+            else "NULL"
+        )
+        avg_exercise_expr = (
+            "(SELECT AVG(CASE json_extract(dcv.payload_json, '$.exercise_bucket') "
+            "  WHEN 'm0' THEN 0 WHEN 'm1_9' THEN 1 WHEN 'm10_29' THEN 2 WHEN 'ge_30' THEN 3 END) "
+            " FROM daily_checkin dc "
+            " LEFT JOIN daily_checkin_version dcv ON dcv.checkin_version_id = dc.current_version_id "
+            " WHERE dc.user_id = pa.user_id "
+            "   AND dc.status = 'submitted' "
+            f"   AND dc.date BETWEEN date(pa.completed_at, '-{start_offset_days} day') AND date(pa.completed_at))"
+            if has_checkin_version
+            else "NULL"
+        )
+        avg_alcohol_expr = (
+            "(SELECT AVG(CASE json_extract(dcv.payload_json, '$.alcohol_bucket') "
+            "  WHEN 'none' THEN 0 WHEN 'one' THEN 1 WHEN 'two_three' THEN 2 WHEN 'ge_four' THEN 3 END) "
+            " FROM daily_checkin dc "
+            " LEFT JOIN daily_checkin_version dcv ON dcv.checkin_version_id = dc.current_version_id "
+            " WHERE dc.user_id = pa.user_id "
+            "   AND dc.status = 'submitted' "
+            f"   AND dc.date BETWEEN date(pa.completed_at, '-{start_offset_days} day') AND date(pa.completed_at))"
+            if has_checkin_version
+            else "NULL"
+        )
+        caffeine_days_expr = (
+            "(SELECT COUNT(*) FROM daily_checkin dc "
+            " LEFT JOIN daily_checkin_version dcv ON dcv.checkin_version_id = dc.current_version_id "
+            " WHERE dc.user_id = pa.user_id "
+            "   AND dc.status = 'submitted' "
+            f"   AND dc.date BETWEEN date(pa.completed_at, '-{start_offset_days} day') AND date(pa.completed_at) "
+            "   AND COALESCE(CAST(json_extract(dcv.payload_json, '$.caffeine_after_2pm_flag') AS INTEGER), 0) = 1)"
+            if has_checkin_version
+            else "0"
+        )
         challenge_done_expr = (
             "(SELECT COUNT(*) FROM challenge_day_log chl "
             " WHERE chl.user_id = pa.user_id "
@@ -821,12 +916,62 @@ class AdminConsoleStore:
             if has_challenge_logs
             else "0"
         )
+        if has_challenge_helpfulness_0_10 and has_challenge_helpfulness_1_5:
+            challenge_helpfulness_expr = (
+                "(SELECT AVG(COALESCE(chl.helpfulness_0_10, chl.helpfulness_score_1_5 * 2.0)) "
+                " FROM challenge_day_log chl "
+                " WHERE chl.user_id = pa.user_id "
+                "   AND chl.day_status = 'done' "
+                f"   AND chl.date BETWEEN date(pa.completed_at, '-{start_offset_days} day') AND date(pa.completed_at))"
+            )
+        elif has_challenge_helpfulness_0_10:
+            challenge_helpfulness_expr = (
+                "(SELECT AVG(chl.helpfulness_0_10) "
+                " FROM challenge_day_log chl "
+                " WHERE chl.user_id = pa.user_id "
+                "   AND chl.day_status = 'done' "
+                f"   AND chl.date BETWEEN date(pa.completed_at, '-{start_offset_days} day') AND date(pa.completed_at))"
+            )
+        elif has_challenge_helpfulness_1_5:
+            challenge_helpfulness_expr = (
+                "(SELECT AVG(chl.helpfulness_score_1_5 * 2.0) "
+                " FROM challenge_day_log chl "
+                " WHERE chl.user_id = pa.user_id "
+                "   AND chl.day_status = 'done' "
+                f"   AND chl.date BETWEEN date(pa.completed_at, '-{start_offset_days} day') AND date(pa.completed_at))"
+            )
+        else:
+            challenge_helpfulness_expr = "NULL"
+
+        challenge_effort_expr = (
+            "(SELECT AVG(chl.effort_0_10) "
+            " FROM challenge_day_log chl "
+            " WHERE chl.user_id = pa.user_id "
+            "   AND chl.day_status = 'done' "
+            f"   AND chl.date BETWEEN date(pa.completed_at, '-{start_offset_days} day') AND date(pa.completed_at))"
+            if has_challenge_effort_0_10
+            else "NULL"
+        )
         cbt_sessions_expr = (
             "(SELECT COUNT(*) FROM cbt_session_summary cs "
             " WHERE cs.user_id = pa.user_id "
             f"   AND cs.date BETWEEN date(pa.completed_at, '-{start_offset_days} day') AND date(pa.completed_at))"
             if has_cbt_summary
             else "0"
+        )
+        cbt_helpfulness_expr = (
+            "(SELECT AVG(cs.session_helpfulness_0_10) FROM cbt_session_summary cs "
+            " WHERE cs.user_id = pa.user_id "
+            f"   AND cs.date BETWEEN date(pa.completed_at, '-{start_offset_days} day') AND date(pa.completed_at))"
+            if has_cbt_helpfulness
+            else "NULL"
+        )
+        cbt_homework_expr = (
+            "(SELECT AVG(cs.homework_commitment_0_10) FROM cbt_session_summary cs "
+            " WHERE cs.user_id = pa.user_id "
+            f"   AND cs.date BETWEEN date(pa.completed_at, '-{start_offset_days} day') AND date(pa.completed_at))"
+            if has_cbt_homework
+            else "NULL"
         )
 
         rows = conn.execute(
@@ -854,8 +999,16 @@ class AdminConsoleStore:
                 {avg_energy_expr} AS avg_energy_1_5,
                 {avg_sleep_expr} AS avg_sleep_hours,
                 {avg_sleep_latency_expr} AS avg_sleep_latency_minutes,
+                {avg_daylight_expr} AS avg_daylight_bucket_num,
+                {avg_exercise_expr} AS avg_exercise_bucket_num,
+                {avg_alcohol_expr} AS avg_alcohol_bucket_num,
+                {caffeine_days_expr} AS caffeine_after_2pm_days_window,
                 {challenge_done_expr} AS challenge_done_days_window,
-                {cbt_sessions_expr} AS cbt_sessions_window
+                {challenge_helpfulness_expr} AS challenge_helpfulness_mean_window,
+                {challenge_effort_expr} AS challenge_effort_mean_window,
+                {cbt_sessions_expr} AS cbt_sessions_window,
+                {cbt_helpfulness_expr} AS cbt_helpfulness_mean_window,
+                {cbt_homework_expr} AS cbt_homework_commitment_mean_window
               FROM periodic_assessment pa
               JOIN assessment_score sc ON sc.assessment_id = pa.assessment_id
               WHERE pa.user_id IN ({placeholders})
@@ -895,8 +1048,20 @@ class AdminConsoleStore:
                     "avg_energy_1_5": self._coerce_float(row["avg_energy_1_5"]),
                     "avg_sleep_hours": self._coerce_float(row["avg_sleep_hours"]),
                     "avg_sleep_latency_minutes": self._coerce_float(row["avg_sleep_latency_minutes"]),
+                    "avg_daylight_bucket_num": self._coerce_float(row["avg_daylight_bucket_num"]),
+                    "avg_exercise_bucket_num": self._coerce_float(row["avg_exercise_bucket_num"]),
+                    "avg_alcohol_bucket_num": self._coerce_float(row["avg_alcohol_bucket_num"]),
+                    "caffeine_after_2pm_days_window": int(row["caffeine_after_2pm_days_window"] or 0),
                     "challenge_done_days_window": int(row["challenge_done_days_window"] or 0),
+                    "challenge_helpfulness_mean_window": self._coerce_float(
+                        row["challenge_helpfulness_mean_window"]
+                    ),
+                    "challenge_effort_mean_window": self._coerce_float(row["challenge_effort_mean_window"]),
                     "cbt_sessions_window": int(row["cbt_sessions_window"] or 0),
+                    "cbt_helpfulness_mean_window": self._coerce_float(row["cbt_helpfulness_mean_window"]),
+                    "cbt_homework_commitment_mean_window": self._coerce_float(
+                        row["cbt_homework_commitment_mean_window"]
+                    ),
                 }
             )
         return normalized_rows
@@ -931,6 +1096,8 @@ class AdminConsoleStore:
                 "selection_end_date": selection_end_date,
                 "selection_window_days": selection_window_days,
                 "selection_rule_summary": selection_rule_summary,
+                "target_definition": "assessment_score(phq9_total, gad7_total, isi_total)",
+                "input_sources": ["checkin_28d", "cbt_28d", "challenge_28d"],
                 "notes": "현재 기준을 충족하는 사용자 데이터가 없어 재학습 대상이 비어 있습니다.",
             }
 
@@ -946,6 +1113,8 @@ class AdminConsoleStore:
                 "selection_end_date": selection_end_date,
                 "selection_window_days": selection_window_days,
                 "selection_rule_summary": selection_rule_summary,
+                "target_definition": "assessment_score(phq9_total, gad7_total, isi_total)",
+                "input_sources": ["checkin_28d", "cbt_28d", "challenge_28d"],
                 "notes": "대상 사용자는 있으나 학습에 사용할 진단 행이 아직 부족합니다.",
             }
 
@@ -966,6 +1135,8 @@ class AdminConsoleStore:
             "first_assessment_date": min(completed_dates) if completed_dates else None,
             "latest_assessment_date": max(completed_dates) if completed_dates else None,
             "target_labels": ["phq9_total", "gad7_total", "isi_total"],
+            "target_definition": "assessment_score(phq9_total, gad7_total, isi_total)",
+            "input_sources": ["checkin_28d", "cbt_28d", "challenge_28d"],
             "selection_rule_summary": selection_rule_summary,
         }
 
@@ -2478,13 +2649,16 @@ class AdminConsoleStore:
                 "include_synthetic_data": payload.include_synthetic_data,
                 "require_min_account_age_days_28": payload.require_min_account_age_days_28,
                 "require_second_assessment_completion": payload.require_second_assessment_completion,
-                "use_pre_assessment_window_28d": payload.use_pre_assessment_window_28d,
+                "use_pre_assessment_window_28d_requested": payload.use_pre_assessment_window_28d,
+                "use_pre_assessment_window_28d_applied": True,
                 "keep_user_after_eligibility": payload.keep_user_after_eligibility,
                 "selected_feature_keys": payload.selected_feature_keys,
                 "data_range_start_date": selection_start_date,
                 "data_range_end_date": selection_end_date,
                 "dataset_snapshot_id_auto_generated": payload.dataset_snapshot_id is None,
                 "dataset_snapshot_id": dataset_snapshot_id,
+                "target_definition": "assessment_score(phq9_total, gad7_total, isi_total)",
+                "input_sources": ["checkin_28d", "cbt_28d", "challenge_28d"],
             }
             eligibility_summary = self._build_retraining_data_summary(conn, payload)
             score_comparison = self._score_comparison_payload(baseline_metrics, baseline_metrics)

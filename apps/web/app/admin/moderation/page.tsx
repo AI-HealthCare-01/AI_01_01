@@ -64,6 +64,61 @@ function queueTypeLabel(queueType: string): string {
   return queueType;
 }
 
+function targetTypeLabel(targetType: string): string {
+  if (targetType === "post") {
+    return "게시글";
+  }
+  if (targetType === "comment") {
+    return "댓글";
+  }
+  return targetType;
+}
+
+function moderationReasonLabel(item: {
+  queue_type: string;
+  reason_code: string | null;
+  source_type: string;
+}): string {
+  if (item.reason_code === "hate") {
+    return "혐오/욕설 신고";
+  }
+  if (item.reason_code === "abuse") {
+    return "폭언/괴롭힘 신고";
+  }
+  if (item.reason_code === "sexual_harassment") {
+    return "성희롱 신고";
+  }
+  if (item.reason_code === "self_harm_signal") {
+    return "자해 위험 신고";
+  }
+  if (item.reason_code === "violence_signal") {
+    return "폭력 위험 신고";
+  }
+  if (item.reason_code === "threat") {
+    return "위협 신고";
+  }
+  if (item.source_type === "model_text_scan" || item.source_type === "rule_model_text_scan") {
+    return item.queue_type === "safety" ? "위기 신호 자동 감지" : "유해 표현 자동 감지";
+  }
+  if (item.source_type === "rule_text_scan") {
+    return item.queue_type === "safety" ? "안전 키워드 감지" : "금칙어 감지";
+  }
+  if (item.source_type === "report") {
+    return "사용자 신고";
+  }
+  return "자동 감지";
+}
+
+function moderationTargetLabel(item: { target_type: string; target_public_id: string | null }): string {
+  if (item.target_type === "post") {
+    return item.target_public_id ? `피드 ${item.target_public_id}` : "게시글";
+  }
+  if (item.target_type === "comment") {
+    return item.target_public_id ? `댓글 · 피드 ${item.target_public_id}` : "댓글";
+  }
+  return item.target_type;
+}
+
 export default function AdminModerationPage() {
   const { firebaseUser } = useAuthContext();
 
@@ -238,9 +293,15 @@ export default function AdminModerationPage() {
                       }}
                     >
                       <div>
-                        <p className="ms-admin-list__title">{item.target_type}</p>
+                        <p className="ms-admin-list__title">{targetTypeLabel(item.target_type)}</p>
+                        <p className="ms-card__desc" style={{ fontWeight: 700 }}>
+                          {item.target_title ?? "(제목 없음)"}
+                        </p>
                         <p className="ms-card__desc">
-                          {item.target_id} · {item.reason_code ?? "no_reason"}
+                          {item.target_preview ?? "본문 미리보기가 없습니다."}
+                        </p>
+                        <p className="ms-card__desc">
+                          {moderationTargetLabel(item)} · {moderationReasonLabel(item)}
                         </p>
                         <p className="ms-card__desc">{item.created_at.slice(0, 16).replace("T", " ")}</p>
                       </div>

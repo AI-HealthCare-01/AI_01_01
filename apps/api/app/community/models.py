@@ -140,6 +140,9 @@ class ModerationQueueItem(BaseModel):
     queue_type: ModerationQueueType
     target_type: str
     target_id: str
+    target_public_id: str | None = None
+    target_title: str | None = None
+    target_preview: str | None = None
     source_type: str
     reason_code: str | None = None
     detail_text: str | None = None

@@ -1244,11 +1244,23 @@ class CommunityStore:
         )
 
     def _build_moderation_queue_item(self, row: sqlite3.Row) -> ModerationQueueItem:
+        target_public_id = (
+            str(row["target_public_id"])
+            if "target_public_id" in row.keys() and row["target_public_id"]
+            else None
+        )
+        target_title = str(row["target_title"]) if "target_title" in row.keys() and row["target_title"] else None
+        target_preview = (
+            str(row["target_preview"]) if "target_preview" in row.keys() and row["target_preview"] else None
+        )
         return ModerationQueueItem(
             queue_item_id=str(row["queue_item_id"]),
             queue_type=ModerationQueueType(str(row["queue_type"])),
             target_type=str(row["target_type"]),
             target_id=str(row["target_id"]),
+            target_public_id=target_public_id,
+            target_title=target_title,
+            target_preview=target_preview,
             source_type=str(row["source_type"]),
             reason_code=(str(row["reason_code"]) if row["reason_code"] else None),
             detail_text=(str(row["detail_text"]) if row["detail_text"] else None),
@@ -1500,20 +1512,40 @@ class CommunityStore:
                 rows = conn.execute(
                     """
                     SELECT
-                      queue_item_id,
-                      queue_type,
-                      target_type,
-                      target_id,
-                      source_type,
-                      reason_code,
-                      detail_text,
-                      confidence,
-                      status,
-                      created_at
+                      bmq.queue_item_id,
+                      bmq.queue_type,
+                      bmq.target_type,
+                      bmq.target_id,
+                      CASE
+                        WHEN bmq.target_type = 'post' THEN bp.feed_public_id
+                        WHEN bmq.target_type = 'comment' THEN bp.feed_public_id
+                        ELSE NULL
+                      END AS target_public_id,
+                      CASE
+                        WHEN bmq.target_type = 'post' THEN bp.display_title
+                        WHEN bmq.target_type = 'comment' THEN '댓글'
+                        ELSE NULL
+                      END AS target_title,
+                      CASE
+                        WHEN bmq.target_type = 'post' THEN bp.body_preview
+                        WHEN bmq.target_type = 'comment' THEN substr(bc.body_text, 1, 120)
+                        ELSE NULL
+                      END AS target_preview,
+                      bmq.source_type,
+                      bmq.reason_code,
+                      bmq.detail_text,
+                      bmq.confidence,
+                      bmq.status,
+                      bmq.created_at
                     FROM board_moderation_queue
-                    WHERE queue_type = ?
-                      AND status = 'queued'
-                    ORDER BY datetime(created_at) DESC
+                    AS bmq
+                    LEFT JOIN board_post bp
+                      ON bmq.target_type = 'post' AND bp.post_id = bmq.target_id
+                    LEFT JOIN board_comment bc
+                      ON bmq.target_type = 'comment' AND bc.comment_id = bmq.target_id
+                    WHERE bmq.queue_type = ?
+                      AND bmq.status = 'queued'
+                    ORDER BY datetime(bmq.created_at) DESC
                     LIMIT ?
                     """,
                     (queue_type.value, resolved_limit),

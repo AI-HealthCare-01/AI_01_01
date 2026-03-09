@@ -76,6 +76,9 @@ export interface ModerationQueueItem {
   queue_type: ModerationQueueType;
   target_type: string;
   target_id: string;
+  target_public_id: string | null;
+  target_title: string | null;
+  target_preview: string | null;
   source_type: string;
   reason_code: string | null;
   detail_text: string | null;

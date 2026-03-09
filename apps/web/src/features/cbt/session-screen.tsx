@@ -57,6 +57,8 @@ const CBT_STAGE_INDEX: Record<string, number> = {
 
 const TODO_NONE_LABEL = "정하지 않음";
 const CBT_HISTORY_WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
+const CBT_TURN_PAYLOAD_LIMIT = 120;
+const CBT_SAVE_PAYLOAD_LIMIT = 180;
 
 const RISK_LEVEL_META: Record<
   0 | 1 | 2 | 3,
@@ -173,6 +175,13 @@ function createLocalMessageId(prefix: "usr" | "asst"): string {
     return `${prefix}_${crypto.randomUUID()}`;
   }
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+}
+
+function trimConversationMessages(messages: CbtConversationMessage[], limit: number): CbtConversationMessage[] {
+  if (messages.length <= limit) {
+    return messages;
+  }
+  return messages.slice(-limit);
 }
 
 function normalizeScore(value: number | null | undefined, minimum: number, maximum: number): number | null {
@@ -660,6 +669,7 @@ export default function CbtSessionScreen() {
       message_id: createLocalMessageId("usr"),
     };
     const nextMessages = [...messages, userMessage];
+    const turnMessages = trimConversationMessages(nextMessages, CBT_TURN_PAYLOAD_LIMIT);
     setMessages(nextMessages);
     setMessageInput("");
     setErrorMessage(null);
@@ -670,7 +680,7 @@ export default function CbtSessionScreen() {
       setAssistantTyping(true);
       setAssistantDraftText("");
       const turn = await createCbtConversationTurn(firebaseUser, {
-        messages: nextMessages,
+        messages: turnMessages,
         state: draftState,
         current_stage: currentStage,
         user_input: content || undefined,
@@ -760,9 +770,10 @@ export default function CbtSessionScreen() {
       setNoticeMessage(null);
 
       const selectedAction = resolveSelectedActionPayload();
+      const saveMessages = trimConversationMessages(messages, CBT_SAVE_PAYLOAD_LIMIT);
       const response = await createCbtSession(firebaseUser, {
         date: isoNow().slice(0, 10),
-        conversation: messages,
+        conversation: saveMessages,
         state: draftState,
         duration_sec: Math.min(3600, Math.max(420, messages.length * 110)),
         emotion_intensity_pre_0_100: emotionPre ?? undefined,

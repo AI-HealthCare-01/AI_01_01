@@ -18,6 +18,7 @@ import {
   SectionContainer,
 } from "../src/components/ui";
 import { useAuthContext } from "../src/features/auth";
+import { isOnboardingComplete, shouldGoOnboarding } from "../src/features/auth/status";
 import {
   CoreApiError,
   getActivityLog,
@@ -206,7 +207,8 @@ function mapLoginError(code: string): string {
 function getAccessGuide(
   phase: "loading" | "signed_out" | "signed_in",
   emailVerified: boolean,
-  accountStatus: string | undefined,
+  onboardingComplete: boolean,
+  needsOnboarding: boolean,
 ): { title: string; description: string; route: string; cta: string } {
   if (phase !== "signed_in") {
     return {
@@ -226,7 +228,7 @@ function getAccessGuide(
     };
   }
 
-  if (accountStatus !== "active") {
+  if (needsOnboarding || !onboardingComplete) {
     return {
       title: "온보딩을 완료해 주세요",
       description: "출생년도, 동의, 초기 진단척도 입력이 끝나면 홈 데이터가 표시됩니다.",
@@ -491,8 +493,10 @@ export default function HomePage() {
 
   const accountStatus = session?.account.account_status;
   const emailVerified = Boolean(firebaseUser?.emailVerified);
-  const isActive = phase === "signed_in" && emailVerified && accountStatus === "active";
-  const accessGuide = getAccessGuide(phase, emailVerified, accountStatus);
+  const onboardingComplete = isOnboardingComplete(session);
+  const onboardingNeeded = shouldGoOnboarding(session);
+  const isActive = phase === "signed_in" && emailVerified && onboardingComplete && !onboardingNeeded;
+  const accessGuide = getAccessGuide(phase, emailVerified, onboardingComplete, onboardingNeeded);
 
   const kstNow = getKstDateInfo();
   const dayGreetingMessage = getDayGreetingMessage(kstNow.hour);
@@ -560,9 +564,31 @@ export default function HomePage() {
   const cbtReflectionDone = pendingCbtReflectionCount === 0;
   const cbtFullyDone = cbtDialogueDone && cbtReflectionDone;
   const nextAssessmentDate = useMemo(() => resolveNextAssessmentDate(assessmentHistory), [assessmentHistory]);
-  const assessmentDue = !nextAssessmentDate || kstNow.date >= nextAssessmentDate;
+  const completedAssessmentToday = useMemo(() => {
+    if (todaySummary?.has_assessment) {
+      return true;
+    }
+    return assessmentHistory.some((item) => {
+      if (item.status !== "completed") {
+        return false;
+      }
+      const completedDate = normalizeIsoDate(item.completed_at) ?? normalizeIsoDate(item.started_at);
+      return completedDate === kstNow.date;
+    });
+  }, [assessmentHistory, kstNow.date, todaySummary?.has_assessment]);
+  const fallbackNextAssessmentDate = useMemo(
+    () => (completedAssessmentToday ? addDaysToIsoDate(kstNow.date, 28) : null),
+    [completedAssessmentToday, kstNow.date],
+  );
+  const effectiveNextAssessmentDate = nextAssessmentDate ?? fallbackNextAssessmentDate;
+  const assessmentScheduled = Boolean(
+    effectiveNextAssessmentDate &&
+      (completedAssessmentToday || kstNow.date < effectiveNextAssessmentDate),
+  );
   const assessmentPendingLabel =
-    assessmentDue || !nextAssessmentDate ? "검사하기" : `예정: ${formatDayMonth(nextAssessmentDate)}`;
+    assessmentScheduled && effectiveNextAssessmentDate
+      ? `예정: ${formatDayMonth(effectiveNextAssessmentDate)}`
+      : "검사하기";
 
   const todayActions = [
     {
@@ -598,7 +624,7 @@ export default function HomePage() {
       label: "심리상태 검사",
       pendingActionLabel: assessmentPendingLabel,
       done: false,
-      disabled: !assessmentDue,
+      disabled: assessmentScheduled,
       href: "/assessments",
     },
   ] as const;
@@ -613,15 +639,15 @@ export default function HomePage() {
       return;
     }
 
-    if (accountStatus === "active_onboarding_required") {
+    if (onboardingNeeded) {
       router.replace("/onboarding");
       return;
     }
 
-    if (accountStatus && accountStatus !== "active") {
+    if (accountStatus && ["restricted", "suspended", "deleted"].includes(accountStatus)) {
       router.replace("/auth/login");
     }
-  }, [accountStatus, emailVerified, firebaseUser, phase, router]);
+  }, [accountStatus, emailVerified, firebaseUser, onboardingNeeded, phase, router]);
 
   const onLandingLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -643,7 +669,7 @@ export default function HomePage() {
         return;
       }
 
-      if (nextSession.account.account_status === "active") {
+      if (isOnboardingComplete(nextSession)) {
         router.replace("/");
         return;
       }

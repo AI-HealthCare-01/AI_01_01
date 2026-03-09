@@ -49,9 +49,8 @@ ACTION_CONFIRM_CORE_YES = "confirm_core_yes"
 ACTION_CONFIRM_CORE_NO = "confirm_core_no"
 ACTION_CONFIRM_CORE_NOT_SURE = "confirm_core_not_sure"
 THOUGHT_PROBE_QUESTIONS: tuple[str, ...] = (
-    "그 생각이 사실이라면, 제일 걱정되는 건 뭐예요?",
-    "그 생각의 핵심 메시지를 한마디로 바꾸면 뭐가 될까요?",
-    "그게 사실이라면, 나에 대해 어떤 말처럼 느껴져요?",
+    "그때 마음속에서 가장 크게 남는 한 문장을 적어볼까요?",
+    "좋아요. 그 문장을 더 짧게 줄이면 어떤 말이 남나요?",
 )
 
 
@@ -479,6 +478,28 @@ class CbtThoughtRecordEngine:
         return prepared
 
     @staticmethod
+    def _contains_question_like(text: str) -> bool:
+        normalized = text.strip()
+        if not normalized:
+            return False
+        if "?" in normalized:
+            return True
+        question_endings = ("나요", "나요?", "까요", "까요?", "할까요", "해볼까요", "줄래요", "줄래요?")
+        return normalized.endswith(question_endings)
+
+    @classmethod
+    def _sanitize_feedback_clause(cls, text: str) -> str:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if not lines:
+            return ""
+        kept: list[str] = []
+        for line in lines:
+            if cls._contains_question_like(line):
+                continue
+            kept.append(line)
+        return "\n".join(kept[:2]).strip()
+
+    @staticmethod
     def _emotion_degree_label(label: str) -> str:
         mapping = {
             "불안": "불안함",
@@ -692,14 +713,16 @@ class CbtThoughtRecordEngine:
             first_message = f"{empathy}\n{restatement}"
         else:
             first_message = empathy
-        second_message = str(composer.get("next_question") or "").strip() or next_question
-        if stage == "evidence":
-            second_message = next_question
-        base_messages = self._prepare_assistant_messages(state, [first_message, second_message])
-        if len(base_messages) == 1:
-            fallback_question = self._normalize_coach_message(next_question)
-            if self._message_signature(base_messages[0]) != self._message_signature(fallback_question):
-                base_messages.append(fallback_question)
+        if self._contains_question_like(empathy):
+            empathy = self._fallback_empathy(stage, text)
+        restatement = self._sanitize_feedback_clause(restatement)
+        first_candidates = self._prepare_assistant_messages(state, [first_message])
+        fallback_question = self._normalize_coach_message(next_question)
+        base_messages = list(first_candidates)
+        if not base_messages:
+            base_messages = [self._normalize_coach_message(self._fallback_empathy(stage, text))]
+        if self._message_signature(base_messages[-1]) != self._message_signature(fallback_question):
+            base_messages.append(fallback_question)
         for content in base_messages:
             self._append_turn_log(
                 state,
@@ -1171,6 +1194,9 @@ class CbtThoughtRecordEngine:
         if stage == "thought" and subphase == "auto_thought":
             return "그때 머릿속에 순간적으로 스친 생각을 한 문장으로 적어볼까요?"
         if stage == "thought" and subphase == "core_probe":
+            probe = str(state.get("pattern_probe_question") or "").strip()
+            if probe:
+                return probe
             probe_count = int(state["meta"].get("thought_probe_count", 0) or 0)
             return THOUGHT_PROBE_QUESTIONS[min(probe_count, len(THOUGHT_PROBE_QUESTIONS) - 1)]
         if stage == "thought" and subphase == "core_confirm":
@@ -1197,13 +1223,10 @@ class CbtThoughtRecordEngine:
         core = str(state.get("core_message_text") or "").strip()
         if not core:
             return "지금 마음을 건드리는 핵심 생각을 한 문장으로 정리해볼까요?"
-        probe = str(state.get("pattern_probe_question") or "").strip()
         lines = [
             "지금 마음속에서 제일 크게 걸리는 결론을 한 문장으로 정리해보면,",
             f"‘{core}’에 가까워 보여요.",
         ]
-        if probe:
-            lines.append(probe)
         lines.append("이렇게 정리해도 맞을까요?")
         return "\n".join(lines)
 
@@ -1708,12 +1731,15 @@ class CbtThoughtRecordEngine:
             state["meta"]["thought_probe_count"] = 0
             state["core_message_text"] = ""
             self._analyze_core_pattern(state, state["auto_thought_text"])
-            if not str(state.get("core_message_text") or "").strip():
+            if (
+                not str(state.get("core_message_text") or "").strip()
+                or not self._looks_core_message(state["auto_thought_text"])
+            ):
                 state["meta"]["thought_substep"] = "core_probe"
                 return (
                     "thought",
                     "core_probe",
-                    THOUGHT_PROBE_QUESTIONS[0],
+                    self._current_stage_prompt(stage="thought", subphase="core_probe", state=state),
                     self._quick_set("thought", "core_probe"),
                     [],
                 )
@@ -1808,7 +1834,7 @@ class CbtThoughtRecordEngine:
                 return (
                     "thought",
                     "core_probe",
-                    THOUGHT_PROBE_QUESTIONS[min(probe_count + 1, len(THOUGHT_PROBE_QUESTIONS) - 1)],
+                    self._current_stage_prompt(stage="thought", subphase="core_probe", state=state),
                     self._quick_set("thought", "core_probe"),
                     [],
                 )
@@ -1841,7 +1867,7 @@ class CbtThoughtRecordEngine:
             return (
                 "thought",
                 "core_probe",
-                THOUGHT_PROBE_QUESTIONS[min(probe_count + 1, len(THOUGHT_PROBE_QUESTIONS) - 1)],
+                self._current_stage_prompt(stage="thought", subphase="core_probe", state=state),
                 self._quick_set("thought", "core_probe"),
                 [],
             )

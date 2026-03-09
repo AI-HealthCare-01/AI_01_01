@@ -16,6 +16,7 @@ import {
   SectionContainer
 } from "../../../src/components/ui";
 import { AuthRouteGuard, useAuthContext } from "../../../src/features/auth";
+import { isOnboardingComplete } from "../../../src/features/auth/status";
 
 function mapLoginError(code: string): string {
   if (code.includes("auth/user-not-found")) {
@@ -121,7 +122,7 @@ export default function LoginPage() {
         return;
       }
 
-      if (nextSession.account.account_status === "active") {
+      if (isOnboardingComplete(nextSession)) {
         router.replace("/");
         return;
       }

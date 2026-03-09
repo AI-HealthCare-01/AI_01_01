@@ -210,7 +210,12 @@ def test_core_confirm_step_is_shown_before_evidence_and_prompt_contains_core() -
     to_emotion = engine.process_turn(raw_state=bootstrap.state, user_input="발표 직전에 숨이 막히는 느낌이 들어요.")
     to_intensity = engine.process_turn(raw_state=to_emotion.state, user_input="불안: ")
     to_thought = engine.process_turn(raw_state=to_intensity.state, user_input="70")
-    to_confirm = engine.process_turn(raw_state=to_thought.state, user_input="결국 실수해서 신뢰를 잃을 것 같아요.")
+    to_probe = engine.process_turn(raw_state=to_thought.state, user_input="결국 실수해서 신뢰를 잃을 것 같아요.")
+
+    assert to_probe.phase_key == "thought"
+    assert to_probe.subphase_key == "core_probe"
+
+    to_confirm = engine.process_turn(raw_state=to_probe.state, user_input="신뢰를 잃고 무능한 사람으로 보일까 봐요.")
 
     assert to_confirm.phase_key == "thought"
     assert to_confirm.subphase_key == "core_confirm"

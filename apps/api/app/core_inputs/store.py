@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import uuid
 from datetime import UTC, date, datetime, timedelta
@@ -179,6 +180,7 @@ class CoreInputStore:
     def __init__(self, database_path: Path):
         self.database_path = database_path
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        self._modeling_store = None
         self._initialize_schema()
 
     def _connect(self) -> sqlite3.Connection:
@@ -189,6 +191,38 @@ class CoreInputStore:
     @staticmethod
     def _now_iso() -> str:
         return datetime.now(UTC).isoformat()
+
+    def _get_modeling_store(self):
+        if self._modeling_store is not None:
+            return self._modeling_store
+
+        from app.modeling.store import ModelingStore
+
+        default_bundle_dir = Path(__file__).resolve().parents[4] / "model"
+        model_bundle_dir = Path(
+            os.getenv("MODEL_BUNDLE_DIR", str(default_bundle_dir))
+        ).resolve()
+        self._modeling_store = ModelingStore(
+            database_path=self.database_path,
+            model_bundle_dir=model_bundle_dir,
+        )
+        return self._modeling_store
+
+    def _refresh_nowcast_prediction(
+        self,
+        user_id: str,
+        reference_date: date,
+        *,
+        force: bool,
+    ) -> None:
+        try:
+            self._get_modeling_store().ensure_nowcast_prediction_from_sources(
+                user_id=user_id,
+                reference_date=reference_date,
+                force=force,
+            )
+        except ValueError:
+            return
 
     def _initialize_schema(self) -> None:
         with self._connect() as conn:
@@ -739,6 +773,11 @@ class CoreInputStore:
             self._recalculate_user_day_activity_log(conn, user_id, checkin_date)
             conn.commit()
 
+        self._refresh_nowcast_prediction(
+            user_id=user_id,
+            reference_date=checkin_date,
+            force=True,
+        )
         return self.get_checkin_today(user_id, checkin_date)
 
     def _upsert_checkin_features(
@@ -1081,6 +1120,7 @@ class CoreInputStore:
         return None
 
     def complete_assessment(self, user_id: str, assessment_id: str) -> AssessmentSessionResponse:
+        completed_date = date.today()
         with self._connect() as conn:
             session = conn.execute(
                 """
@@ -1126,6 +1166,7 @@ class CoreInputStore:
             item9_nonzero = int(phq9_item9_nonzero["response_score"]) > 0 if phq9_item9_nonzero else False
 
             now_iso = self._now_iso()
+            completed_date = datetime.fromisoformat(now_iso).date()
             conn.execute(
                 """
                 INSERT INTO assessment_score (
@@ -1173,6 +1214,11 @@ class CoreInputStore:
             self._recalculate_user_day_activity_log(conn, user_id, datetime.fromisoformat(now_iso).date())
             conn.commit()
 
+        self._refresh_nowcast_prediction(
+            user_id=user_id,
+            reference_date=completed_date,
+            force=True,
+        )
         return self.get_assessment_session(user_id, assessment_id)
 
     def get_assessment_session(self, user_id: str, assessment_id: str) -> AssessmentSessionResponse:
@@ -1225,19 +1271,121 @@ class CoreInputStore:
             )
 
     def list_assessment_history(self, user_id: str, limit: int) -> list[AssessmentSessionResponse]:
+        sessions: list[AssessmentSessionResponse] = []
+
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT pa.assessment_id
+                SELECT
+                  pa.assessment_id,
+                  pa.user_id,
+                  pa.scheduled_for,
+                  pa.started_at,
+                  pa.completed_at,
+                  pa.status,
+                  pa.recommended_cycle_days,
+                  pa.source,
+                  sc.phq9_total,
+                  sc.gad7_total,
+                  sc.isi_total,
+                  sc.phq9_band,
+                  sc.gad7_band,
+                  sc.isi_band,
+                  sc.phq9_item9_nonzero
                 FROM periodic_assessment pa
+                LEFT JOIN assessment_score sc ON sc.assessment_id = pa.assessment_id
                 WHERE pa.user_id = ?
                 ORDER BY pa.started_at DESC
                 LIMIT ?
                 """,
-                (user_id, limit),
+                (user_id, max(limit * 3, 30)),
             ).fetchall()
 
-        return [self.get_assessment_session(user_id, str(row["assessment_id"])) for row in rows]
+            periodic_ids: set[str] = set()
+            for row in rows:
+                assessment_id = str(row["assessment_id"])
+                periodic_ids.add(assessment_id)
+                sessions.append(
+                    AssessmentSessionResponse(
+                        assessment_id=assessment_id,
+                        user_id=str(row["user_id"]),
+                        scheduled_for=date.fromisoformat(str(row["scheduled_for"])) if row["scheduled_for"] else None,
+                        started_at=datetime.fromisoformat(str(row["started_at"])),
+                        completed_at=datetime.fromisoformat(str(row["completed_at"])) if row["completed_at"] else None,
+                        status=AssessmentStatus(str(row["status"])),
+                        recommended_cycle_days=int(row["recommended_cycle_days"]),
+                        source=str(row["source"]),
+                        scores={
+                            "phq9_total": row["phq9_total"],
+                            "gad7_total": row["gad7_total"],
+                            "isi_total": row["isi_total"],
+                            "phq9_band": row["phq9_band"],
+                            "gad7_band": row["gad7_band"],
+                            "isi_band": row["isi_band"],
+                            "phq9_item9_nonzero": bool(row["phq9_item9_nonzero"] or 0),
+                        },
+                    )
+                )
+
+            baseline_row: sqlite3.Row | None = None
+            if self._table_exists(conn, "baseline_assessment"):
+                select_assessment_id = (
+                    "assessment_id,"
+                    if self._table_has_column(conn, "baseline_assessment", "assessment_id")
+                    else "NULL AS assessment_id,"
+                )
+                baseline_row = conn.execute(
+                    f"""
+                    SELECT
+                      {select_assessment_id}
+                      depression_score,
+                      anxiety_score,
+                      insomnia_score,
+                      completed_at
+                    FROM baseline_assessment
+                    WHERE user_id = ?
+                    """,
+                    (user_id,),
+                ).fetchone()
+
+            if baseline_row and baseline_row["completed_at"]:
+                baseline_assessment_id = str(baseline_row["assessment_id"]) if baseline_row["assessment_id"] else None
+                include_baseline = baseline_assessment_id is None or baseline_assessment_id not in periodic_ids
+                if include_baseline:
+                    completed_at = datetime.fromisoformat(str(baseline_row["completed_at"]))
+                    sessions.append(
+                        AssessmentSessionResponse(
+                            assessment_id=baseline_assessment_id or f"asm_onboarding_baseline_{user_id}",
+                            user_id=user_id,
+                            scheduled_for=None,
+                            started_at=completed_at,
+                            completed_at=completed_at,
+                            status=AssessmentStatus.completed,
+                            recommended_cycle_days=28,
+                            source="onboarding",
+                            scores={
+                                "phq9_total": int(baseline_row["depression_score"]) if baseline_row["depression_score"] is not None else None,
+                                "gad7_total": int(baseline_row["anxiety_score"]) if baseline_row["anxiety_score"] is not None else None,
+                                "isi_total": int(baseline_row["insomnia_score"]) if baseline_row["insomnia_score"] is not None else None,
+                                "phq9_band": self._band_from_total(
+                                    "phq9",
+                                    int(baseline_row["depression_score"]) if baseline_row["depression_score"] is not None else None,
+                                ),
+                                "gad7_band": self._band_from_total(
+                                    "gad7",
+                                    int(baseline_row["anxiety_score"]) if baseline_row["anxiety_score"] is not None else None,
+                                ),
+                                "isi_band": self._band_from_total(
+                                    "isi",
+                                    int(baseline_row["insomnia_score"]) if baseline_row["insomnia_score"] is not None else None,
+                                ),
+                                "phq9_item9_nonzero": False,
+                            },
+                        )
+                    )
+
+        sessions.sort(key=lambda item: item.started_at, reverse=True)
+        return sessions[:limit]
 
     def list_challenge_catalog(self) -> list[ChallengeCatalogItem]:
         with self._connect() as conn:
@@ -1458,7 +1606,8 @@ class CoreInputStore:
                 SELECT dep_score, anx_score, ins_score, created_at
                 FROM model_nowcast_prediction
                 WHERE user_id = ?
-                ORDER BY datetime(created_at) DESC
+                ORDER BY date(COALESCE(reference_date, substr(created_at, 1, 10))) DESC,
+                         datetime(created_at) DESC
                 LIMIT 1
                 """,
                 (user_id,),
@@ -1514,6 +1663,11 @@ class CoreInputStore:
         }
 
     def get_today_recommendations(self, user_id: str) -> dict[str, object]:
+        self._refresh_nowcast_prediction(
+            user_id=user_id,
+            reference_date=date.today(),
+            force=False,
+        )
         with self._connect() as conn:
             risk_level = self._risk_level_for_challenge(conn, user_id)
             if risk_level >= 3:

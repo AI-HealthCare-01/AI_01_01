@@ -1,9 +1,0 @@
-﻿challenge_id,name_ko,domain,challenge_type,default_target_days,difficulty_level,target_dep,target_anx,target_ins
-CH_SLEEP_001,수면 리듬 회복 루틴,sleep,sustained,7,2,0,0,1
-CH_ACT_001,아침 앵커 루틴,activation,sustained,5,1,1,0,1
-CH_ACT_002,햇빛 10분,activation,sustained,3,1,1,0,1
-CH_ACT_003,산책 10분,activation,sustained,3,1,1,1,0
-CH_REG_001,호흡 3분,regulation,one_time,1,1,0,1,0
-CH_REG_002,감각 grounding 1분,regulation,one_time,1,1,0,1,0
-CH_SOC_001,지지자에게 안부 보내기,social,one_time,1,2,1,0,0
-CH_WELL_001,감사 3가지 기록,wellbeing,one_time,1,1,1,0,0

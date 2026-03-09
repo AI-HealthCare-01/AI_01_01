@@ -84,7 +84,7 @@ class CbtSessionStage(str, Enum):
 
 
 class CbtConversationTurnRequest(BaseModel):
-    messages: list[CbtConversationMessage] = Field(default_factory=list, min_length=1, max_length=24)
+    messages: list[CbtConversationMessage] = Field(default_factory=list, min_length=1, max_length=120)
     state: dict[str, Any] = Field(default_factory=dict)
     current_stage: CbtSessionStage | None = None
     user_input: str | None = Field(default=None, min_length=1, max_length=2000)
@@ -123,7 +123,7 @@ class CbtConversationTurnResponse(BaseModel):
 class CbtSessionCreateRequest(BaseModel):
     date: DateType | None = None
     state: dict[str, Any] = Field(default_factory=dict)
-    conversation: list[CbtConversationMessage] = Field(default_factory=list, max_length=24)
+    conversation: list[CbtConversationMessage] = Field(default_factory=list, max_length=180)
     duration_sec: int | None = Field(default=None, ge=0)
     emotion_intensity_pre_0_100: int | None = Field(default=None, ge=0, le=100)
     emotion_intensity_post_0_100: int | None = Field(default=None, ge=0, le=100)

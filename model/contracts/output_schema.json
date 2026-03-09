@@ -1,0 +1,54 @@
+{
+  "schema_version": "2026-03-09",
+  "scores": [
+    {
+      "name": "dep_target_state_today",
+      "dtype": "number",
+      "range": [
+        0,
+        100
+      ],
+      "description": "depression nowcast score"
+    },
+    {
+      "name": "anx_target_state_today",
+      "dtype": "number",
+      "range": [
+        0,
+        100
+      ],
+      "description": "anxiety nowcast score"
+    },
+    {
+      "name": "ins_target_state_today",
+      "dtype": "number",
+      "range": [
+        0,
+        100
+      ],
+      "description": "insomnia nowcast score"
+    }
+  ],
+  "meta": [
+    {
+      "name": "used_backend",
+      "dtype": "string",
+      "enum": [
+        "baseline",
+        "artifact"
+      ]
+    },
+    {
+      "name": "schema_version",
+      "dtype": "string"
+    },
+    {
+      "name": "logic_version",
+      "dtype": "string"
+    },
+    {
+      "name": "warnings",
+      "dtype": "string[]"
+    }
+  ]
+}

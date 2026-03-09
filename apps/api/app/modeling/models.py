@@ -30,6 +30,9 @@ class NowcastPredictionResponse(BaseModel):
     user_id: str
     ml_subject_id: str
     model_version: str
+    used_backend: str = "baseline"
+    schema_version: str = "unknown"
+    logic_version: str = "unknown"
     generated_at: datetime
     predictions: NowcastPredictionVector
     feature_coverage: NowcastFeatureCoverage
@@ -40,6 +43,9 @@ class NowcastHistoryItem(BaseModel):
     prediction_id: str
     generated_at: datetime
     model_version: str
+    used_backend: str = "baseline"
+    schema_version: str = "unknown"
+    logic_version: str = "unknown"
     predictions: NowcastPredictionVector
     feature_coverage: NowcastFeatureCoverage
 

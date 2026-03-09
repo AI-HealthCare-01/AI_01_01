@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import os
+from datetime import date
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.admin_console.deps import get_admin_console_store
@@ -52,11 +52,35 @@ def _signup_and_bootstrap(
     return str(bootstrap.json()["account"]["user_id"])
 
 
-def test_modeling_nowcast_and_retraining_job_flow(tmp_path) -> None:
-    pytest.importorskip("joblib")
-    pytest.importorskip("pandas")
-    pytest.importorskip("sklearn")
+def _save_checkin(
+    client: TestClient,
+    uid: str,
+    email: str,
+    target_date: str,
+) -> None:
+    response = client.post(
+        "/checkin/today",
+        headers=_headers(uid, email, verified=True),
+        json={
+            "date": target_date,
+            "sleep_total_bucket": "h6_7",
+            "wake_time_local": "07:20",
+            "sleep_latency_bucket": "m15_30",
+            "mood_1_5": 2,
+            "anxiety_1_5": 4,
+            "energy_1_5": 2,
+            "daylight_bucket": "m1_9",
+            "exercise_bucket": "m0",
+            "alcohol_bucket": "none",
+            "caffeine_after_2pm_flag": True,
+            "timezone": "Asia/Seoul",
+            "completion_mode": "full",
+        },
+    )
+    assert response.status_code == 200
 
+
+def test_modeling_nowcast_and_retraining_job_flow(tmp_path) -> None:
     db_path = tmp_path / "modeling-flow.sqlite3"
     model_bundle_dir = Path(__file__).resolve().parents[3] / "model"
 
@@ -226,6 +250,9 @@ def test_modeling_nowcast_and_retraining_job_flow(tmp_path) -> None:
     assert predict.json()["user_id"] == user_user_id
     assert predict.json()["ml_subject_id"].startswith("real_ml_")
     assert "dep_target_state_today" in predict.json()["predictions"]
+    assert predict.json()["used_backend"] in {"baseline", "artifact"}
+    assert isinstance(predict.json()["schema_version"], str)
+    assert isinstance(predict.json()["logic_version"], str)
     assert predict.json()["feature_coverage"]["required_feature_count"] > 0
     assert "unknown_feature_should_ignore" in predict.json()["feature_coverage"]["unknown_features"]
 
@@ -238,3 +265,141 @@ def test_modeling_nowcast_and_retraining_job_flow(tmp_path) -> None:
     assert history.json()[0]["prediction_id"].startswith("nwc_")
 
     assert owner_user_id.startswith("usr_")
+
+
+def test_modeling_auto_refresh_for_dashboard_and_challenge_recommendation(tmp_path) -> None:
+    db_path = tmp_path / "modeling-auto-refresh.sqlite3"
+    model_bundle_dir = Path(__file__).resolve().parents[3] / "model"
+
+    os.environ["AUTH_DATABASE_PATH"] = str(db_path)
+    os.environ["FIREBASE_AUTH_EMULATOR_HOST"] = "127.0.0.1:9099"
+    os.environ["AUTH_ALLOW_EMULATOR_UID_FALLBACK"] = "true"
+    os.environ["MODEL_BUNDLE_DIR"] = str(model_bundle_dir)
+    os.environ.pop("ADMIN_OWNER_EMAIL", None)
+    os.environ.pop("ADMIN_OWNER_FIREBASE_UID", None)
+
+    get_auth_settings.cache_clear()
+    get_auth_store.cache_clear()
+    get_core_input_store.cache_clear()
+    get_insights_store.cache_clear()
+    get_community_store.cache_clear()
+    get_admin_console_store.cache_clear()
+    get_modeling_store.cache_clear()
+
+    client = TestClient(app)
+    uid = "modeling-auto-user-uid"
+    email = "modeling-auto-user@example.com"
+
+    _signup_and_bootstrap(client, uid, email, "model-auto-user")
+    today = date.today().isoformat()
+
+    _save_checkin(client, uid, email, today)
+
+    cbt_session = client.post(
+        "/v1/cbt/sessions",
+        headers=_headers(uid, email, verified=True),
+        json={
+            "date": today,
+            "duration_sec": 800,
+            "state": {
+                "situation": "프로젝트 마감 압박으로 긴장이 올라왔다.",
+                "automatic_thoughts": ["나는 결국 실패할 거야"],
+                "emotions": [{"name": "불안", "intensity": 82}],
+                "behaviors": ["미루기"],
+                "evidence_for": ["최근 일정이 빠듯했다."],
+                "evidence_against": ["이전에도 비슷한 마감을 해낸 적이 있다."],
+                "distortion_candidates": [],
+                "intermediate_belief_hypotheses": [],
+                "core_belief_hypotheses": [],
+                "risk_flags": {
+                    "functional_impairment_flag": False,
+                    "self_harm_flag": False,
+                    "suicide_risk_level": 0,
+                    "violence_risk_flag": False,
+                },
+            },
+            "session_helpfulness_0_10": 7,
+            "homework_commitment_0_10": 6,
+        },
+    )
+    assert cbt_session.status_code == 200
+
+    nowcast_history = client.get(
+        "/v1/modeling/nowcast/history",
+        headers=_headers(uid, email, verified=True),
+    )
+    assert nowcast_history.status_code == 200
+    history_rows = nowcast_history.json()
+    assert len(history_rows) >= 2
+
+    recommendations = client.get(
+        "/challenge/recommendations/today",
+        headers=_headers(uid, email, verified=True),
+    )
+    assert recommendations.status_code == 200
+    recommendation_payload = recommendations.json()["recommendations"]
+    assert recommendation_payload["signal_source"] == "model_nowcast"
+
+    symptom = client.get(
+        "/v1/dashboard/symptom",
+        headers=_headers(uid, email, verified=True),
+        params={"mode": "7d"},
+    )
+    assert symptom.status_code == 200
+    series = symptom.json()["series"]
+    score_by_metric = {str(item["metric"]): item["current_score"] for item in series}
+
+    assert score_by_metric["dep"] is not None
+    assert score_by_metric["anx"] is not None
+    assert score_by_metric["ins"] is not None
+    assert recommendation_payload["signal_scores"]["dep"] is not None
+    assert recommendation_payload["signal_scores"]["anx"] is not None
+    assert recommendation_payload["signal_scores"]["ins"] is not None
+
+
+def test_modeling_artifact_backend_falls_back_to_baseline_when_artifact_missing(tmp_path) -> None:
+    db_path = tmp_path / "modeling-artifact-fallback.sqlite3"
+    model_bundle_dir = Path(__file__).resolve().parents[3] / "model"
+    missing_artifact_path = tmp_path / "missing-artifact-dir"
+
+    os.environ["AUTH_DATABASE_PATH"] = str(db_path)
+    os.environ["FIREBASE_AUTH_EMULATOR_HOST"] = "127.0.0.1:9099"
+    os.environ["AUTH_ALLOW_EMULATOR_UID_FALLBACK"] = "true"
+    os.environ["MODEL_BUNDLE_DIR"] = str(model_bundle_dir)
+    os.environ["MODEL_BACKEND"] = "artifact"
+    os.environ["MODEL_ARTIFACT_PATH"] = str(missing_artifact_path)
+    os.environ.pop("ADMIN_OWNER_EMAIL", None)
+    os.environ.pop("ADMIN_OWNER_FIREBASE_UID", None)
+
+    get_auth_settings.cache_clear()
+    get_auth_store.cache_clear()
+    get_core_input_store.cache_clear()
+    get_insights_store.cache_clear()
+    get_community_store.cache_clear()
+    get_admin_console_store.cache_clear()
+    get_modeling_store.cache_clear()
+
+    client = TestClient(app)
+    uid = "model-fallback-user-uid"
+    email = "model-fallback-user@example.com"
+    _signup_and_bootstrap(client, uid, email, "model-fallback-user")
+
+    predict = client.post(
+        "/v1/modeling/nowcast/predict",
+        headers=_headers(uid, email, verified=True),
+        json={
+            "feature_values": {
+                "mood_1_5": 2,
+                "anxiety_1_5": 3,
+                "energy_1_5": 3,
+                "sleep_total_bucket_num": 4,
+            }
+        },
+    )
+    assert predict.status_code == 200
+    payload = predict.json()
+    assert payload["used_backend"] == "baseline"
+    assert any(
+        str(item).startswith("artifact_fallback_to_baseline:")
+        for item in payload.get("warnings", [])
+    )

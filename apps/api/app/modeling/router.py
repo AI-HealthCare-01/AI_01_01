@@ -19,7 +19,10 @@ def _map_store_error(error: ValueError) -> HTTPException:
     if code == "user_not_found":
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=code)
 
-    if code in {"model_bundle_not_ready", "model_runtime_unavailable"}:
+    if code == "model_bundle_not_ready" or code.startswith("model_contract_not_ready"):
+        return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=code)
+
+    if code == "model_runtime_unavailable" or code.startswith("model_runtime_unavailable:"):
         return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=code)
 
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=code)

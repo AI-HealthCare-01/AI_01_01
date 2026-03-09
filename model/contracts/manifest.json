@@ -1,0 +1,7 @@
+{
+  "logic_version": "nowcast-logic-v1",
+  "schema_version": "2026-03-09",
+  "default_backend": "baseline",
+  "artifact_path_env": "MODEL_ARTIFACT_PATH",
+  "notes": "Model binaries/weights are not committed. Baseline backend is default; artifact is optional."
+}

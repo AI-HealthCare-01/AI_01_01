@@ -1225,19 +1225,121 @@ class CoreInputStore:
             )
 
     def list_assessment_history(self, user_id: str, limit: int) -> list[AssessmentSessionResponse]:
+        sessions: list[AssessmentSessionResponse] = []
+
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT pa.assessment_id
+                SELECT
+                  pa.assessment_id,
+                  pa.user_id,
+                  pa.scheduled_for,
+                  pa.started_at,
+                  pa.completed_at,
+                  pa.status,
+                  pa.recommended_cycle_days,
+                  pa.source,
+                  sc.phq9_total,
+                  sc.gad7_total,
+                  sc.isi_total,
+                  sc.phq9_band,
+                  sc.gad7_band,
+                  sc.isi_band,
+                  sc.phq9_item9_nonzero
                 FROM periodic_assessment pa
+                LEFT JOIN assessment_score sc ON sc.assessment_id = pa.assessment_id
                 WHERE pa.user_id = ?
                 ORDER BY pa.started_at DESC
                 LIMIT ?
                 """,
-                (user_id, limit),
+                (user_id, max(limit * 3, 30)),
             ).fetchall()
 
-        return [self.get_assessment_session(user_id, str(row["assessment_id"])) for row in rows]
+            periodic_ids: set[str] = set()
+            for row in rows:
+                assessment_id = str(row["assessment_id"])
+                periodic_ids.add(assessment_id)
+                sessions.append(
+                    AssessmentSessionResponse(
+                        assessment_id=assessment_id,
+                        user_id=str(row["user_id"]),
+                        scheduled_for=date.fromisoformat(str(row["scheduled_for"])) if row["scheduled_for"] else None,
+                        started_at=datetime.fromisoformat(str(row["started_at"])),
+                        completed_at=datetime.fromisoformat(str(row["completed_at"])) if row["completed_at"] else None,
+                        status=AssessmentStatus(str(row["status"])),
+                        recommended_cycle_days=int(row["recommended_cycle_days"]),
+                        source=str(row["source"]),
+                        scores={
+                            "phq9_total": row["phq9_total"],
+                            "gad7_total": row["gad7_total"],
+                            "isi_total": row["isi_total"],
+                            "phq9_band": row["phq9_band"],
+                            "gad7_band": row["gad7_band"],
+                            "isi_band": row["isi_band"],
+                            "phq9_item9_nonzero": bool(row["phq9_item9_nonzero"] or 0),
+                        },
+                    )
+                )
+
+            baseline_row: sqlite3.Row | None = None
+            if self._table_exists(conn, "baseline_assessment"):
+                select_assessment_id = (
+                    "assessment_id,"
+                    if self._table_has_column(conn, "baseline_assessment", "assessment_id")
+                    else "NULL AS assessment_id,"
+                )
+                baseline_row = conn.execute(
+                    f"""
+                    SELECT
+                      {select_assessment_id}
+                      depression_score,
+                      anxiety_score,
+                      insomnia_score,
+                      completed_at
+                    FROM baseline_assessment
+                    WHERE user_id = ?
+                    """,
+                    (user_id,),
+                ).fetchone()
+
+            if baseline_row and baseline_row["completed_at"]:
+                baseline_assessment_id = str(baseline_row["assessment_id"]) if baseline_row["assessment_id"] else None
+                include_baseline = baseline_assessment_id is None or baseline_assessment_id not in periodic_ids
+                if include_baseline:
+                    completed_at = datetime.fromisoformat(str(baseline_row["completed_at"]))
+                    sessions.append(
+                        AssessmentSessionResponse(
+                            assessment_id=baseline_assessment_id or f"asm_onboarding_baseline_{user_id}",
+                            user_id=user_id,
+                            scheduled_for=None,
+                            started_at=completed_at,
+                            completed_at=completed_at,
+                            status=AssessmentStatus.completed,
+                            recommended_cycle_days=28,
+                            source="onboarding",
+                            scores={
+                                "phq9_total": int(baseline_row["depression_score"]) if baseline_row["depression_score"] is not None else None,
+                                "gad7_total": int(baseline_row["anxiety_score"]) if baseline_row["anxiety_score"] is not None else None,
+                                "isi_total": int(baseline_row["insomnia_score"]) if baseline_row["insomnia_score"] is not None else None,
+                                "phq9_band": self._band_from_total(
+                                    "phq9",
+                                    int(baseline_row["depression_score"]) if baseline_row["depression_score"] is not None else None,
+                                ),
+                                "gad7_band": self._band_from_total(
+                                    "gad7",
+                                    int(baseline_row["anxiety_score"]) if baseline_row["anxiety_score"] is not None else None,
+                                ),
+                                "isi_band": self._band_from_total(
+                                    "isi",
+                                    int(baseline_row["insomnia_score"]) if baseline_row["insomnia_score"] is not None else None,
+                                ),
+                                "phq9_item9_nonzero": False,
+                            },
+                        )
+                    )
+
+        sessions.sort(key=lambda item: item.started_at, reverse=True)
+        return sessions[:limit]
 
     def list_challenge_catalog(self) -> list[ChallengeCatalogItem]:
         with self._connect() as conn:

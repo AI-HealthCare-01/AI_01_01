@@ -127,6 +127,13 @@ const CALENDAR_TONE_LABEL: Record<CalendarMoodTone, string> = {
   sleep: "수면 부족 경향",
 };
 
+const HOME_CALENDAR_LEGEND: Array<{ tone: CalendarMoodTone; copy: string }> = [
+  { tone: "happy", copy: "핑크 · 마음이 한결 가벼웠던 날" },
+  { tone: "anxious", copy: "노랑 · 긴장이 조금 높았던 날" },
+  { tone: "depressed", copy: "파랑 · 마음이 무겁게 느껴진 날" },
+  { tone: "sleep", copy: "보라 · 수면 회복이 더 필요한 날" },
+];
+
 function toDateString(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
@@ -590,7 +597,7 @@ export default function HomePage() {
       key: "assessment",
       label: "심리상태 검사",
       pendingActionLabel: assessmentPendingLabel,
-      done: Boolean(todaySummary?.has_assessment),
+      done: false,
       disabled: !assessmentDue,
       href: "/assessments",
     },
@@ -1127,6 +1134,17 @@ export default function HomePage() {
                             </span>
                           );
                         })}
+                      </div>
+                      <div className="ms-home-calendar-legend" aria-label="월간 출석 캘린더 색상 설명">
+                        {HOME_CALENDAR_LEGEND.map((item) => (
+                          <div key={item.tone} className="ms-home-calendar-legend__item">
+                            <span
+                              className={`ms-home-calendar-legend__dot ms-home-calendar-legend__dot--${item.tone}`}
+                              aria-hidden="true"
+                            />
+                            <span className="ms-home-calendar-legend__text">{item.copy}</span>
+                          </div>
+                        ))}
                       </div>
                     </>
                   )}

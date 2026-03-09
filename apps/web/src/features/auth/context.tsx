@@ -13,6 +13,7 @@ import {
 import {
   createUserWithEmailAndPassword,
   EmailAuthProvider,
+  fetchSignInMethodsForEmail,
   onAuthStateChanged,
   reauthenticateWithCredential,
   sendEmailVerification,
@@ -71,7 +72,8 @@ function isContinueUrlError(error: unknown): boolean {
   return (
     code.includes("auth/invalid-continue-uri") ||
     code.includes("auth/unauthorized-continue-uri") ||
-    code.includes("auth/missing-continue-uri")
+    code.includes("auth/missing-continue-uri") ||
+    code.includes("auth/invalid-dynamic-link-domain")
   );
 }
 
@@ -125,6 +127,44 @@ function mapErrorCode(error: unknown): string {
     return error.message;
   }
   return "unknown_error";
+}
+
+function isLikelyInvalidCredentialError(code: string): boolean {
+  return code.includes("auth/invalid-credential") || code.includes("auth/invalid-login-credentials");
+}
+
+async function classifySignInErrorCode(
+  auth: ReturnType<typeof getFirebaseAuthClient>,
+  email: string,
+  rawCode: string
+): Promise<string> {
+  if (!isLikelyInvalidCredentialError(rawCode)) {
+    return rawCode;
+  }
+
+  try {
+    const methods = await fetchSignInMethodsForEmail(auth, email);
+    const normalizedMethods = methods.map((method) => method.toLowerCase());
+
+    if (normalizedMethods.includes("password")) {
+      return "auth/wrong-password";
+    }
+
+    if (normalizedMethods.length > 0) {
+      return "auth/account-exists-with-different-credential";
+    }
+
+    return "auth/user-not-found";
+  } catch (lookupError) {
+    const lookupCode = mapErrorCode(lookupError);
+    if (lookupCode.includes("auth/too-many-requests")) {
+      return "auth/too-many-requests";
+    }
+    if (lookupCode.includes("auth/network-request-failed")) {
+      return "auth/network-request-failed";
+    }
+    return rawCode;
+  }
 }
 
 function resolveContinueUrl(pathname: string): string | undefined {
@@ -234,8 +274,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithEmail = useCallback(
     async (email: string, password: string): Promise<SessionContract | null> => {
       const auth = getFirebaseAuthClient();
-      const credential = await signInWithEmailAndPassword(auth, email, password);
-      return bootstrapForUser(credential.user);
+      try {
+        const credential = await signInWithEmailAndPassword(auth, email, password);
+        return bootstrapForUser(credential.user);
+      } catch (error) {
+        const rawCode = mapErrorCode(error);
+        const classifiedCode = await classifySignInErrorCode(auth, email, rawCode);
+        throw new Error(classifiedCode);
+      }
     },
     [bootstrapForUser]
   );

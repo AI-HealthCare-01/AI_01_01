@@ -14,12 +14,33 @@ import {
   SectionContainer
 } from "../../../src/components/ui";
 import { AuthRouteGuard, useAuthContext } from "../../../src/features/auth";
+import { isAuthEmulatorEnabled } from "../../../src/features/auth/firebase";
 
 const RESEND_COOLDOWN_SECONDS = 60;
+
+function mapResendError(code: string): string {
+  if (code.includes("auth/too-many-requests")) {
+    return "재전송 요청이 많아 잠시 제한되었습니다. 잠시 후 다시 시도해주세요.";
+  }
+  if (code.includes("auth/network-request-failed")) {
+    return "네트워크 연결을 확인한 뒤 다시 시도해주세요.";
+  }
+  if (code.includes("auth/unauthorized-continue-uri")) {
+    return "인증 링크 이동 도메인이 허용되지 않았습니다. Firebase Authorized domains 설정을 확인해주세요.";
+  }
+  if (code.includes("auth/invalid-continue-uri") || code.includes("auth/missing-continue-uri")) {
+    return "인증 링크 설정이 올바르지 않습니다. 잠시 후 다시 시도해주세요.";
+  }
+  if (code.includes("auth/invalid-api-key")) {
+    return "Firebase 설정이 올바르지 않습니다. 관리자에게 문의해주세요.";
+  }
+  return `재전송에 실패했습니다. (${code})`;
+}
 
 export default function VerifyEmailPage() {
   const router = useRouter();
   const { firebaseUser, refreshSession, resendVerificationEmail, logout } = useAuthContext();
+  const emulatorEnabled = isAuthEmulatorEnabled();
 
   const [isSending, setIsSending] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
@@ -59,11 +80,15 @@ export default function VerifyEmailPage() {
       setIsSending(true);
       setErrorMessage(null);
       await resendVerificationEmail();
-      setNotice("이메일 확인 메일을 다시 보냈습니다.");
+      setNotice(
+        emulatorEnabled
+          ? "요청을 처리했습니다. 에뮬레이터 모드에서는 실제 메일이 발송되지 않고 Emulator UI에서 링크를 확인합니다."
+          : "이메일 확인 메일을 다시 보냈습니다. 받은편지함에 없으면 스팸함도 확인해주세요."
+      );
       startCooldown();
     } catch (error) {
       const code = error instanceof Error ? error.message : "unknown";
-      setErrorMessage(`재전송에 실패했습니다. (${code})`);
+      setErrorMessage(mapResendError(code));
     } finally {
       setIsSending(false);
     }

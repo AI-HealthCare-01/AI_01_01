@@ -72,13 +72,15 @@ interface QuestionBlockProps {
 
 function QuestionBlock({ question, selectedScore, onSelect }: QuestionBlockProps) {
   const labelId = `label-${question.code}`;
+  const optionsClassName =
+    question.options.length >= 5 ? "ms-assessment-options ms-assessment-options--5" : "ms-assessment-options";
 
   return (
     <div className="ms-assessment-question" role="radiogroup" aria-labelledby={labelId}>
       <p id={labelId} className="ms-assessment-question__text">
         {question.text}
       </p>
-      <div className="ms-assessment-options">
+      <div className={optionsClassName}>
         {question.options.map((option) => {
           const selected = selectedScore === option.score;
           return (
@@ -120,35 +122,39 @@ export default function OnboardingAssessmentPage() {
     session.consents.sensitive_data_required;
 
   useEffect(() => {
-    if (!session || assessmentId) {
+    if (!session) {
       return;
     }
     if (!canStartBaselineAssessment) {
       router.replace("/onboarding");
     }
-  }, [assessmentId, canStartBaselineAssessment, router, session]);
+  }, [canStartBaselineAssessment, router, session]);
 
-  const setAnswer = (itemCode: string, score: number) => {
-    setAnswers((previous) => ({ ...previous, [itemCode]: score }));
-  };
-
-  const handleStartAssessment = async () => {
-    if (!firebaseUser || !canStartBaselineAssessment || isStarting || isSubmitting) {
+  useEffect(() => {
+    if (!firebaseUser || !session || assessmentId || !canStartBaselineAssessment || isStarting) {
       return;
     }
 
-    try {
-      setIsStarting(true);
-      setErrorMessage(null);
+    const run = async () => {
+      try {
+        setIsStarting(true);
+        setErrorMessage(null);
 
-      const started = await startAssessment(firebaseUser, "onboarding");
-      setAssessmentId(started.assessment_id);
-      setAnswers({});
-    } catch (error) {
-      setErrorMessage(parseError(error));
-    } finally {
-      setIsStarting(false);
-    }
+        const started = await startAssessment(firebaseUser, "onboarding");
+        setAssessmentId(started.assessment_id);
+        setAnswers({});
+      } catch (error) {
+        setErrorMessage(parseError(error));
+      } finally {
+        setIsStarting(false);
+      }
+    };
+
+    void run();
+  }, [assessmentId, canStartBaselineAssessment, firebaseUser, isStarting, session]);
+
+  const setAnswer = (itemCode: string, score: number) => {
+    setAnswers((previous) => ({ ...previous, [itemCode]: score }));
   };
 
   const handleCompleteAssessment = async () => {
@@ -216,23 +222,11 @@ export default function OnboardingAssessmentPage() {
 
             {errorMessage ? <Banner variant="danger" title="저장 실패" description={errorMessage} /> : null}
 
-            {!assessmentId ? (
-              <Card title="검사 시작" description="총 23문항을 모두 응답하면 baseline 저장 후 홈으로 이동합니다.">
-                <div className="ms-stack">
-                  <div className="ms-row">
-                    <Button type="button" variant="secondary" onClick={() => router.push("/onboarding")}>온보딩으로 돌아가기</Button>
-                    <Button type="button" onClick={handleStartAssessment} loading={isStarting} disabled={!canStartBaselineAssessment}>
-                      검사 시작
-                    </Button>
-                  </div>
-                  {!canStartBaselineAssessment ? (
-                    <Banner
-                      variant="warning"
-                      title="온보딩 순서 확인"
-                      description="출생년도와 민감정보 동의를 먼저 완료한 뒤 초기 진단척도를 시작할 수 있습니다."
-                    />
-                  ) : null}
-                </div>
+            {!assessmentId || isStarting ? (
+              <Card title="검사 준비 중" description="문항을 불러오고 있습니다. 잠시만 기다려주세요.">
+                <Button type="button" variant="secondary" onClick={() => router.push("/onboarding")} disabled={isStarting}>
+                  온보딩으로 돌아가기
+                </Button>
               </Card>
             ) : (
               <div className="ms-stack">

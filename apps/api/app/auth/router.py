@@ -12,6 +12,8 @@ from .config import load_auth_settings
 from .firebase import get_firebase_identity
 from .models import (
     BaselineAssessmentRequest,
+    ChangeEmailAvailabilityRequest,
+    ChangeEmailAvailabilityResponse,
     FirebaseIdentity,
     OnboardingProfileRequest,
     SessionBootstrapRequest,
@@ -102,6 +104,19 @@ def signup(
             coach_name=payload.coach_name,
         )
     except sqlite3.IntegrityError as exc:
+        # Firebase 계정은 새로 생성되었지만 로컬 계정 쉘이 이전 UID로 남아있는 경우,
+        # 이메일 기준으로 UID를 재연결해 가입 플로우를 복구한다.
+        relinked = store.relink_firebase_uid_by_email(
+            email=payload.email,
+            firebase_uid=payload.firebase_uid,
+        )
+        if relinked is not None:
+            logger.warning(
+                "signup_uid_relinked_by_email: uid=%s email=%s",
+                payload.firebase_uid,
+                payload.email,
+            )
+            return relinked
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="email_or_uid_already_exists",
@@ -144,6 +159,27 @@ def session_bootstrap(
         if session is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="account_not_found")
     return session
+
+
+@router.post("/auth/change-email/availability", response_model=ChangeEmailAvailabilityResponse)
+def change_email_availability(
+    payload: ChangeEmailAvailabilityRequest,
+    identity: FirebaseIdentity = Depends(get_firebase_identity),
+    store: AuthStore = Depends(get_auth_store),
+) -> ChangeEmailAvailabilityResponse:
+    user_id = store.get_user_id_by_firebase_uid(identity.firebase_uid)
+    if not user_id:
+        _recover_signup_shell(
+            store=store,
+            firebase_uid=identity.firebase_uid,
+            email=identity.email,
+        )
+        user_id = store.get_user_id_by_firebase_uid(identity.firebase_uid)
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="account_not_found")
+
+    duplicate = store.is_email_in_use(payload.new_email, exclude_user_id=user_id)
+    return ChangeEmailAvailabilityResponse(is_available=not duplicate)
 
 
 @router.post("/onboarding/profile", response_model=SessionContract)

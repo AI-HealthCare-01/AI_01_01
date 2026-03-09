@@ -12,8 +12,11 @@ import {
   EmptyState,
   ErrorState,
   LoadingSkeleton,
+  Modal,
   PageContainer,
   SectionContainer,
+  Select,
+  Textarea,
 } from "../../src/components/ui";
 import { AuthRouteGuard, useAuthContext } from "../../src/features/auth";
 import {
@@ -36,6 +39,17 @@ import {
 type FeedTab = "feed" | "notice" | "bookmark" | "popular";
 
 const PAGE_LIMIT = 10;
+const REPORT_REASON_OPTIONS = [
+  { value: "abuse", label: "괴롭힘/모욕" },
+  { value: "hate", label: "혐오/차별 표현" },
+  { value: "threat", label: "위협/협박" },
+  { value: "sexual_harassment", label: "성적 괴롭힘" },
+  { value: "privacy", label: "개인정보 노출" },
+  { value: "spam", label: "도배/광고" },
+  { value: "self_harm_signal", label: "자해 위험 신호" },
+  { value: "violence_signal", label: "폭력 위험 신호" },
+  { value: "other", label: "기타" },
+] as const;
 
 const TAB_LABEL: Record<FeedTab, string> = {
   feed: "피드",
@@ -62,6 +76,9 @@ const initialCursorByTab: Record<FeedTab, string | null> = {
 
 function parseError(error: unknown): string {
   if (error instanceof CommunityApiError) {
+    if (error.message.includes("already_reported")) {
+      return "이미 신고한 게시글입니다.";
+    }
     if (error.message === "Failed to fetch") {
       return "서버 연결이 원활하지 않습니다. 잠시 후 다시 시도해 주세요.";
     }
@@ -163,9 +180,52 @@ function BoardFeedContent() {
   const [editBodyMap, setEditBodyMap] = useState<Record<string, string>>({});
   const [editSubmittingMap, setEditSubmittingMap] = useState<Record<string, boolean>>({});
   const [deleteSubmittingMap, setDeleteSubmittingMap] = useState<Record<string, boolean>>({});
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportTargetPostId, setReportTargetPostId] = useState<string | null>(null);
+  const [reportReason, setReportReason] = useState<string>("abuse");
+  const [reportDetail, setReportDetail] = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [noticeModalOpen, setNoticeModalOpen] = useState(false);
+  const [noticeModalMessage, setNoticeModalMessage] = useState<string | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
 
   const activeItems = itemsByTab[tab];
   const nextCursor = cursorByTab[tab];
+  const selectedItem = useMemo(() => {
+    if (activeItems.length === 0) {
+      return null;
+    }
+    return activeItems.find((item) => item.post.post_id === selectedPostId) ?? activeItems[0];
+  }, [activeItems, selectedPostId]);
+
+  const openNoticeModal = (message: string) => {
+    setNoticeModalMessage(message);
+    setNoticeModalOpen(true);
+  };
+
+  const closeNoticeModal = () => {
+    setNoticeModalOpen(false);
+    setNoticeModalMessage(null);
+    setActionMessage(null);
+  };
+
+  useEffect(() => {
+    if (!actionMessage) {
+      return;
+    }
+    openNoticeModal(actionMessage);
+  }, [actionMessage]);
+
+  useEffect(() => {
+    if (activeItems.length === 0) {
+      setSelectedPostId(null);
+      return;
+    }
+    if (!selectedPostId || !activeItems.some((item) => item.post.post_id === selectedPostId)) {
+      setSelectedPostId(activeItems[0].post.post_id);
+    }
+  }, [activeItems, selectedPostId]);
 
   const fetchTab = useCallback(
     async (targetTab: FeedTab, options?: { cursor?: string | null; append?: boolean; query?: string }) => {
@@ -320,22 +380,50 @@ function BoardFeedContent() {
     }
   };
 
-  const handleReport = async (postId: string) => {
-    if (!firebaseUser) {
+  const openReportModal = (postId: string) => {
+    setReportTargetPostId(postId);
+    setReportReason("abuse");
+    setReportDetail("");
+    setReportModalOpen(true);
+  };
+
+  const closeReportModal = (force = false) => {
+    if (reportSubmitting && !force) {
+      return;
+    }
+    setReportModalOpen(false);
+    setReportTargetPostId(null);
+    setReportReason("abuse");
+    setReportDetail("");
+  };
+
+  const handleReportSubmit = async () => {
+    if (!firebaseUser || !reportTargetPostId || reportSubmitting) {
       return;
     }
 
     try {
+      setReportSubmitting(true);
       setActionMessage(null);
-      await reportBoardPost(firebaseUser, postId, {
-        reason_code: "abuse",
-        detail_text: "사용자 신고",
+      await reportBoardPost(firebaseUser, reportTargetPostId, {
+        reason_code: reportReason,
+        detail_text: reportDetail.trim() || undefined,
       });
-      setActionMessage("신고가 접수되었습니다.");
+      setActionMessage("신고가 접수되었습니다. 관리자 모더레이션 큐에서 검토됩니다.");
+      closeReportModal(true);
       await loadTab(tab, submittedQuery);
     } catch (error) {
       setActionMessage(parseError(error));
+    } finally {
+      setReportSubmitting(false);
     }
+  };
+
+  const handleReport = async (postId: string) => {
+    if (!firebaseUser) {
+      return;
+    }
+    openReportModal(postId);
   };
 
   const handleToggleComments = async (postId: string) => {
@@ -503,7 +591,9 @@ function BoardFeedContent() {
               </aside>
 
               <div className="ms-board-main">
-                {actionMessage ? <Banner variant="info" title="안내" description={actionMessage} /> : null}
+                <div className="ms-board-ops-inline" role="status" aria-live="polite">
+                  운영 안내: 신고 접수 건은 관리자 모더레이션 큐로 전달되어 검토됩니다.
+                </div>
                 {errorMessage ? <Banner variant="danger" title="오류" description={errorMessage} /> : null}
 
                 {loading ? (
@@ -535,195 +625,242 @@ function BoardFeedContent() {
                         description={submittedQuery ? "검색어를 바꿔 다시 시도해보세요." : "첫 게시글을 작성해보세요."}
                       />
                     ) : (
-                      activeItems.map((item) => {
-                        const postId = item.post.post_id;
-                        const isCommentOpen = Boolean(expandedCommentMap[postId]);
-                        const comments = commentsByPost[postId] ?? [];
-                        const isCommentsLoading = Boolean(commentsLoadingMap[postId]);
-                        const commentDraft = commentDraftMap[postId] ?? "";
-                        const commentSubmitting = Boolean(commentSubmittingMap[postId]);
-                        const hasTitle = Boolean(item.post.title && trimmed(item.post.title));
-                        const titleText = getDisplayTitle(item);
-                        const edited = isPostEdited(item);
-                        const displayDateTime = formatDateTime(resolvePostTimestamp(item));
-                        const isAuthor = session?.account.user_id === item.author.author_user_id;
-                        const isEditing = editingPostId === postId;
-                        const editTitle = editTitleMap[postId] ?? "";
-                        const editBody = editBodyMap[postId] ?? "";
-                        const editSubmitting = Boolean(editSubmittingMap[postId]);
-                        const deleting = Boolean(deleteSubmittingMap[postId]);
-
-                        return (
-                          <article key={postId} className="ms-board-post-card">
-                            <div className="ms-board-post-meta">
-                              <div className="ms-board-post-meta__left">
-                                <span>{item.author.display_name}</span>
-                                <span aria-hidden>·</span>
-                                <span>{displayDateTime}</span>
-                                {edited ? (
-                                  <>
-                                    <span aria-hidden>·</span>
-                                    <Badge variant="neutral">수정됨</Badge>
-                                  </>
-                                ) : null}
-                              </div>
-                              <span className="ms-board-post-id">#{item.post.feed_public_id}</span>
-                            </div>
-
-                            {isEditing ? (
-                              <div className="ms-board-edit-form">
-                                <input
-                                  className="ms-board-edit-form__title"
-                                  placeholder="제목(선택)"
-                                  value={editTitle}
-                                  maxLength={60}
-                                  onChange={(event) =>
-                                    setEditTitleMap((previous) => ({
-                                      ...previous,
-                                      [postId]: event.target.value,
-                                    }))
-                                  }
-                                />
-                                <textarea
-                                  className="ms-board-edit-form__body"
-                                  placeholder="내용을 입력하세요"
-                                  value={editBody}
-                                  maxLength={1500}
-                                  onChange={(event) =>
-                                    setEditBodyMap((previous) => ({
-                                      ...previous,
-                                      [postId]: event.target.value,
-                                    }))
-                                  }
-                                />
-                                <div className="ms-row">
-                                  <Button size="sm" onClick={() => void submitEdit(postId)} loading={editSubmitting}>
-                                    저장
-                                  </Button>
-                                  <Button size="sm" variant="secondary" onClick={cancelEdit} disabled={editSubmitting}>
-                                    취소
-                                  </Button>
+                      <div className="ms-board-cafe-layout">
+                        <div className="ms-board-cafe-list" role="list" aria-label="게시글 목록">
+                          {activeItems.map((item) => {
+                            const postId = item.post.post_id;
+                            const hasTitle = Boolean(item.post.title && trimmed(item.post.title));
+                            const titleText = getDisplayTitle(item);
+                            const rowTitle = hasTitle && titleText ? titleText : item.post.body_preview;
+                            const isSelected = selectedItem?.post.post_id === postId;
+                            return (
+                              <button
+                                key={postId}
+                                type="button"
+                                role="listitem"
+                                className={isSelected ? "ms-board-cafe-row ms-board-cafe-row--active" : "ms-board-cafe-row"}
+                                onClick={() => setSelectedPostId(postId)}
+                              >
+                                <div className="ms-board-cafe-row__main">
+                                  <p className="ms-board-cafe-row__title">{rowTitle}</p>
+                                  <p className="ms-board-cafe-row__meta">
+                                    {item.author.display_name} · {formatDateTime(resolvePostTimestamp(item))}
+                                  </p>
                                 </div>
-                              </div>
-                            ) : (
-                              <>
-                                {hasTitle && titleText ? <h3 className="ms-board-post-title">{titleText}</h3> : null}
-                                <p className={hasTitle ? "ms-board-post-body" : "ms-board-post-body ms-board-post-body--only"}>
-                                  {item.post.body_preview}
-                                </p>
-                              </>
-                            )}
-
-                            <div className="ms-board-post-actions">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className={
-                                  item.engagement.viewer_liked
-                                    ? "ms-board-action-btn ms-board-action-btn--active"
-                                    : "ms-board-action-btn"
-                                }
-                                onClick={() => void handleLike(postId)}
-                              >
-                                좋아요 {item.engagement.like_count}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className={isCommentOpen ? "ms-board-action-btn ms-board-action-btn--active" : "ms-board-action-btn"}
-                                onClick={() => void handleToggleComments(postId)}
-                              >
-                                댓글 {item.engagement.comment_count}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className={
-                                  item.engagement.viewer_bookmarked
-                                    ? "ms-board-action-btn ms-board-action-btn--active"
-                                    : "ms-board-action-btn"
-                                }
-                                onClick={() => void handleBookmark(postId)}
-                              >
-                                북마크 {item.engagement.bookmark_count}
-                              </Button>
-                              <Button size="sm" variant="ghost" className="ms-board-action-btn" onClick={() => void handleReport(postId)}>
-                                신고 {item.engagement.report_count}
-                              </Button>
-                              {isAuthor ? (
-                                <>
-                                  <Button size="sm" variant="ghost" className="ms-board-action-btn" onClick={() => beginEdit(item)}>
-                                    수정
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="ms-board-action-btn"
-                                    onClick={() => void handleDeletePost(postId)}
-                                    loading={deleting}
-                                    disabled={deleting || editSubmitting}
-                                  >
-                                    삭제
-                                  </Button>
-                                </>
-                              ) : null}
-                            </div>
-
-                            {isCommentOpen ? (
-                              <div className="ms-board-comments-panel">
-                                <div className="ms-board-comments-list">
-                                  {isCommentsLoading ? (
-                                    <LoadingSkeleton lines={3} />
-                                  ) : comments.length === 0 ? (
-                                    <p className="ms-board-comments-empty">아직 댓글이 없습니다.</p>
-                                  ) : (
-                                    comments.map((comment) => (
-                                      <div key={comment.comment_id} className="ms-board-comment-item">
-                                        <div className="ms-board-comment-item__meta">
-                                          <span>{comment.author_display_name}</span>
-                                          <span aria-hidden>·</span>
-                                          <span>{formatDateTime(comment.created_at)}</span>
-                                        </div>
-                                        <p className="ms-board-comment-item__body">{comment.body_text}</p>
-                                      </div>
-                                    ))
-                                  )}
+                                <div className="ms-board-cafe-row__stats">
+                                  <span>댓 {item.engagement.comment_count}</span>
+                                  <span>좋 {item.engagement.like_count}</span>
                                 </div>
-                                <div className="ms-board-comment-editor">
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {selectedItem ? (() => {
+                          const item = selectedItem;
+                          const postId = item.post.post_id;
+                          const isCommentOpen = Boolean(expandedCommentMap[postId]);
+                          const comments = commentsByPost[postId] ?? [];
+                          const isCommentsLoading = Boolean(commentsLoadingMap[postId]);
+                          const commentDraft = commentDraftMap[postId] ?? "";
+                          const commentSubmitting = Boolean(commentSubmittingMap[postId]);
+                          const hasTitle = Boolean(item.post.title && trimmed(item.post.title));
+                          const titleText = getDisplayTitle(item);
+                          const edited = isPostEdited(item);
+                          const displayDateTime = formatDateTime(resolvePostTimestamp(item));
+                          const isAuthor = session?.account.user_id === item.author.author_user_id;
+                          const isEditing = editingPostId === postId;
+                          const editTitle = editTitleMap[postId] ?? "";
+                          const editBody = editBodyMap[postId] ?? "";
+                          const editSubmitting = Boolean(editSubmittingMap[postId]);
+                          const deleting = Boolean(deleteSubmittingMap[postId]);
+
+                          return (
+                            <article className="ms-board-post-card">
+                              <div className="ms-board-post-meta">
+                                <div className="ms-board-post-meta__left">
+                                  <span>{item.author.display_name}</span>
+                                  <span aria-hidden>·</span>
+                                  <span>{displayDateTime}</span>
+                                  {edited ? (
+                                    <>
+                                      <span aria-hidden>·</span>
+                                      <Badge variant="neutral">수정됨</Badge>
+                                    </>
+                                  ) : null}
+                                </div>
+                                <span className="ms-board-post-id">#{item.post.feed_public_id}</span>
+                              </div>
+
+                              {isEditing ? (
+                                <div className="ms-board-edit-form">
                                   <input
-                                    className="ms-board-comment-editor__input"
-                                    placeholder="댓글을 입력하세요"
-                                    maxLength={500}
-                                    value={commentDraft}
+                                    className="ms-board-edit-form__title"
+                                    placeholder="제목(선택)"
+                                    value={editTitle}
+                                    maxLength={60}
                                     onChange={(event) =>
-                                      setCommentDraftMap((previous) => ({
+                                      setEditTitleMap((previous) => ({
                                         ...previous,
                                         [postId]: event.target.value,
                                       }))
                                     }
-                                    onKeyDown={(event) => {
-                                      if (event.key === "Enter") {
-                                        event.preventDefault();
-                                        void handleSubmitComment(postId);
-                                      }
-                                    }}
                                   />
-                                  <div className="ms-board-comment-editor__actions">
-                                    <Button
-                                      size="sm"
-                                      className="ms-board-comment-editor__submit"
-                                      loading={commentSubmitting}
-                                      onClick={() => void handleSubmitComment(postId)}
-                                    >
-                                      댓글 등록
+                                  <textarea
+                                    className="ms-board-edit-form__body"
+                                    placeholder="내용을 입력하세요"
+                                    value={editBody}
+                                    maxLength={1500}
+                                    onChange={(event) =>
+                                      setEditBodyMap((previous) => ({
+                                        ...previous,
+                                        [postId]: event.target.value,
+                                      }))
+                                    }
+                                  />
+                                  <div className="ms-row">
+                                    <Button size="sm" onClick={() => void submitEdit(postId)} loading={editSubmitting}>
+                                      저장
+                                    </Button>
+                                    <Button size="sm" variant="secondary" onClick={cancelEdit} disabled={editSubmitting}>
+                                      취소
                                     </Button>
                                   </div>
                                 </div>
+                              ) : (
+                                <>
+                                  {hasTitle && titleText ? <h3 className="ms-board-post-title">{titleText}</h3> : null}
+                                  <p className={hasTitle ? "ms-board-post-body" : "ms-board-post-body ms-board-post-body--only"}>
+                                    {item.post.body_text || item.post.body_preview}
+                                  </p>
+                                  {item.post.image_urls.length > 0 ? (
+                                    <div className="ms-board-post-images" aria-label="첨부 이미지">
+                                      {item.post.image_urls.map((imageUrl, imageIndex) => (
+                                        <img
+                                          key={`${postId}-image-${imageIndex}`}
+                                          className="ms-board-post-image"
+                                          src={imageUrl}
+                                          alt={`게시글 첨부 이미지 ${imageIndex + 1}`}
+                                          loading="lazy"
+                                          onClick={() => setImagePreviewUrl(imageUrl)}
+                                        />
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </>
+                              )}
+
+                              <div className="ms-board-post-actions">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className={
+                                    item.engagement.viewer_liked
+                                      ? "ms-board-action-btn ms-board-action-btn--active"
+                                      : "ms-board-action-btn"
+                                  }
+                                  onClick={() => void handleLike(postId)}
+                                >
+                                  좋아요 {item.engagement.like_count}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className={isCommentOpen ? "ms-board-action-btn ms-board-action-btn--active" : "ms-board-action-btn"}
+                                  onClick={() => void handleToggleComments(postId)}
+                                >
+                                  댓글 {item.engagement.comment_count}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className={
+                                    item.engagement.viewer_bookmarked
+                                      ? "ms-board-action-btn ms-board-action-btn--active"
+                                      : "ms-board-action-btn"
+                                  }
+                                  onClick={() => void handleBookmark(postId)}
+                                >
+                                  북마크 {item.engagement.bookmark_count}
+                                </Button>
+                                <Button size="sm" variant="ghost" className="ms-board-action-btn" onClick={() => void handleReport(postId)}>
+                                  신고 {item.engagement.report_count}
+                                </Button>
+                                {isAuthor ? (
+                                  <>
+                                    <Button size="sm" variant="ghost" className="ms-board-action-btn" onClick={() => beginEdit(item)}>
+                                      수정
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="ms-board-action-btn"
+                                      onClick={() => void handleDeletePost(postId)}
+                                      loading={deleting}
+                                      disabled={deleting || editSubmitting}
+                                    >
+                                      삭제
+                                    </Button>
+                                  </>
+                                ) : null}
                               </div>
-                            ) : null}
-                          </article>
-                        );
-                      })
+
+                              {isCommentOpen ? (
+                                <div className="ms-board-comments-panel">
+                                  <div className="ms-board-comments-list">
+                                    {isCommentsLoading ? (
+                                      <LoadingSkeleton lines={3} />
+                                    ) : comments.length === 0 ? (
+                                      <p className="ms-board-comments-empty">아직 댓글이 없습니다.</p>
+                                    ) : (
+                                      comments.map((comment) => (
+                                        <div key={comment.comment_id} className="ms-board-comment-item">
+                                          <div className="ms-board-comment-item__meta">
+                                            <span>{comment.author_display_name}</span>
+                                            <span aria-hidden>·</span>
+                                            <span>{formatDateTime(comment.created_at)}</span>
+                                          </div>
+                                          <p className="ms-board-comment-item__body">{comment.body_text}</p>
+                                        </div>
+                                      ))
+                                    )}
+                                  </div>
+                                  <div className="ms-board-comment-editor">
+                                    <input
+                                      className="ms-board-comment-editor__input"
+                                      placeholder="댓글을 입력하세요"
+                                      maxLength={500}
+                                      value={commentDraft}
+                                      onChange={(event) =>
+                                        setCommentDraftMap((previous) => ({
+                                          ...previous,
+                                          [postId]: event.target.value,
+                                        }))
+                                      }
+                                      onKeyDown={(event) => {
+                                        if (event.key === "Enter") {
+                                          event.preventDefault();
+                                          void handleSubmitComment(postId);
+                                        }
+                                      }}
+                                    />
+                                    <div className="ms-board-comment-editor__actions">
+                                      <Button
+                                        size="sm"
+                                        className="ms-board-comment-editor__submit"
+                                        loading={commentSubmitting}
+                                        onClick={() => void handleSubmitComment(postId)}
+                                      >
+                                        댓글 등록
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : null}
+                            </article>
+                          );
+                        })() : null}
+                      </div>
                     )}
 
                     {nextCursor ? (
@@ -738,6 +875,67 @@ function BoardFeedContent() {
           </SectionContainer>
         </PageContainer>
       </AppShell>
+      <Modal
+        open={noticeModalOpen}
+        title="안내"
+        description={noticeModalMessage ?? ""}
+        onClose={closeNoticeModal}
+        footer={
+          <Button type="button" onClick={closeNoticeModal}>
+            확인
+          </Button>
+        }
+      >
+        <p className="ms-card__desc">확인을 누르면 닫힙니다.</p>
+      </Modal>
+      <Modal
+        open={reportModalOpen}
+        title="게시글 신고"
+        description="신고 사유를 선택하면 관리자 모더레이션 큐로 접수됩니다."
+        onClose={closeReportModal}
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => closeReportModal()} disabled={reportSubmitting}>
+              취소
+            </Button>
+            <Button type="button" variant="danger" onClick={() => void handleReportSubmit()} loading={reportSubmitting}>
+              신고 접수
+            </Button>
+          </>
+        }
+      >
+        <div className="ms-stack">
+          <Select
+            label="신고 사유"
+            value={reportReason}
+            onChange={(event) => setReportReason(event.target.value)}
+            options={REPORT_REASON_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
+          />
+          <Textarea
+            label="상세 설명 (선택)"
+            placeholder="필요한 경우 구체적인 상황을 적어주세요."
+            maxLength={500}
+            value={reportDetail}
+            onChange={(event) => setReportDetail(event.target.value)}
+            maxLengthHint={`${reportDetail.length}/500`}
+          />
+        </div>
+      </Modal>
+      <Modal
+        open={Boolean(imagePreviewUrl)}
+        title="이미지 미리보기"
+        description="원본 비율로 표시됩니다."
+        onClose={() => setImagePreviewUrl(null)}
+        footer={
+          <Button type="button" variant="secondary" onClick={() => setImagePreviewUrl(null)}>
+            닫기
+          </Button>
+        }
+      >
+        {imagePreviewUrl ? (
+          <img className="ms-board-image-preview" src={imagePreviewUrl} alt="첨부 이미지 원본 보기" />
+        ) : null}
+      </Modal>
     </AuthRouteGuard>
   );
 }

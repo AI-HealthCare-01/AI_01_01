@@ -19,7 +19,7 @@ import { AuthRouteGuard, useAuthContext } from "../../../src/features/auth";
 
 function mapError(code: string): string {
   if (code.includes("auth/invalid-email")) {
-    return "새 이메일 형식을 확인해주세요.";
+    return "변경할 이메일 형식을 확인해주세요.";
   }
   if (code.includes("auth/email-already-in-use")) {
     return "이미 사용 중인 이메일입니다.";
@@ -62,9 +62,12 @@ export default function ChangeEmailPage() {
       setSubmitting(true);
       setErrorMessage(null);
       setNotice(null);
-      await changeEmailWithReauth(nextEmail.trim(), password);
+      const normalizedEmail = nextEmail.trim().toLowerCase();
+      await changeEmailWithReauth(normalizedEmail, password);
+      window.sessionStorage.setItem("ms_pending_email_change", normalizedEmail);
       setNotice("새 이메일로 확인 메일을 보냈습니다. 메일 확인 후 다시 진행해주세요.");
       setPassword("");
+      router.push(`/auth/verify-email?source=email-change&pending_email=${encodeURIComponent(normalizedEmail)}`);
     } catch (error) {
       const code = error instanceof Error ? error.message : "unknown_error";
       setErrorMessage(mapError(code));
@@ -88,7 +91,7 @@ export default function ChangeEmailPage() {
               <form className="ms-stack" onSubmit={onSubmit}>
                 <Input label="현재 이메일" value={currentEmail} readOnly />
                 <Input
-                  label="새 이메일"
+                  label="변경할 이메일"
                   type="email"
                   required
                   value={nextEmail}

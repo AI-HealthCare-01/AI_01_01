@@ -32,10 +32,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: Validate AWS auth configuration
+        env:
+          ROLE_ARN: ${{ secrets.AWS_GHA_ROLE_ARN_STAGING }}
+          AWS_ACCESS_KEY_ID_STAGING: ${{ secrets.AWS_ACCESS_KEY_ID_STAGING }}
+          AWS_SECRET_ACCESS_KEY_STAGING: ${{ secrets.AWS_SECRET_ACCESS_KEY_STAGING }}
+        run: |
+          if [ -n "$ROLE_ARN" ]; then
+            echo "Using OIDC role authentication for staging."
+            exit 0
+          fi
+
+          if [ -n "$AWS_ACCESS_KEY_ID_STAGING" ] && [ -n "$AWS_SECRET_ACCESS_KEY_STAGING" ]; then
+            echo "Using static AWS credentials for staging."
+            exit 0
+          fi
+
+          echo "Missing AWS auth configuration for staging."
+          echo "Set AWS_GHA_ROLE_ARN_STAGING or both AWS_ACCESS_KEY_ID_STAGING and AWS_SECRET_ACCESS_KEY_STAGING."
+          exit 1
+
+      - name: Configure AWS credentials via OIDC
+        if: ${{ secrets.AWS_GHA_ROLE_ARN_STAGING != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_GHA_ROLE_ARN_STAGING }}
+          role-session-name: github-actions-staging-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS credentials via static keys
+        if: ${{ secrets.AWS_GHA_ROLE_ARN_STAGING == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_STAGING }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_STAGING }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR

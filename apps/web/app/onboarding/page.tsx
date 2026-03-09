@@ -204,30 +204,56 @@ export default function OnboardingPage() {
 
                 <Card title="동의 설정" description="필수 동의 완료 후 다음 단계로 이동할 수 있습니다.">
                   <div className="ms-stack">
-                    <label className="ms-check-row">
-                      <input
-                        type="checkbox"
-                        checked={sensitiveDataRequired}
-                        onChange={(event) => setSensitiveDataRequired(event.target.checked)}
-                      />
-                      <span>민감정보 처리 동의 (필수)</span>
-                    </label>
-                    <label className="ms-check-row">
-                      <input
-                        type="checkbox"
-                        checked={personalizationOptional}
-                        onChange={(event) => setPersonalizationOptional(event.target.checked)}
-                      />
-                      <span>개인화 추천 동의 (선택)</span>
-                    </label>
-                    <label className="ms-check-row">
-                      <input
-                        type="checkbox"
-                        checked={modelImprovementOptional}
-                        onChange={(event) => setModelImprovementOptional(event.target.checked)}
-                      />
-                      <span>모델 개선/품질 향상 활용 동의 (선택)</span>
-                    </label>
+                    <div className="ms-consent-item">
+                      <label className="ms-check-row">
+                        <input
+                          type="checkbox"
+                          checked={sensitiveDataRequired}
+                          onChange={(event) => setSensitiveDataRequired(event.target.checked)}
+                        />
+                        <span>민감정보 처리 동의 (필수)</span>
+                      </label>
+                      <p className="ms-consent-item__caption">
+                        체크인·일기·심리검사·CBT 기록을 저장해 개인 상태 보기와 안전 신호 확인에 사용합니다.
+                      </p>
+                      <p className="ms-consent-item__caption">
+                        미동의 시 핵심 기능 이용이 제한되어 다음 단계로 진행할 수 없습니다.
+                      </p>
+                    </div>
+
+                    <div className="ms-consent-item">
+                      <label className="ms-check-row">
+                        <input
+                          type="checkbox"
+                          checked={personalizationOptional}
+                          onChange={(event) => setPersonalizationOptional(event.target.checked)}
+                        />
+                        <span>개인화 추천 동의 (선택)</span>
+                      </label>
+                      <p className="ms-consent-item__caption">
+                        최근 활동 기록을 바탕으로 챌린지, 콘텐츠, 루틴 추천 정확도를 높입니다.
+                      </p>
+                      <p className="ms-consent-item__caption">
+                        미동의 시 개인화 추천 대신 기본 추천이 제공됩니다.
+                      </p>
+                    </div>
+
+                    <div className="ms-consent-item">
+                      <label className="ms-check-row">
+                        <input
+                          type="checkbox"
+                          checked={modelImprovementOptional}
+                          onChange={(event) => setModelImprovementOptional(event.target.checked)}
+                        />
+                        <span>모델 개선/품질 향상 활용 동의 (선택)</span>
+                      </label>
+                      <p className="ms-consent-item__caption">
+                        서비스 품질 개선과 성능 점검을 위해 데이터가 통계·개선 분석에 활용될 수 있습니다.
+                      </p>
+                      <p className="ms-consent-item__caption">
+                        개인 식별 정보는 분리하여 최소 범위로 처리하며, 미동의해도 기본 서비스 이용은 가능합니다.
+                      </p>
+                    </div>
                   </div>
                 </Card>
 
@@ -240,8 +266,18 @@ export default function OnboardingPage() {
                 <div className="ms-stack">
                   <Banner
                     variant="info"
+                    title="검사 구성"
+                    description="우울(PHQ-9) 9문항, 불안(GAD-7) 7문항, 수면(ISI) 7문항으로 최근 2주 상태를 자기보고 방식으로 점검합니다."
+                  />
+                  <Banner
+                    variant="warning"
+                    title="중요 고지"
+                    description="본 검사는 의료적 진단이나 치료를 대체하지 않습니다. 증상이 심하거나 위기 상황이면 의료기관·전문가 상담을 우선 이용해주세요."
+                  />
+                  <Banner
+                    variant="info"
                     title="진행 안내"
-                    description="문항별 선택 응답을 완료하면 온보딩이 종료되고 홈으로 이동합니다."
+                    description="총 23문항을 모두 선택하면 결과가 저장되고 온보딩이 종료됩니다."
                   />
                   <Button type="button" fullWidth onClick={() => router.push("/onboarding/assessment")}>
                     초기 진단 검사 시작

@@ -46,7 +46,7 @@ const genderOptions = [
 ];
 
 export default function MyPageProfilePage() {
-  const { firebaseUser, session, sendPasswordReset } = useAuthContext();
+  const { firebaseUser } = useAuthContext();
 
   const [nickname, setNickname] = useState("");
   const [coachName, setCoachName] = useState("");
@@ -54,7 +54,6 @@ export default function MyPageProfilePage() {
   const [gender, setGender] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [sendingReset, setSendingReset] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -102,24 +101,6 @@ export default function MyPageProfilePage() {
       setErrorMessage(parseError(error));
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleSendReset = async () => {
-    if (!session?.account.email) {
-      return;
-    }
-
-    try {
-      setSendingReset(true);
-      setMessage(null);
-      setErrorMessage(null);
-      await sendPasswordReset(session.account.email);
-      setMessage("비밀번호 재설정 메일을 전송했습니다.");
-    } catch (error) {
-      setErrorMessage(parseError(error));
-    } finally {
-      setSendingReset(false);
     }
   };
 
@@ -177,19 +158,6 @@ export default function MyPageProfilePage() {
                   </div>
                 </Card>
               )}
-
-              <Card title="재설정 메일" description="Firebase Auth 비밀번호 재설정 메일을 사용합니다.">
-                <Input
-                  label="계정 이메일"
-                  value={session?.account.email ?? ""}
-                  readOnly
-                />
-                <div className="ms-row">
-                  <Button variant="secondary" onClick={handleSendReset} loading={sendingReset}>
-                    재설정 메일 보내기
-                  </Button>
-                </div>
-              </Card>
             </MyPageTabShell>
           </SectionContainer>
         </PageContainer>

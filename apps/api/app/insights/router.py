@@ -8,7 +8,6 @@ from fastapi.responses import StreamingResponse
 from .deps import get_insights_store, get_verified_user_id
 from .models import (
     ActivityDashboardResponse,
-    CbtConversationBootstrapResponse,
     CbtConversationTurnRequest,
     CbtConversationTurnResponse,
     CbtReflectionUpsertRequest,
@@ -19,9 +18,9 @@ from .models import (
     CbtTodoUpsertRequest,
     DashboardSymptomMode,
     ReportSummaryExportRequest,
-    ReportSummaryResponse,
     ReportSummarySaveRequest,
     ReportSummarySaveResponse,
+    ReportSummaryResponse,
     SymptomDashboardResponse,
 )
 from .store import InsightsStore
@@ -65,17 +64,6 @@ def create_cbt_conversation_turn(
 ) -> CbtConversationTurnResponse:
     try:
         return store.generate_cbt_turn(user_id, payload)
-    except ValueError as error:
-        raise _map_store_error(error) from error
-
-
-@router.get("/v1/cbt/conversation/bootstrap", response_model=CbtConversationBootstrapResponse)
-def get_cbt_conversation_bootstrap(
-    user_id: str = Depends(get_verified_user_id),
-    store: InsightsStore = Depends(get_insights_store),
-) -> CbtConversationBootstrapResponse:
-    try:
-        return store.get_cbt_conversation_bootstrap(user_id)
     except ValueError as error:
         raise _map_store_error(error) from error
 

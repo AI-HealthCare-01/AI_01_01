@@ -13,7 +13,6 @@ import {
 import {
   createUserWithEmailAndPassword,
   EmailAuthProvider,
-  fetchSignInMethodsForEmail,
   onAuthStateChanged,
   reauthenticateWithCredential,
   sendEmailVerification,
@@ -29,12 +28,11 @@ import {
 import {
   ApiError,
   bootstrapSession,
-  checkChangeEmailAvailability,
   completeBaselineAssessment,
   saveOnboardingProfile,
   signupBootstrap
 } from "./api-client";
-import { getFirebaseAuthClient, isAuthEmulatorEnabled, isFirebaseConfigured } from "./firebase";
+import { getFirebaseAuthClient, isFirebaseConfigured } from "./firebase";
 import { clearSessionCookies, setSessionCookies } from "./session-cookie";
 import type {
   BaselineAssessmentRequest,
@@ -54,7 +52,6 @@ interface AuthContextValue {
   signUpWithEmail: (email: string, password: string, request: SignupBootstrapRequest) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<SessionContract | null>;
   changeEmailWithReauth: (newEmail: string, currentPassword: string) => Promise<void>;
-  deleteAccountWithReauth: (currentPassword: string) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   saveOnboardingProfile: (request: OnboardingProfileRequest) => Promise<SessionContract>;
@@ -74,8 +71,7 @@ function isContinueUrlError(error: unknown): boolean {
   return (
     code.includes("auth/invalid-continue-uri") ||
     code.includes("auth/unauthorized-continue-uri") ||
-    code.includes("auth/missing-continue-uri") ||
-    code.includes("auth/invalid-dynamic-link-domain")
+    code.includes("auth/missing-continue-uri")
   );
 }
 
@@ -83,10 +79,6 @@ async function sendVerificationWithContinueFallback(
   user: User,
   continueUrl: string | undefined
 ): Promise<void> {
-  const languageCode = (process.env.NEXT_PUBLIC_FIREBASE_AUTH_LANGUAGE_CODE ?? "ko").trim() || "ko";
-  const auth = getFirebaseAuthClient();
-  auth.languageCode = languageCode;
-
   if (!continueUrl) {
     await sendEmailVerification(user);
     return;
@@ -107,9 +99,6 @@ async function sendPasswordResetWithContinueFallback(
   email: string,
   continueUrl: string | undefined
 ): Promise<void> {
-  const languageCode = (process.env.NEXT_PUBLIC_FIREBASE_AUTH_LANGUAGE_CODE ?? "ko").trim() || "ko";
-  auth.languageCode = languageCode;
-
   if (!continueUrl) {
     await sendPasswordResetEmail(auth, email);
     return;
@@ -138,68 +127,13 @@ function mapErrorCode(error: unknown): string {
   return "unknown_error";
 }
 
-function isLikelyInvalidCredentialError(code: string): boolean {
-  return code.includes("auth/invalid-credential") || code.includes("auth/invalid-login-credentials");
-}
-
-async function classifySignInErrorCode(
-  auth: ReturnType<typeof getFirebaseAuthClient>,
-  email: string,
-  rawCode: string
-): Promise<string> {
-  if (!isLikelyInvalidCredentialError(rawCode)) {
-    return rawCode;
-  }
-
-  try {
-    const methods = await fetchSignInMethodsForEmail(auth, email);
-    const normalizedMethods = methods.map((method) => method.toLowerCase());
-
-    if (normalizedMethods.includes("password")) {
-      return "auth/wrong-password";
-    }
-
-    if (normalizedMethods.length > 0) {
-      return "auth/account-exists-with-different-credential";
-    }
-
-    // Firebase Email Enumeration Protection이 활성화된 프로젝트는
-    // fetchSignInMethodsForEmail이 빈 배열을 반환할 수 있어 원인 단정이 어렵다.
-    return rawCode;
-  } catch (lookupError) {
-    const lookupCode = mapErrorCode(lookupError);
-    if (lookupCode.includes("auth/too-many-requests")) {
-      return "auth/too-many-requests";
-    }
-    if (lookupCode.includes("auth/network-request-failed")) {
-      return "auth/network-request-failed";
-    }
-    return rawCode;
-  }
-}
-
-function isLocalHostUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    return parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
-  } catch {
-    return false;
-  }
-}
-
 function resolveContinueUrl(pathname: string): string | undefined {
   const baseFromEnv = process.env.NEXT_PUBLIC_AUTH_CONTINUE_BASE_URL?.trim();
   if (baseFromEnv) {
-    if (!isAuthEmulatorEnabled() && isLocalHostUrl(baseFromEnv)) {
-      return undefined;
-    }
     return new URL(pathname, baseFromEnv).toString();
   }
 
   if (typeof window !== "undefined") {
-    if (!isAuthEmulatorEnabled() && isLocalHostUrl(window.location.origin)) {
-      return undefined;
-    }
     return new URL(pathname, window.location.origin).toString();
   }
 
@@ -268,34 +202,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUpWithEmail = useCallback(
     async (email: string, password: string, request: SignupBootstrapRequest) => {
       const auth = getFirebaseAuthClient();
-      const continueUrl = resolveContinueUrl("/auth/email-action-complete?source=email-action");
-      let credential: Awaited<ReturnType<typeof createUserWithEmailAndPassword>> | null = null;
-
-      try {
-        credential = await createUserWithEmailAndPassword(auth, email, password);
-      } catch (error) {
-        const code = mapErrorCode(error);
-        if (!code.includes("auth/email-already-in-use")) {
-          throw error;
-        }
-
-        try {
-          const existingCredential = await signInWithEmailAndPassword(auth, email, password);
-          const existingUser = existingCredential.user;
-          await existingUser.reload();
-          if (!existingUser.emailVerified) {
-            await sendVerificationWithContinueFallback(existingUser, continueUrl);
-            await bootstrapForUser(existingUser);
-            return;
-          }
-          await signOut(auth);
-          throw new Error("auth/email-already-in-use");
-        } catch (signInError) {
-          throw new Error("auth/email-already-in-use");
-        }
-      }
-
+      const credential = await createUserWithEmailAndPassword(auth, email, password);
       const user = credential.user;
+      const continueUrl = resolveContinueUrl("/auth/verify-email?source=email-action");
       let signupShellSaved = false;
 
       try {
@@ -325,14 +234,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithEmail = useCallback(
     async (email: string, password: string): Promise<SessionContract | null> => {
       const auth = getFirebaseAuthClient();
-      try {
-        const credential = await signInWithEmailAndPassword(auth, email, password);
-        return bootstrapForUser(credential.user);
-      } catch (error) {
-        const rawCode = mapErrorCode(error);
-        const classifiedCode = await classifySignInErrorCode(auth, email, rawCode);
-        throw new Error(classifiedCode);
-      }
+      const credential = await signInWithEmailAndPassword(auth, email, password);
+      return bootstrapForUser(credential.user);
     },
     [bootstrapForUser]
   );
@@ -343,27 +246,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error("auth/no-current-user");
       }
 
-      const auth = getFirebaseAuthClient();
-      const normalizedCurrent = firebaseUser.email.trim().toLowerCase();
-      const normalizedTarget = newEmail.trim().toLowerCase();
-
-      if (normalizedTarget !== normalizedCurrent) {
-        const isAvailable = await checkChangeEmailAvailability(firebaseUser, newEmail);
-        if (!isAvailable) {
-          throw new Error("auth/email-already-in-use");
-        }
-
-        // Firebase settings can vary by project. Keep this as a secondary guard.
-        const signInMethods = await fetchSignInMethodsForEmail(auth, newEmail);
-        if (signInMethods.length > 0) {
-          throw new Error("auth/email-already-in-use");
-        }
-      }
-
       const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
       await reauthenticateWithCredential(firebaseUser, credential);
 
-      const continueUrl = resolveContinueUrl("/auth/email-action-complete?source=email-action");
+      const continueUrl = resolveContinueUrl("/auth/verify-email?source=email-action");
       if (!continueUrl) {
         await verifyBeforeUpdateEmail(firebaseUser, newEmail);
         return;
@@ -381,26 +267,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [firebaseUser]
   );
 
-  const deleteAccountWithReauth = useCallback(
-    async (currentPassword: string) => {
-      if (!firebaseUser || !firebaseUser.email) {
-        throw new Error("auth/no-current-user");
-      }
-
-      const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
-      await reauthenticateWithCredential(firebaseUser, credential);
-      await deleteUser(firebaseUser);
-      setSession(null);
-      clearSessionCookies();
-    },
-    [firebaseUser]
-  );
-
   const resendVerificationEmail = useCallback(async () => {
     if (!firebaseUser) {
       throw new Error("auth/no-current-user");
     }
-    const continueUrl = resolveContinueUrl("/auth/email-action-complete?source=email-action");
+    const continueUrl = resolveContinueUrl("/auth/verify-email?source=email-action");
     await sendVerificationWithContinueFallback(firebaseUser, continueUrl);
   }, [firebaseUser]);
 
@@ -459,7 +330,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUpWithEmail,
       signInWithEmail,
       changeEmailWithReauth,
-      deleteAccountWithReauth,
       resendVerificationEmail,
       sendPasswordReset,
       saveOnboardingProfile: saveProfile,
@@ -476,7 +346,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       phase,
       refreshSession,
       changeEmailWithReauth,
-      deleteAccountWithReauth,
       resendVerificationEmail,
       saveProfile,
       sendPasswordReset,

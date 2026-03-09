@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
 import {
   AppShell,
@@ -14,49 +14,109 @@ import {
   Input,
   PageContainer,
   SectionContainer,
+  Select,
   Textarea,
 } from "../../components/ui";
 import { AuthRouteGuard, useAuthContext } from "../auth";
 import {
   CoreApiError,
-  getCbtConversationBootstrap,
   createCbtConversationTurn,
   createCbtSession,
   listCbtSessions,
   listPendingCbtReflections,
   saveCbtSessionReflection,
+  saveCbtSessionTodo,
   type CbtConversationMessage,
-  type CbtQuickReplyItem,
   type CbtSessionResponse,
   type CbtSessionStage,
-  type CbtConversationTurnResponse,
 } from "../core-inputs";
 
 type CbtTab = "chat" | "reflection" | "history";
+type ActionDecision = "accept" | "decline";
 type YearMonth = { year: number; month: number };
 
 const CBT_STEPS = [
-  { key: "situation", label: "상황" },
-  { key: "emotion", label: "감정" },
-  { key: "thought", label: "생각" },
-  { key: "evidence", label: "근거" },
-  { key: "alternative_plan", label: "새 생각" },
-  { key: "summary", label: "약속·요약" },
+  { key: "situation", label: "상황 정리" },
+  { key: "thought", label: "생각 · 감정 파악" },
+  { key: "evidence", label: "근거 재검토" },
+  { key: "reframe", label: "균형 문장 만들기" },
+  { key: "action", label: "다음 행동 계획" },
 ] as const;
-
-const CBT_STAGE_INDEX: Record<string, number> = {
-  situation: 0,
-  emotion: 1,
-  thought: 2,
-  evidence: 3,
-  alternative_plan: 4,
-  summary: 5,
-  reframe: 4,
-  action: 4,
-};
 
 const TODO_NONE_LABEL = "정하지 않음";
 const CBT_HISTORY_WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
+
+const ACTION_SUPPORT_HINTS: string[] = [
+  "예: 10분 산책, 물 한 잔 마시기, 창가에서 3분 호흡처럼 아주 작은 행동부터 정해보세요.",
+  "예: '오늘 20:30에 방에서 5분 스트레칭'처럼 시간·장소를 붙이면 실행이 쉬워집니다.",
+  "완벽하게 하려 하지 말고 '오늘 1번만 해보기' 목표로 시작해도 충분합니다.",
+];
+
+const ACTION_DIFFICULTY_KEYWORDS = [
+  "모르겠",
+  "어려",
+  "막막",
+  "부담",
+  "자신 없",
+  "못하",
+  "힘들",
+  "안될",
+] as const;
+
+const PLANNER_ACTION_LABEL: Record<string, string> = {
+  review_evidence: "생각 근거 정리",
+  behavior_experiment: "작은 행동 실험",
+  grounding: "감각 안정",
+  activity_scheduling: "활동 스케줄링",
+  sleep_anchor: "수면 루틴",
+  support_contact: "지지 자원 연결",
+};
+
+interface CbtRecommendation {
+  kind: "external" | "challenge";
+  title: string;
+  description: string;
+  route: string | null;
+}
+
+const ACTION_RECOMMENDATIONS: Record<string, CbtRecommendation> = {
+  review_evidence: {
+    kind: "external",
+    title: "생각 근거 정리",
+    description: "오늘 있었던 장면에서 그 생각이 맞다고 느끼는 이유와 다르게 볼 이유를 1개씩 적어보세요.",
+    route: null,
+  },
+  behavior_experiment: {
+    kind: "external",
+    title: "작은 행동 실험",
+    description: "부담이 낮은 행동을 1회 시도하고 실제 결과를 짧게 메모해보세요.",
+    route: null,
+  },
+  grounding: {
+    kind: "challenge",
+    title: "감각 안정 챌린지",
+    description: "호흡/감각 안정 루틴을 통해 긴장을 낮추는 챌린지를 추천합니다.",
+    route: "/challenge",
+  },
+  activity_scheduling: {
+    kind: "challenge",
+    title: "산책 10분 챌린지",
+    description: "짧은 활동 스케줄링으로 리듬을 회복하는 챌린지를 추천합니다.",
+    route: "/challenge",
+  },
+  sleep_anchor: {
+    kind: "challenge",
+    title: "수면 패턴 챌린지",
+    description: "취침/기상 고정 루틴을 만드는 수면 챌린지를 추천합니다.",
+    route: "/challenge",
+  },
+  support_contact: {
+    kind: "external",
+    title: "지지자 연결",
+    description: "믿을 수 있는 지지자에게 현재 상태를 짧게 공유해보세요.",
+    route: null,
+  },
+};
 
 const RISK_LEVEL_META: Record<
   0 | 1 | 2 | 3,
@@ -155,6 +215,19 @@ function buildCalendarCells(cursor: YearMonth): Array<{ date: string | null; day
   return cells;
 }
 
+function listCount(source: Record<string, unknown>, key: string): number {
+  const value = source[key];
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function hasText(value: unknown): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function containsAnyKeyword(text: string, keywords: readonly string[]): boolean {
+  return keywords.some((keyword) => text.includes(keyword));
+}
+
 function splitIntoChunks(source: string, chunkSize: number): string[] {
   if (source.length <= chunkSize) {
     return [source];
@@ -166,13 +239,6 @@ function splitIntoChunks(source: string, chunkSize: number): string[] {
     cursor += chunkSize;
   }
   return chunks;
-}
-
-function createLocalMessageId(prefix: "usr" | "asst"): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `${prefix}_${crypto.randomUUID()}`;
-  }
-  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
 }
 
 function normalizeScore(value: number | null | undefined, minimum: number, maximum: number): number | null {
@@ -204,25 +270,108 @@ function getStateSummaryLines(session: CbtSessionResponse): {
   return { thought, belief, balanced, evidence };
 }
 
+function buildStageHintPair(
+  stage: CbtSessionStage,
+  draftState: Record<string, unknown>,
+): [string, string] {
+  const thoughtCount = listCount(draftState, "automatic_thoughts");
+  const emotionCount = listCount(draftState, "emotions");
+  const beliefCount =
+    listCount(draftState, "intermediate_belief_hypotheses") +
+    listCount(draftState, "core_belief_hypotheses");
+  const evidenceForCount = listCount(draftState, "evidence_for");
+  const evidenceAgainstCount = listCount(draftState, "evidence_against");
+  const hasBalanced = hasText(draftState.balanced_statement);
+  const behaviorCount = listCount(draftState, "behaviors");
+
+  if (stage === "situation") {
+    return [
+      "오늘 가장 힘들었던 장면을 [언제·어디서·무슨 일] 순서로 짧게 적어보세요.",
+      "완벽하게 설명하지 않아도 됩니다. 한 장면만 구체적으로 적으면 충분해요.",
+    ];
+  }
+  if (stage === "thought") {
+    if (thoughtCount <= 0) {
+      return [
+        "그 장면에서 머릿속에 가장 먼저 스친 생각을 한 문장으로 적어보세요.",
+        "사실 설명보다, 그때 내 안에서 바로 떠오른 생각을 적는 게 핵심이에요.",
+      ];
+    }
+    if (emotionCount <= 0) {
+      return [
+        "그 생각이 들었을 때 올라온 감정 1~2개와 강도(0~100)를 같이 적어보세요.",
+        "예: 불안 75, 답답함 60처럼 숫자를 붙이면 변화 확인이 쉬워집니다.",
+      ];
+    }
+    if (beliefCount <= 0) {
+      return [
+        "왜 그런 생각이 강해졌는지, 내 기준이나 기대와 연결해 한 문장으로 적어보세요.",
+        "일시적 생각에서 한 단계 깊은 믿음으로 내려가면 정리가 더 선명해집니다.",
+      ];
+    }
+    return [
+      "지금 정리된 믿음이 현재 내 마음과 맞는지, 다르게 느껴지는 부분이 있는지 적어보세요.",
+      "맞지 않는 부분이 있다면 어떤 점이 다른지 짚어주면 더 정확히 다듬을 수 있어요.",
+    ];
+  }
+  if (stage === "evidence") {
+    if (evidenceForCount <= 0) {
+      return [
+        "그 생각이 타당하다고 느껴지는 이유를 먼저 1~2개 적어보세요.",
+        "지금은 '왜 맞다고 느끼는지'에만 집중해서 정리해도 괜찮아요.",
+      ];
+    }
+    if (evidenceAgainstCount <= 0) {
+      return [
+        "하지만 이 생각이 틀렸다고 가정하면, 어떤 근거가 떠오르는지 적어보세요.",
+        "처음에는 어색해도 괜찮아요. 작아도 반대 근거를 하나 찾아보는 게 중요해요.",
+      ];
+    }
+    return [
+      "양쪽 근거를 함께 놓고 보면, 어느 쪽에 치우치지 않는 해석을 만들 수 있습니다.",
+      "이제 그 해석을 바탕으로 나에게 도움이 되는 생각을 한 문장으로 이어가보세요.",
+    ];
+  }
+  if (stage === "reframe") {
+    if (!hasBalanced) {
+      return [
+        "핵심 믿음 + 맞다고 느낀 이유 + 다르게 볼 이유를 반영해 교정 문장을 적어보세요.",
+        "핵심 믿음을 반복하기보다, 지금의 근거를 담아 현실적으로 말하는 문장이 좋아요.",
+      ];
+    }
+    return [
+      "작성한 교정 문장이 지나치게 단정적이면 '항상/절대' 표현을 줄여 다듬어보세요.",
+      "읽었을 때 숨이 조금 편해지는지 확인하면서 문장을 조정해보세요.",
+    ];
+  }
+  if (behaviorCount <= 0) {
+    return [
+      "오늘 바로 해볼 수 있는 작은 행동 1개를 시간과 장소까지 붙여 적어보세요.",
+      "행동은 작을수록 좋습니다. 부담이 낮아야 실제 실행으로 이어집니다.",
+    ];
+  }
+  return [
+    "지금 정한 행동을 오늘 실제로 해볼지 결정해보세요.",
+    "결정을 마치면 오늘 대화를 짧게 정리하고 마무리할 수 있어요.",
+  ];
+}
+
 export default function CbtSessionScreen() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { firebaseUser, session: authSession } = useAuthContext();
   const threadRef = useRef<HTMLDivElement | null>(null);
   const isMountedRef = useRef(true);
-  const seenAssistantMessageIdsRef = useRef<Set<string>>(new Set());
 
   const [activeTab, setActiveTab] = useState<CbtTab>("chat");
-  const [messages, setMessages] = useState<CbtConversationMessage[]>([]);
+  const [messages, setMessages] = useState<CbtConversationMessage[]>([
+    {
+      role: "assistant",
+      content:
+        "안녕하세요. 상황 정리부터 시작해볼게요. 오늘 가장 부담됐던 장면을 짧게 말해주셔도 괜찮아요.",
+    },
+  ]);
   const [draftState, setDraftState] = useState<Record<string, unknown>>({});
   const [plannerAction, setPlannerAction] = useState<string | null>(null);
-  const [currentStage, setCurrentStage] = useState<CbtSessionStage>("situation");
-  const [currentSubphase, setCurrentSubphase] = useState<string>("topic");
-  const [currentPhaseIndex, setCurrentPhaseIndex] = useState<number>(0);
-  const [quickReplies, setQuickReplies] = useState<CbtQuickReplyItem[]>([]);
-  const [actionLinks, setActionLinks] = useState<Array<{ label: string; route: string }>>([]);
-  const [requiresTodayRecord, setRequiresTodayRecord] = useState(false);
-  const [todayRecordRoute, setTodayRecordRoute] = useState<string | null>(null);
   const [riskLevel, setRiskLevel] = useState(0);
   const [safetyMessage, setSafetyMessage] = useState<string | null>(null);
 
@@ -245,6 +394,16 @@ export default function CbtSessionScreen() {
   const [savedSessions, setSavedSessions] = useState<CbtSessionResponse[]>([]);
   const [pendingReflections, setPendingReflections] = useState<CbtSessionResponse[]>([]);
   const [loadingCollections, setLoadingCollections] = useState(false);
+  const [savingTodo, setSavingTodo] = useState(false);
+  const [manualTodoTitle, setManualTodoTitle] = useState("");
+  const [manualTodoDescription, setManualTodoDescription] = useState("");
+  const [manualTodoKind, setManualTodoKind] = useState<"external" | "challenge">("external");
+
+  const [actionDecision, setActionDecision] = useState<ActionDecision>("accept");
+  const [selectedRecommendationKey, setSelectedRecommendationKey] = useState<string>("");
+  const [customActionTitle, setCustomActionTitle] = useState("");
+  const [customActionDescription, setCustomActionDescription] = useState("");
+  const [actionSelectionTouched, setActionSelectionTouched] = useState(false);
 
   const [selectedReflectionSessionId, setSelectedReflectionSessionId] = useState<string | null>(null);
   const [reflectionPerformed, setReflectionPerformed] = useState<"" | "yes" | "no">("");
@@ -261,44 +420,111 @@ export default function CbtSessionScreen() {
     () => messages.filter((item) => item.role === "user").length,
     [messages],
   );
-  const snapshot = (draftState.profile_snapshot ?? {}) as Record<string, unknown>;
-  const coachName =
-    (typeof snapshot.coach_nickname === "string" && snapshot.coach_nickname.trim()) ||
-    authSession?.account.coach_name ||
-    "마음코치";
+  const coachName = authSession?.account.coach_name || "마음코치";
   const userNickname =
-    (typeof snapshot.user_nickname === "string" && snapshot.user_nickname.trim()) ||
     authSession?.account.nickname?.trim() ||
     firebaseUser?.displayName?.trim() ||
-    "나";
+    "사용자";
+
+  const userConversationText = useMemo(
+    () =>
+      messages
+        .filter((item) => item.role === "user")
+        .map((item) => item.content.toLowerCase())
+        .join(" "),
+    [messages],
+  );
+  const latestUserMessage = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role === "user") {
+        return message.content.toLowerCase();
+      }
+    }
+    return "";
+  }, [messages]);
+
+  const stepCompletion = useMemo(() => {
+    const situationDone = hasText(draftState.situation) || userMessageCount >= 1;
+    const thoughtDone =
+      listCount(draftState, "automatic_thoughts") > 0 &&
+      listCount(draftState, "emotions") > 0 &&
+      (listCount(draftState, "intermediate_belief_hypotheses") > 0 ||
+        listCount(draftState, "core_belief_hypotheses") > 0);
+    const evidenceDone = listCount(draftState, "evidence_for") > 0 && listCount(draftState, "evidence_against") > 0;
+    const reframeDone =
+      hasText(draftState.balanced_statement) ||
+      listCount(draftState, "distortion_candidates") > 0 ||
+      listCount(draftState, "intermediate_belief_hypotheses") > 0 ||
+      listCount(draftState, "core_belief_hypotheses") > 0;
+    const actionDone = listCount(draftState, "behaviors") > 0;
+
+    const sequentialThoughtDone = situationDone && thoughtDone;
+    const sequentialEvidenceDone = sequentialThoughtDone && evidenceDone;
+    const sequentialReframeDone = sequentialEvidenceDone && reframeDone;
+    const sequentialActionDone = sequentialReframeDone && actionDone;
+
+    return [
+      situationDone,
+      sequentialThoughtDone,
+      sequentialEvidenceDone,
+      sequentialReframeDone,
+      sequentialActionDone,
+    ];
+  }, [draftState, userMessageCount]);
 
   const activeStepIndex = useMemo(() => {
-    if (savedSession || conversationClosed) {
+    if (savedSession) {
       return CBT_STEPS.length - 1;
     }
-    const serverIndex = Number.isFinite(currentPhaseIndex) ? currentPhaseIndex : CBT_STAGE_INDEX[currentStage] ?? 0;
-    return Math.max(0, Math.min(CBT_STEPS.length - 1, serverIndex));
-  }, [conversationClosed, currentPhaseIndex, currentStage, savedSession]);
+    const firstPending = stepCompletion.findIndex((done) => !done);
+    if (firstPending === -1) {
+      return CBT_STEPS.length - 1;
+    }
+    return firstPending;
+  }, [savedSession, stepCompletion]);
 
+  const activeStage = CBT_STEPS[activeStepIndex]?.key ?? "situation";
+  const allStepsComplete = stepCompletion.every(Boolean);
+  const actionDiscussionReady =
+    listCount(draftState, "behaviors") > 0 ||
+    containsAnyKeyword(userConversationText, ["실천", "계획", "해볼", "하겠습니다", "시도", "언제"]);
+  const recommendationReady = Boolean(plannerAction) && allStepsComplete && actionDiscussionReady;
+  const recommendation = plannerAction && recommendationReady ? ACTION_RECOMMENDATIONS[plannerAction] ?? null : null;
   const safeRiskLevel = Math.max(0, Math.min(3, riskLevel)) as 0 | 1 | 2 | 3;
   const riskMeta = RISK_LEVEL_META[safeRiskLevel];
-  const draftCommitmentText = useMemo(() => {
-    const raw = draftState.commitment_text;
-    if (typeof raw !== "string") {
-      return "";
+
+  const hintStage = activeStage as CbtSessionStage;
+  const actionNeedsSupport =
+    hintStage === "action" &&
+    containsAnyKeyword(latestUserMessage, ACTION_DIFFICULTY_KEYWORDS);
+  const actionSupportHintLimit = useMemo(() => {
+    if (!actionNeedsSupport) {
+      return 0;
     }
-    return raw.replace(/^[^:]{1,20}:\s*/, "").trim();
-  }, [draftState.commitment_text]);
-  const draftCommitmentType = useMemo(() => {
-    const raw = draftState.commitment_type;
-    return typeof raw === "string" ? raw : "";
-  }, [draftState.commitment_type]);
-  const draftTodoRoute = useMemo(() => {
-    if (!draftCommitmentText) {
-      return null;
-    }
-    return /(산책|호흡|수면|감각|운동|햇빛|루틴|패턴)/.test(draftCommitmentText) ? "/challenge" : null;
-  }, [draftCommitmentText]);
+    const matchedCount = ACTION_DIFFICULTY_KEYWORDS.filter((keyword) => latestUserMessage.includes(keyword)).length;
+    return matchedCount >= 2 ? 3 : 2;
+  }, [actionNeedsSupport, latestUserMessage]);
+  const stageHints = useMemo(
+    () => {
+      const baseHints = buildStageHintPair(hintStage, draftState);
+      if (hintStage !== "action" || !actionNeedsSupport) {
+        return baseHints.slice(0, 2);
+      }
+      const actionSupportHints = ACTION_SUPPORT_HINTS.slice(0, Math.max(2, actionSupportHintLimit));
+      return [...baseHints, ...actionSupportHints].slice(0, 5);
+    },
+    [actionNeedsSupport, actionSupportHintLimit, draftState, hintStage],
+  );
+
+  const recommendationSelectOptions = useMemo(() => {
+    const options = Object.entries(ACTION_RECOMMENDATIONS).map(([key, item]) => ({
+      label: item.title,
+      value: key,
+    }));
+    options.push({ label: "직접 입력", value: "custom" });
+    return options;
+  }, []);
 
   const selectedReflection = useMemo(
     () =>
@@ -359,7 +585,13 @@ export default function CbtSessionScreen() {
     return historyRecentSessions.find((item) => item.session_id === historySelectedSessionId) ?? historyRecentSessions[0];
   }, [historyRecentSessions, historySelectedSessionId]);
 
-  const renderSessionRecord = (session: CbtSessionResponse, options?: { index?: number }) => {
+  const renderSessionRecord = (
+    session: CbtSessionResponse,
+    options?: {
+      index?: number;
+      showTodoEditorWhenNone?: boolean;
+    },
+  ) => {
     const summaryLines = getStateSummaryLines(session);
     const reflectionStatusLabel =
       session.summary.reflection_status === "completed"
@@ -419,6 +651,42 @@ export default function CbtSessionScreen() {
           </div>
         ) : null}
 
+        {options?.showTodoEditorWhenNone && session.summary.selected_action_kind === "none" ? (
+          <Card
+            title="TO DO 직접 추가"
+            description="이번 세션에 연결할 TO DO를 추가하면 회고하기 목록에 자동 반영됩니다."
+          >
+            <div className="ms-stack">
+              <Input
+                label="TO DO 제목"
+                placeholder="예: 오늘 저녁 8시에 10분 산책하기"
+                value={manualTodoTitle}
+                onChange={(event) => setManualTodoTitle(event.target.value)}
+              />
+              <Select
+                label="유형"
+                value={manualTodoKind}
+                onChange={(event) => setManualTodoKind(event.target.value as "external" | "challenge")}
+                options={[
+                  { label: "일반 행동", value: "external" },
+                  { label: "챌린지 연결", value: "challenge" },
+                ]}
+              />
+              <Textarea
+                label="설명(선택)"
+                rows={3}
+                placeholder="행동 목표나 실행 포인트를 적어주세요."
+                value={manualTodoDescription}
+                onChange={(event) => setManualTodoDescription(event.target.value)}
+              />
+              <div className="ms-row">
+                <Button onClick={() => void saveTodoForSession()} loading={savingTodo}>
+                  TO DO 추가
+                </Button>
+              </div>
+            </div>
+          </Card>
+        ) : null}
       </article>
     );
   };
@@ -435,6 +703,14 @@ export default function CbtSessionScreen() {
       setActiveTab(requestedTab);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!recommendationReady || !plannerAction || actionSelectionTouched) {
+      return;
+    }
+    setSelectedRecommendationKey(plannerAction);
+    setActionDecision("accept");
+  }, [actionSelectionTouched, plannerAction, recommendationReady]);
 
   useEffect(() => {
     if (!selectedReflection && pendingReflections.length > 0) {
@@ -521,145 +797,16 @@ export default function CbtSessionScreen() {
       return;
     }
     void loadCollections();
-    void (async () => {
-      try {
-        const bootstrap = await getCbtConversationBootstrap(firebaseUser);
-        if (!isMountedRef.current) {
-          return;
-        }
-        setDraftState(bootstrap.structured_state_draft);
-        setCurrentStage(bootstrap.current_stage);
-        setCurrentSubphase(bootstrap.subphase_key);
-        setCurrentPhaseIndex(bootstrap.phase_index);
-        setQuickReplies(bootstrap.quick_replies);
-        setActionLinks(bootstrap.action_links);
-        setPlannerAction("review_evidence");
-        setRiskLevel(0);
-        setSafetyMessage(null);
-        setEmotionPre(null);
-        setEmotionPost(null);
-        setBeliefPre(null);
-        setBeliefPost(null);
-        setHomeworkCommitment(null);
-        setHelpfulness(null);
-        setRequiresTodayRecord(bootstrap.requires_today_record);
-        setTodayRecordRoute(bootstrap.today_record_route);
-        seenAssistantMessageIdsRef.current.clear();
-        for (const item of bootstrap.assistant_messages) {
-          if (item.message_id && item.message_id.trim()) {
-            seenAssistantMessageIdsRef.current.add(item.message_id.trim());
-          }
-        }
-        setMessages(
-          bootstrap.assistant_messages.map((item) => ({
-            ...item,
-            sender_name: item.sender_name || coachName,
-            message_id: item.message_id || createLocalMessageId("asst"),
-          })),
-        );
-        setConversationClosed(false);
-        setSavedSession(null);
-        setNoticeMessage(null);
-      } catch (error) {
-        if (isMountedRef.current) {
-          setErrorMessage(parseError(error));
-        }
-      }
-    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firebaseUser]);
 
-  const applyTurnState = (
-    turn: Pick<
-      CbtConversationTurnResponse,
-      | "structured_state_draft"
-      | "planner_action"
-      | "risk_level"
-      | "safety_message"
-      | "emotion_intensity_pre_0_100"
-      | "emotion_intensity_post_0_100"
-      | "belief_pre_0_100"
-      | "belief_post_0_100"
-      | "homework_commitment_0_10"
-      | "session_helpfulness_0_10"
-      | "current_stage"
-      | "phase_key"
-      | "subphase_key"
-      | "phase_index"
-      | "quick_replies"
-      | "action_links"
-      | "conversation_closed"
-      | "requires_today_record"
-      | "today_record_route"
-    >,
-  ) => {
-    setDraftState(turn.structured_state_draft);
-    setPlannerAction(turn.planner_action);
-    setRiskLevel(turn.risk_level);
-    setSafetyMessage(turn.safety_message);
-    setCurrentStage(turn.phase_key || turn.current_stage);
-    setCurrentSubphase(turn.subphase_key || "main");
-    setCurrentPhaseIndex(turn.phase_index);
-    setQuickReplies(turn.quick_replies);
-    setActionLinks(turn.action_links);
-    setConversationClosed(turn.conversation_closed);
-    setRequiresTodayRecord(turn.requires_today_record);
-    setTodayRecordRoute(turn.today_record_route);
-    setEmotionPre((previous) => previous ?? normalizeScore(turn.emotion_intensity_pre_0_100, 0, 100));
-    setEmotionPost((previous) => normalizeScore(turn.emotion_intensity_post_0_100, 0, 100) ?? previous);
-    setBeliefPre((previous) => previous ?? normalizeScore(turn.belief_pre_0_100, 0, 100));
-    setBeliefPost((previous) => normalizeScore(turn.belief_post_0_100, 0, 100) ?? previous);
-    setHomeworkCommitment((previous) => normalizeScore(turn.homework_commitment_0_10, 0, 10) ?? previous);
-    setHelpfulness((previous) => normalizeScore(turn.session_helpfulness_0_10, 0, 10) ?? previous);
-  };
-
-  const appendAssistantMessages = async (assistantMessages: CbtConversationMessage[]) => {
-    for (const message of assistantMessages) {
-      const resolvedId = message.message_id?.trim() || createLocalMessageId("asst");
-      if (seenAssistantMessageIdsRef.current.has(resolvedId)) {
-        continue;
-      }
-      const content = message.content.trim();
-      if (!content) {
-        continue;
-      }
-      await streamAssistantResponse(content);
-      if (!isMountedRef.current) {
-        return;
-      }
-      setMessages((previous) => [
-        ...previous,
-        {
-          role: "assistant",
-          content,
-          sender_name: message.sender_name || coachName,
-          message_id: resolvedId,
-        },
-      ]);
-      seenAssistantMessageIdsRef.current.add(resolvedId);
-      setAssistantDraftText("");
-      await new Promise((resolve) => {
-        window.setTimeout(resolve, 42);
-      });
-    }
-  };
-
-  const sendMessage = async (payload: { content?: string; actionId?: string; actionLabel?: string }) => {
-    const content = (payload.content ?? "").trim();
-    const actionId = payload.actionId?.trim() || undefined;
-    const actionLabel = payload.actionLabel?.trim() || undefined;
-    if (!firebaseUser || (!content && !actionId) || sending || conversationClosed) {
+  const sendMessage = async (raw: string, stage: CbtSessionStage) => {
+    const trimmed = raw.trim();
+    if (!firebaseUser || !trimmed || sending || conversationClosed) {
       return;
     }
 
-    const userContent = content || actionLabel || "";
-    const userMessage: CbtConversationMessage = {
-      role: "user",
-      content: userContent,
-      sender_name: userNickname,
-      message_id: createLocalMessageId("usr"),
-    };
-    const nextMessages = [...messages, userMessage];
+    const nextMessages = [...messages, { role: "user" as const, content: trimmed }];
     setMessages(nextMessages);
     setMessageInput("");
     setErrorMessage(null);
@@ -672,18 +819,25 @@ export default function CbtSessionScreen() {
       const turn = await createCbtConversationTurn(firebaseUser, {
         messages: nextMessages,
         state: draftState,
-        current_stage: currentStage,
-        user_input: content || undefined,
-        quick_reply_action_id: actionId,
+        current_stage: stage,
       });
-      await appendAssistantMessages(turn.assistant_messages);
-      applyTurnState(turn);
+      await streamAssistantResponse(turn.assistant_message);
+      setMessages((previous) => [...previous, { role: "assistant", content: turn.assistant_message }]);
+      setAssistantDraftText("");
+      setDraftState(turn.structured_state_draft);
+      setPlannerAction(turn.planner_action);
+      setRiskLevel(turn.risk_level);
+      setSafetyMessage(turn.safety_message);
+      setEmotionPre((previous) => previous ?? normalizeScore(turn.emotion_intensity_pre_0_100, 0, 100));
+      setEmotionPost((previous) => normalizeScore(turn.emotion_intensity_post_0_100, 0, 100) ?? previous);
+      setBeliefPre((previous) => previous ?? normalizeScore(turn.belief_pre_0_100, 0, 100));
+      setBeliefPost((previous) => normalizeScore(turn.belief_post_0_100, 0, 100) ?? previous);
+      setHomeworkCommitment((previous) => normalizeScore(turn.homework_commitment_0_10, 0, 10) ?? previous);
+      setHelpfulness((previous) => normalizeScore(turn.session_helpfulness_0_10, 0, 10) ?? previous);
     } catch (error) {
       setErrorMessage(parseError(error));
       setMessages((previous) => previous.slice(0, -1));
-      if (content) {
-        setMessageInput(content);
-      }
+      setMessageInput(trimmed);
     } finally {
       setAssistantDraftText("");
       setAssistantTyping(false);
@@ -691,39 +845,8 @@ export default function CbtSessionScreen() {
     }
   };
 
-  const handleQuickReplyClick = (item: CbtQuickReplyItem) => {
-    if (conversationClosed || sending) {
-      return;
-    }
-    if (item.type === "prefill") {
-      const filled = item.fill_text ?? item.label;
-      setMessageInput(filled);
-      window.requestAnimationFrame(() => {
-        const textarea = document.getElementById("cbt-message-input") as HTMLTextAreaElement | null;
-        if (!textarea) {
-          return;
-        }
-        textarea.focus();
-        const length = textarea.value.length;
-        textarea.setSelectionRange(length, length);
-      });
-      return;
-    }
-    if (item.type === "action" && item.action_id) {
-      void sendMessage({ actionId: item.action_id, actionLabel: item.label, content: "" });
-    }
-  };
-
   const resolveSelectedActionPayload = () => {
-    const commitmentTextRaw = draftState.commitment_text;
-    const commitmentTypeRaw = draftState.commitment_type;
-    const commitmentText =
-      typeof commitmentTextRaw === "string"
-        ? commitmentTextRaw.replace(/^[^:]{1,20}:\s*/, "").trim()
-        : "";
-    const commitmentType = typeof commitmentTypeRaw === "string" ? commitmentTypeRaw : "";
-
-    if (commitmentText.length < 2) {
+    if (!recommendationReady || actionDecision === "decline") {
       return {
         selected_action_kind: "none" as const,
         selected_action_title: TODO_NONE_LABEL,
@@ -732,20 +855,27 @@ export default function CbtSessionScreen() {
       };
     }
 
-    const challengeLike = /(산책|호흡|수면|감각|운동|햇빛|루틴|패턴)/.test(commitmentText);
-    const kind =
-      draftCommitmentType === "thought_practice"
-        ? "external"
-        : challengeLike
-          ? "challenge"
-          : "external";
-    const description =
-      commitmentType === "thought_practice" ? "생각 연습 TO DO" : "행동 TO DO";
+    if (selectedRecommendationKey === "custom") {
+      const title = customActionTitle.trim();
+      if (title.length < 2) {
+        throw new Error("custom_action_title_required");
+      }
+      return {
+        selected_action_kind: "external" as const,
+        selected_action_title: title,
+        selected_action_description: customActionDescription.trim() || null,
+        selected_action_route: null,
+      };
+    }
+
+    const fallbackKey = plannerAction ?? "review_evidence";
+    const key = selectedRecommendationKey || fallbackKey;
+    const selected = ACTION_RECOMMENDATIONS[key] ?? ACTION_RECOMMENDATIONS.review_evidence;
     return {
-      selected_action_kind: kind as "challenge" | "external",
-      selected_action_title: commitmentText,
-      selected_action_description: description,
-      selected_action_route: challengeLike ? "/challenge" : null,
+      selected_action_kind: selected.kind,
+      selected_action_title: selected.title,
+      selected_action_description: selected.description,
+      selected_action_route: selected.route,
     };
   };
 
@@ -787,12 +917,51 @@ export default function CbtSessionScreen() {
       setRiskLevel(response.risk_level);
       setSafetyMessage(response.safety_message);
       setConversationClosed(true);
+      if (response.summary.selected_action_kind === "none") {
+        setManualTodoTitle("");
+        setManualTodoDescription("");
+        setManualTodoKind("external");
+      }
       await loadCollections();
       setNoticeMessage("세션을 저장했고 대화를 마무리했습니다.");
     } catch (error) {
-      setErrorMessage(parseError(error));
+      if (error instanceof Error && error.message === "custom_action_title_required") {
+        setErrorMessage("직접 입력을 선택한 경우 행동 제목을 2자 이상 입력해주세요.");
+      } else {
+        setErrorMessage(parseError(error));
+      }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveTodoForSession = async () => {
+    if (!firebaseUser || !savedSession || savingTodo) {
+      return;
+    }
+    const title = manualTodoTitle.trim();
+    if (title.length < 2) {
+      setErrorMessage("TO DO 제목을 2자 이상 입력해주세요.");
+      return;
+    }
+    try {
+      setSavingTodo(true);
+      setErrorMessage(null);
+      setNoticeMessage(null);
+      const updated = await saveCbtSessionTodo(firebaseUser, savedSession.session_id, {
+        title,
+        description: manualTodoDescription.trim() || null,
+        kind: manualTodoKind,
+        route: manualTodoKind === "challenge" ? "/challenge" : null,
+      });
+      setSavedSession(updated);
+      setSelectedReflectionSessionId(updated.session_id);
+      await loadCollections();
+      setNoticeMessage("TO DO를 추가했습니다. 회고하기 탭에서 이어서 기록할 수 있습니다.");
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    } finally {
+      setSavingTodo(false);
     }
   };
 
@@ -840,10 +1009,10 @@ export default function CbtSessionScreen() {
       return;
     }
     event.preventDefault();
-    if (messageInput.trim().length < 1) {
+    if (messageInput.trim().length < 2) {
       return;
     }
-    void sendMessage({ content: messageInput });
+    void sendMessage(messageInput, activeStage as CbtSessionStage);
   };
 
   useEffect(() => {
@@ -933,18 +1102,33 @@ export default function CbtSessionScreen() {
                         })}
                       </div>
                     </div>
+
+                    <div className="ms-cbt-left-panel__section ms-cbt-left-panel__section--hints">
+                      <h3 className="ms-cbt-panel-title">힌트</h3>
+                      <div className="ms-cbt-hint-list">
+                        {stageHints.map((hint) => (
+                          <button
+                            key={hint}
+                            type="button"
+                            className="ms-cbt-hint"
+                            disabled={conversationClosed}
+                            onClick={() => setMessageInput(hint)}
+                          >
+                            {hint}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </aside>
 
                   <section className="ms-cbt-center-panel">
                     <div ref={threadRef} className="ms-cbt-thread" role="log" aria-live="polite" aria-label="CBT 대화 내용">
                       {messages.map((item, index) => (
                         <article
-                          key={item.message_id || `${item.role}-${index}`}
+                          key={`${item.role}-${index}`}
                           className={`ms-cbt-message ms-cbt-message--${item.role}`}
                         >
-                          <p className="ms-cbt-message__role">
-                            {item.sender_name?.trim() || (item.role === "user" ? userNickname : coachName)}
-                          </p>
+                          <p className="ms-cbt-message__role">{item.role === "user" ? userNickname : coachName}</p>
                           <p className="ms-cbt-message__text">{item.content}</p>
                         </article>
                       ))}
@@ -962,51 +1146,7 @@ export default function CbtSessionScreen() {
                     </div>
 
                     <div className="ms-cbt-composer">
-                      {quickReplies.length > 0 ? (
-                        <div className="ms-cbt-quick-replies" role="group" aria-label={`추천 답변 (${currentSubphase})`}>
-                          {quickReplies.map((item, index) => (
-                            <button
-                              key={`${item.label}-${index}`}
-                              type="button"
-                              className={`ms-cbt-quick-replies__item${
-                                item.type === "action" ? " ms-cbt-quick-replies__item--action" : ""
-                              }`}
-                              disabled={conversationClosed || sending}
-                              onClick={() => handleQuickReplyClick(item)}
-                            >
-                              {item.label}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-                      {actionLinks.length > 0 ? (
-                        <div className="ms-cbt-action-links" role="group" aria-label="관련 화면 이동">
-                          {actionLinks.map((link, index) => (
-                            <Button
-                              key={`${link.route}-${index}`}
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => router.push(link.route)}
-                            >
-                              {link.label}
-                            </Button>
-                          ))}
-                        </div>
-                      ) : null}
-                      {requiresTodayRecord && todayRecordRoute ? (
-                        <div className="ms-cbt-today-record-banner">
-                          <Banner
-                            variant="info"
-                            title="오늘 상태 기록이 아직 없어요"
-                            description="원하면 먼저 오늘 기록을 남긴 뒤 다시 이어갈 수 있어요."
-                          />
-                          <Button size="sm" variant="secondary" onClick={() => router.push(todayRecordRoute)}>
-                            오늘 기록으로 이동
-                          </Button>
-                        </div>
-                      ) : null}
                       <Textarea
-                        id="cbt-message-input"
                         label="메시지 입력"
                         placeholder={
                           conversationClosed
@@ -1025,9 +1165,9 @@ export default function CbtSessionScreen() {
                         </p>
                         <Button
                           className="ms-cbt-send-button"
-                          onClick={() => void sendMessage({ content: messageInput })}
+                          onClick={() => void sendMessage(messageInput, activeStage as CbtSessionStage)}
                           loading={sending}
-                          disabled={conversationClosed || messageInput.trim().length < 1}
+                          disabled={conversationClosed || messageInput.trim().length < 2}
                         >
                           보내기 (Enter)
                         </Button>
@@ -1102,22 +1242,69 @@ export default function CbtSessionScreen() {
                       </Card>
 
                       <Card className="ms-cbt-side-card" title="TO DO">
-                        {draftCommitmentText ? (
+                        {recommendationReady ? (
                           <div className="ms-cbt-action-box">
-                            <p className="ms-cbt-action-type">{draftCommitmentText}</p>
-                            <p className="ms-cbt-action-desc">
-                              {draftCommitmentType === "thought_practice" ? "생각 연습 TO DO" : "행동 TO DO"}
-                            </p>
-                            {draftTodoRoute ? (
-                              <div className="ms-row">
-                                <Button size="sm" variant="secondary" onClick={() => router.push(draftTodoRoute)}>
-                                  오늘의 추천 챌린지 보기
-                                </Button>
-                              </div>
-                            ) : null}
+                            <Select
+                              label="행동 선택"
+                              value={selectedRecommendationKey || plannerAction || "review_evidence"}
+                              onChange={(event) => {
+                                setActionSelectionTouched(true);
+                                setSelectedRecommendationKey(event.target.value);
+                              }}
+                              options={recommendationSelectOptions}
+                            />
+                            <div className="ms-cbt-action-decision">
+                              <button
+                                type="button"
+                                className={`ms-cbt-action-decision__button${actionDecision === "accept" ? " ms-cbt-action-decision__button--active" : ""}`}
+                                onClick={() => setActionDecision("accept")}
+                              >
+                                행동 하겠습니다
+                              </button>
+                              <button
+                                type="button"
+                                className={`ms-cbt-action-decision__button${actionDecision === "decline" ? " ms-cbt-action-decision__button--active" : ""}`}
+                                onClick={() => setActionDecision("decline")}
+                              >
+                                이번에는 정하지 않기
+                              </button>
+                            </div>
+
+                            {actionDecision === "accept" ? (
+                              selectedRecommendationKey === "custom" ? (
+                                <div className="ms-stack">
+                                  <Input
+                                    label="직접 정한 행동"
+                                    placeholder="예: 저녁 8시에 10분 산책"
+                                    value={customActionTitle}
+                                    onChange={(event) => setCustomActionTitle(event.target.value)}
+                                  />
+                                  <Textarea
+                                    label="설명(선택)"
+                                    rows={3}
+                                    placeholder="행동 내용을 간단히 적어주세요."
+                                    value={customActionDescription}
+                                    onChange={(event) => setCustomActionDescription(event.target.value)}
+                                  />
+                                </div>
+                              ) : (
+                                <div className="ms-stack">
+                                  <p className="ms-cbt-action-type">
+                                    {ACTION_RECOMMENDATIONS[selectedRecommendationKey || plannerAction || "review_evidence"]?.title ??
+                                      recommendation?.title}
+                                  </p>
+                                  <p className="ms-cbt-action-desc">
+                                    {ACTION_RECOMMENDATIONS[selectedRecommendationKey || plannerAction || "review_evidence"]?.description ??
+                                      recommendation?.description}
+                                  </p>
+                                </div>
+                              )
+                            ) : (
+                              <p className="ms-cbt-action-empty">세션 저장 시 &quot;TO DO: 정하지 않음&quot;으로 기록됩니다.</p>
+                            )}
                           </div>
                         ) : (
-                          <p className="ms-cbt-action-empty">대화에서 약속이 확정되면 TO DO가 자동으로 생성됩니다.</p>
+                          <p className="ms-cbt-action-empty">마무리 단계에서 함께 정한 다음 행동이 여기에 표시됩니다.</p>
                         )}
                       </Card>
                     </div>
@@ -1131,7 +1318,7 @@ export default function CbtSessionScreen() {
                 {savedSession ? (
                   <Card className="ms-cbt-postsave-card" title="세션 내용 요약" description="세션 저장 후 생성된 요약과 TO DO입니다.">
                     <div className="ms-cbt-saved-list">
-                      {renderSessionRecord(savedSession)}
+                      {renderSessionRecord(savedSession, { showTodoEditorWhenNone: true })}
                     </div>
                   </Card>
                 ) : null}

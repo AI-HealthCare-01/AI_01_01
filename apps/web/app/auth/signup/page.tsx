@@ -150,8 +150,6 @@ export default function SignupPage() {
                 />
                 <Input
                   label="마음코치 이름"
-                  labelHint="대화 화면에서 AI 마음코치로 표시될 이름입니다."
-                  hideRequiredMark
                   placeholder="예: 미루"
                   required
                   value={coachName}

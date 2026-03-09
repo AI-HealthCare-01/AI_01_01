@@ -98,21 +98,6 @@ export async function bootstrapSession(firebaseUser: User): Promise<SessionContr
   );
 }
 
-export async function checkChangeEmailAvailability(
-  firebaseUser: User,
-  newEmail: string
-): Promise<boolean> {
-  const response = await requestJson<{ is_available: boolean }>(
-    "/v1/auth/change-email/availability",
-    {
-      method: "POST",
-      body: JSON.stringify({ new_email: newEmail })
-    },
-    { firebaseUser }
-  );
-  return Boolean(response.is_available);
-}
-
 export async function saveOnboardingProfile(
   firebaseUser: User,
   payload: OnboardingProfileRequest

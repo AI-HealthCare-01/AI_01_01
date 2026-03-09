@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type ChangeEvent } from "react";
+import { useState } from "react";
 
 import {
   AppShell,
@@ -21,17 +21,10 @@ import { AuthRouteGuard, useAuthContext } from "../../../src/features/auth";
 import { CommunityApiError, createBoardPost } from "../../../src/features/community";
 import { useEffect } from "react";
 
-const MAX_IMAGE_COUNT = 4;
-const MAX_LOCAL_IMAGE_BYTES = 5 * 1024 * 1024;
-const MAX_POST_BODY_BYTES = 4500;
-
 function parseError(error: unknown): string {
   if (error instanceof CommunityApiError) {
     if (error.message === "notice_admin_required") {
       return "공지 작성은 관리자(support/admin/owner) 권한에서만 가능합니다.";
-    }
-    if (error.message === "invalid_post_body_bytes") {
-      return `본문은 UTF-8 기준 ${MAX_POST_BODY_BYTES.toLocaleString()}bytes 이내로 입력해주세요.`;
     }
     if (error.message === "Failed to fetch") {
       return "서버 연결이 원활하지 않습니다. 잠시 후 다시 시도해 주세요.";
@@ -55,24 +48,6 @@ function parseCommaList(value: string, limit: number): string[] {
     .slice(0, limit);
 }
 
-function utf8ByteLength(value: string): number {
-  return new TextEncoder().encode(value).length;
-}
-
-function isLikelyImageUrl(value: string): boolean {
-  const trimmed = value.trim();
-  return /^https?:\/\/\S+/i.test(trimmed) || /^data:image\/[a-zA-Z+.-]+;base64,/i.test(trimmed);
-}
-
-function toDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(new Error("file_read_failed"));
-    reader.readAsDataURL(file);
-  });
-}
-
 export default function BoardFeedWritePage() {
   const router = useRouter();
   const { firebaseUser } = useAuthContext();
@@ -81,13 +56,11 @@ export default function BoardFeedWritePage() {
   const [body, setBody] = useState("");
   const [tagInput, setTagInput] = useState("");
   const [imageInput, setImageInput] = useState("");
-  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [anonymous, setAnonymous] = useState(false);
   const [canChooseNoticeType, setCanChooseNoticeType] = useState(false);
   const [postType, setPostType] = useState<"normal" | "notice">("normal");
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const bodyBytes = utf8ByteLength(body);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,64 +105,6 @@ export default function BoardFeedWritePage() {
     };
   }, [firebaseUser]);
 
-  const handleAddImageUrl = () => {
-    const next = imageInput.trim();
-    if (!next) {
-      return;
-    }
-    if (!isLikelyImageUrl(next)) {
-      setErrorMessage("유효한 이미지 URL(https://) 또는 이미지 data URL을 입력해주세요.");
-      return;
-    }
-
-    setImageUrls((previous) => {
-      if (previous.includes(next)) {
-        return previous;
-      }
-      if (previous.length >= MAX_IMAGE_COUNT) {
-        setErrorMessage(`이미지는 최대 ${MAX_IMAGE_COUNT}개까지 첨부할 수 있습니다.`);
-        return previous;
-      }
-      return [...previous, next];
-    });
-    setImageInput("");
-  };
-
-  const handlePickLocalImages = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    if (!files.length) {
-      return;
-    }
-
-    try {
-      const remaining = Math.max(0, MAX_IMAGE_COUNT - imageUrls.length);
-      if (remaining === 0) {
-        setErrorMessage(`이미지는 최대 ${MAX_IMAGE_COUNT}개까지 첨부할 수 있습니다.`);
-        return;
-      }
-
-      const limited = files.slice(0, remaining);
-      for (const file of limited) {
-        if (!file.type.startsWith("image/")) {
-          setErrorMessage("이미지 파일만 업로드할 수 있습니다.");
-          return;
-        }
-        if (file.size > MAX_LOCAL_IMAGE_BYTES) {
-          setErrorMessage("각 이미지는 5MB 이하로 업로드해주세요.");
-          return;
-        }
-      }
-
-      const localDataUrls = await Promise.all(limited.map((file) => toDataUrl(file)));
-      setImageUrls((previous) => [...previous, ...localDataUrls].slice(0, MAX_IMAGE_COUNT));
-      setErrorMessage(null);
-    } catch {
-      setErrorMessage("이미지 파일을 읽는 중 오류가 발생했습니다.");
-    } finally {
-      event.target.value = "";
-    }
-  };
-
   const handleSubmit = async () => {
     if (!firebaseUser) {
       return;
@@ -197,10 +112,6 @@ export default function BoardFeedWritePage() {
 
     if (!body.trim()) {
       setErrorMessage("본문을 입력해주세요.");
-      return;
-    }
-    if (bodyBytes > MAX_POST_BODY_BYTES) {
-      setErrorMessage(`본문은 UTF-8 기준 ${MAX_POST_BODY_BYTES.toLocaleString()}bytes 이내로 입력해주세요.`);
       return;
     }
 
@@ -214,7 +125,7 @@ export default function BoardFeedWritePage() {
         is_anonymous: anonymous,
         is_notice: canChooseNoticeType && postType === "notice",
         tag_ids: parseCommaList(tagInput, 5),
-        image_urls: imageUrls,
+        image_urls: parseCommaList(imageInput, 4),
       });
 
       const query = new URLSearchParams({
@@ -277,7 +188,7 @@ export default function BoardFeedWritePage() {
                 value={body}
                 onChange={(event) => setBody(event.target.value)}
                 maxLength={1500}
-                maxLengthHint={`${body.length}/1500자 · ${bodyBytes}/${MAX_POST_BODY_BYTES}bytes`}
+                maxLengthHint={`${body.length}/1500`}
                 required
               />
 
@@ -289,55 +200,13 @@ export default function BoardFeedWritePage() {
                 helperText="쉼표(,)로 구분해 최대 5개까지 입력"
               />
 
-              <Card title="이미지 첨부(선택)" description="URL 또는 로컬 파일 업로드 중 원하는 방식으로 추가할 수 있습니다.">
-                <div className="ms-stack">
-                  <div className="ms-row">
-                    <Input
-                      label="이미지 URL"
-                      value={imageInput}
-                      onChange={(event) => setImageInput(event.target.value)}
-                      placeholder="https://..."
-                      helperText={`최대 ${MAX_IMAGE_COUNT}개`}
-                    />
-                    <Button type="button" variant="secondary" onClick={handleAddImageUrl}>
-                      URL 추가
-                    </Button>
-                  </div>
-
-                  <div className="ms-stack">
-                    <label className="ms-field__label" htmlFor="board-image-local-upload">
-                      <span>로컬 이미지 업로드</span>
-                    </label>
-                    <input
-                      id="board-image-local-upload"
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={(event) => void handlePickLocalImages(event)}
-                    />
-                  </div>
-
-                  {imageUrls.length > 0 ? (
-                    <div className="ms-board-image-upload-list">
-                      {imageUrls.map((url, index) => (
-                        <div key={`${url.slice(0, 40)}-${index}`} className="ms-board-image-upload-item">
-                          <img src={url} alt={`첨부 이미지 ${index + 1}`} />
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() =>
-                              setImageUrls((previous) => previous.filter((_, itemIndex) => itemIndex !== index))
-                            }
-                          >
-                            제거
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              </Card>
+              <Input
+                label="이미지 URL(선택)"
+                value={imageInput}
+                onChange={(event) => setImageInput(event.target.value)}
+                placeholder="https://..."
+                helperText="쉼표(,)로 구분해 최대 4개까지 입력"
+              />
 
               <div className="ms-row">
                 <Button

@@ -193,36 +193,6 @@ class AuthStore:
                 conn.commit()
                 return self.get_session_contract_by_user_id(conn, user_id)
 
-            # Allow retrying signup with the same email only while verification is still pending.
-            # This recovers cases where email verification dispatch failed after shell creation.
-            email_existing = conn.execute(
-                "SELECT user_id, account_status FROM account_user WHERE email = ?",
-                (email,),
-            ).fetchone()
-            if email_existing:
-                user_id = str(email_existing["user_id"])
-                account_status = str(email_existing["account_status"])
-                if account_status != AccountStatus.pending_email_verification.value:
-                    raise sqlite3.IntegrityError("email_already_exists")
-
-                conn.execute(
-                    """
-                    UPDATE account_user
-                    SET firebase_uid = ?, nickname = ?, coach_name = ?, updated_at = ?
-                    WHERE user_id = ?
-                    """,
-                    (firebase_uid, nickname, resolved_coach_name, self._now_iso(), user_id),
-                )
-                self._store_signup_consents(
-                    conn,
-                    user_id,
-                    terms_required,
-                    privacy_required,
-                    age_required,
-                )
-                conn.commit()
-                return self.get_session_contract_by_user_id(conn, user_id)
-
             created_at = self._now_iso()
             user_id = self._build_user_id()
             year = datetime.now(UTC).year
@@ -334,31 +304,6 @@ class AuthStore:
             if not row:
                 return None
             return str(row["user_id"])
-
-    def is_email_in_use(self, email: str, *, exclude_user_id: str | None = None) -> bool:
-        normalized_email = email.strip().lower()
-        with self._connect() as conn:
-            if exclude_user_id:
-                row = conn.execute(
-                    """
-                    SELECT 1
-                    FROM account_user
-                    WHERE email = ? AND user_id <> ?
-                    LIMIT 1
-                    """,
-                    (normalized_email, exclude_user_id),
-                ).fetchone()
-            else:
-                row = conn.execute(
-                    """
-                    SELECT 1
-                    FROM account_user
-                    WHERE email = ?
-                    LIMIT 1
-                    """,
-                    (normalized_email,),
-                ).fetchone()
-            return row is not None
 
     def relink_firebase_uid_by_email(
         self,

@@ -104,19 +104,6 @@ class SessionBootstrapRequest(BaseModel):
     firebase_uid: str | None = Field(default=None, min_length=8, max_length=256)
 
 
-class ChangeEmailAvailabilityRequest(BaseModel):
-    new_email: str
-
-    @field_validator("new_email")
-    @classmethod
-    def _validate_email(cls, value: str) -> str:
-        return _normalize_email(value)
-
-
-class ChangeEmailAvailabilityResponse(BaseModel):
-    is_available: bool
-
-
 class OnboardingConsentRequest(BaseModel):
     sensitive_data_required: bool
     personalization_optional: bool = False

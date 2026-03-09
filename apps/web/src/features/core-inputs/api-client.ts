@@ -6,10 +6,8 @@ import type {
   ActivityDashboardResponse,
   ActivityLogDay,
   AssessmentSession,
-  CbtConversationBootstrapResponse,
   CbtRiskSignal,
   CbtConversationMessage,
-  CbtSessionStage,
   CbtConversationTurnResponse,
   CbtSessionCreateRequest,
   CbtSessionTodoUpsertRequest,
@@ -468,22 +466,13 @@ export async function createCbtConversationTurn(
   payload: {
     messages: CbtConversationMessage[];
     state?: Record<string, unknown>;
-    current_stage?: CbtSessionStage;
-    user_input?: string;
-    quick_reply_action_id?: string;
-    selected_quick_reply?: string;
+    current_stage?: "situation" | "thought" | "evidence" | "reframe" | "action";
   }
 ): Promise<CbtConversationTurnResponse> {
   return requestJson<CbtConversationTurnResponse>("/v1/cbt/conversation/turn", firebaseUser, {
     method: "POST",
     body: JSON.stringify(payload),
   });
-}
-
-export async function getCbtConversationBootstrap(
-  firebaseUser: User
-): Promise<CbtConversationBootstrapResponse> {
-  return requestJson<CbtConversationBootstrapResponse>("/v1/cbt/conversation/bootstrap", firebaseUser);
 }
 
 export async function getCbtSessionSummary(

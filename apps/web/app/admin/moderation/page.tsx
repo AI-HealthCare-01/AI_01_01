@@ -46,19 +46,6 @@ function queueBadgeVariant(queueType: string): "warning" | "danger" | "info" {
   return "info";
 }
 
-function queueTypeLabel(queueType: string): string {
-  if (queueType === "safety") {
-    return "안전";
-  }
-  if (queueType === "hate") {
-    return "유해언어";
-  }
-  if (queueType === "report") {
-    return "신고";
-  }
-  return queueType;
-}
-
 export default function AdminModerationPage() {
   const { firebaseUser } = useAuthContext();
 
@@ -137,9 +124,9 @@ export default function AdminModerationPage() {
           {data.groups.map((group) => (
             <Card
               key={group.queue_type}
-              title={`${queueTypeLabel(group.queue_type)} 큐`}
+              title={`${group.queue_type} 큐`}
               description={`대기 ${group.queued_count}건`}
-              action={<Badge variant={queueBadgeVariant(group.queue_type)}>{queueTypeLabel(group.queue_type)}</Badge>}
+              action={<Badge variant={queueBadgeVariant(group.queue_type)}>{group.queue_type}</Badge>}
             >
               {group.items.length === 0 ? (
                 <p className="ms-card__desc">현재 대기 항목이 없습니다.</p>

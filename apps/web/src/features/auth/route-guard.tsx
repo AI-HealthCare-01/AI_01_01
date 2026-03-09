@@ -79,7 +79,9 @@ export function AuthRouteGuard({ policy, children }: AuthRouteGuardProps) {
 
     if (policy === "require-unverified") {
       if (!user) {
-        router.replace("/auth/login");
+        if (pathname !== "/auth/verify-email") {
+          router.replace("/auth/login");
+        }
         return;
       }
       if (user.emailVerified) {
@@ -136,6 +138,9 @@ export function AuthRouteGuard({ policy, children }: AuthRouteGuardProps) {
   }
 
   if (!user) {
+    if (policy === "require-unverified" && pathname === "/auth/verify-email") {
+      return <>{children}</>;
+    }
     return <GateLoading />;
   }
 

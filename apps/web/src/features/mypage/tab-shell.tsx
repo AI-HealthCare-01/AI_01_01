@@ -14,7 +14,6 @@ const MY_PAGE_TAB_ITEMS: MyPageTabItem[] = [
   { href: "/mypage/activity-log", label: "활동로그" },
   { href: "/mypage/profile", label: "회원정보수정" },
   { href: "/mypage/security", label: "비밀번호수정" },
-  { href: "/mypage/withdrawal", label: "회원탈퇴" },
   { href: "/mypage/bookmarks", label: "북마크" },
   { href: "/mypage/my-posts", label: "내 글" },
   { href: "/mypage/my-comments", label: "내 댓글" },

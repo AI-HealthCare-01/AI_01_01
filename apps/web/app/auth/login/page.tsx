@@ -64,6 +64,11 @@ export default function LoginPage() {
       return;
     }
 
+    if (source === "account-deleted") {
+      setSourceNotice("회원탈퇴가 완료되었습니다. 이용해주셔서 감사합니다.");
+      return;
+    }
+
     if (force === "1") {
       setSourceNotice("현재 세션이 남아 있을 경우, 아래에서 로그아웃 후 다른 계정으로 로그인할 수 있습니다.");
     }

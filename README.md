@@ -48,7 +48,8 @@ Docker로 한번에 실행(권장):
 - 종료: `make docker-down`
   - 기본 포트가 점유된 경우 `docker-up` 스크립트가 대체 포트(3001/8010/5433/9100/4001)를 자동 선택해 출력한다.
   - `docker-up/down`은 루트 `.env`를 자동 로드한다.
-  - 기본 모드는 `USE_FIREBASE_AUTH_EMULATOR=false` (실 Firebase)다.
+  - `USE_FIREBASE_AUTH_EMULATOR=false`여도 실 Firebase 필수값이 비어 있으면 `docker-up`은 자동으로 에뮬레이터 모드로 전환한다.
+  - 실 Firebase를 강제로 쓰려면 `.env`에 `NEXT_PUBLIC_FIREBASE_*`, `FIREBASE_PROJECT_ID`를 모두 채운 뒤 `make docker-up-real`을 사용한다.
   - 에뮬레이터 모드는 `make docker-up-emulator` 또는 `USE_FIREBASE_AUTH_EMULATOR=true make docker-up` 으로 실행한다.
 
 에뮬레이터 로컬 개발:

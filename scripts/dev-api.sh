@@ -4,6 +4,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_DIR="${ROOT_DIR}/apps/api"
 
+if [ -f "${ROOT_DIR}/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "${ROOT_DIR}/.env"
+  set +a
+fi
+
 USE_FIREBASE_AUTH_EMULATOR="${USE_FIREBASE_AUTH_EMULATOR:-false}"
 use_emulator="$(printf "%s" "${USE_FIREBASE_AUTH_EMULATOR}" | tr "[:upper:]" "[:lower:]")"
 if [[ "${use_emulator}" =~ ^(1|true|yes|y|on)$ ]]; then

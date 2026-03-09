@@ -14,6 +14,7 @@ from .models import (
     BaselineAssessmentRequest,
     ChangeEmailAvailabilityRequest,
     ChangeEmailAvailabilityResponse,
+    DeleteAccountResponse,
     FirebaseIdentity,
     OnboardingProfileRequest,
     SessionBootstrapRequest,
@@ -167,6 +168,19 @@ def change_email_availability(
 
     duplicate = store.is_email_in_use(payload.new_email, exclude_user_id=user_id)
     return ChangeEmailAvailabilityResponse(is_available=not duplicate)
+
+
+@router.post("/auth/account/delete", response_model=DeleteAccountResponse)
+def delete_account(
+    identity: FirebaseIdentity = Depends(get_firebase_identity),
+    store: AuthStore = Depends(get_auth_store),
+) -> DeleteAccountResponse:
+    user_id = store.get_user_id_by_firebase_uid(identity.firebase_uid)
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="account_not_found")
+
+    store.mark_account_deleted(user_id)
+    return DeleteAccountResponse(result="deleted")
 
 
 @router.post("/onboarding/profile", response_model=SessionContract)

@@ -410,3 +410,41 @@ def test_owner_seed_user_can_become_owner_even_with_existing_admin_roles(tmp_pat
     seeded_me = client.get("/v1/admin/me", headers=_headers(seeded_uid, seeded_email))
     assert seeded_me.status_code == 200
     assert seeded_me.json()["actor"]["base_role"] == "owner"
+
+
+def test_deleted_account_is_hidden_from_admin_user_list(tmp_path) -> None:
+    db_path = tmp_path / "admin-console-delete-hidden.sqlite3"
+
+    os.environ["AUTH_DATABASE_PATH"] = str(db_path)
+    os.environ["FIREBASE_AUTH_EMULATOR_HOST"] = "127.0.0.1:9099"
+    os.environ["AUTH_ALLOW_EMULATOR_UID_FALLBACK"] = "true"
+    os.environ.pop("ADMIN_OWNER_EMAIL", None)
+    os.environ.pop("ADMIN_OWNER_FIREBASE_UID", None)
+
+    get_auth_settings.cache_clear()
+    get_auth_store.cache_clear()
+    get_core_input_store.cache_clear()
+    get_insights_store.cache_clear()
+    get_community_store.cache_clear()
+    get_admin_console_store.cache_clear()
+
+    client = TestClient(app)
+
+    owner_uid = "delete-owner-uid-0001"
+    owner_email = "delete-owner@example.com"
+    user_uid = "delete-member-uid-0002"
+    user_email = "delete-member@example.com"
+
+    _signup_and_bootstrap(client, owner_uid, owner_email, "delete-owner")
+    deleted_user_id = _signup_and_bootstrap(client, user_uid, user_email, "delete-member")
+
+    delete_response = client.post(
+        "/v1/auth/account/delete",
+        headers=_headers(user_uid, user_email),
+    )
+    assert delete_response.status_code == 200
+
+    users_list = client.get("/v1/admin/users", headers=_headers(owner_uid, owner_email))
+    assert users_list.status_code == 200
+    user_ids = {item["user_id"] for item in users_list.json()["items"]}
+    assert deleted_user_id not in user_ids

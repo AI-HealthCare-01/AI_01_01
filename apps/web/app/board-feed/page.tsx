@@ -648,8 +648,8 @@ function BoardFeedContent() {
                                   </p>
                                 </div>
                                 <div className="ms-board-cafe-row__stats">
-                                  <span>댓 {item.engagement.comment_count}</span>
-                                  <span>좋 {item.engagement.like_count}</span>
+                                  <span>♥ {item.engagement.like_count}</span>
+                                  <span>댓글 {item.engagement.comment_count}</span>
                                 </div>
                               </button>
                             );

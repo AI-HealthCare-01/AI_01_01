@@ -141,4 +141,14 @@ export async function completeBaselineAssessment(
   );
 }
 
+export async function deleteAccountSession(firebaseUser: User): Promise<{ result: string }> {
+  return requestJson<{ result: string }>(
+    "/v1/auth/account/delete",
+    {
+      method: "POST"
+    },
+    { firebaseUser }
+  );
+}
+
 export { ApiError };

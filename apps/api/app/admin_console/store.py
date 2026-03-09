@@ -1610,14 +1610,15 @@ class AdminConsoleStore:
         resolved_limit = max(1, min(100, limit))
 
         with self._connect() as conn:
-            where = ""
+            where_clauses = ["au.account_status != 'deleted'"]
             params: list[object] = []
             if q:
-                where = (
-                    "WHERE (au.user_id LIKE ? OR au.email LIKE ? OR au.nickname LIKE ?)"
+                where_clauses.append(
+                    "(au.user_id LIKE ? OR au.email LIKE ? OR au.nickname LIKE ?)"
                 )
                 pattern = f"%{q}%"
                 params.extend([pattern, pattern, pattern])
+            where = f"WHERE {' AND '.join(where_clauses)}"
 
             cbt_recent_expr = "NULL"
             cbt_activity_count_expr = "0"

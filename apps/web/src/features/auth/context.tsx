@@ -30,6 +30,7 @@ import {
   ApiError,
   bootstrapSession,
   checkChangeEmailAvailability,
+  deleteAccountSession,
   completeBaselineAssessment,
   saveOnboardingProfile,
   signupBootstrap
@@ -327,6 +328,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
       await reauthenticateWithCredential(firebaseUser, credential);
+      await deleteAccountSession(firebaseUser);
       await deleteUser(firebaseUser);
       setSession(null);
       clearSessionCookies();

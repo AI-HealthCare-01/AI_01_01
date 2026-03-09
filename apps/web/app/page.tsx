@@ -129,10 +129,10 @@ const CALENDAR_TONE_LABEL: Record<CalendarMoodTone, string> = {
 };
 
 const HOME_CALENDAR_LEGEND: Array<{ tone: CalendarMoodTone; copy: string }> = [
-  { tone: "happy", copy: "핑크 · 마음이 한결 가벼웠던 날" },
-  { tone: "anxious", copy: "노랑 · 긴장이 조금 높았던 날" },
-  { tone: "depressed", copy: "파랑 · 마음이 무겁게 느껴진 날" },
-  { tone: "sleep", copy: "보라 · 수면 회복이 더 필요한 날" },
+  { tone: "happy", copy: "마음이 한결 가벼웠던 날" },
+  { tone: "anxious", copy: "긴장이 조금 높았던 날" },
+  { tone: "depressed", copy: "마음이 무겁게 느껴진 날" },
+  { tone: "sleep", copy: "수면 회복이 더 필요한 날" },
 ];
 
 function toDateString(year: number, month: number, day: number): string {

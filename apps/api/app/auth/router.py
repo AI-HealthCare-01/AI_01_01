@@ -105,6 +105,19 @@ def signup(
             coach_name=payload.coach_name,
         )
     except sqlite3.IntegrityError as exc:
+        # Firebase 계정은 새로 생성되었지만 로컬 계정 쉘이 이전 UID로 남아있는 경우,
+        # 이메일 기준으로 UID를 재연결해 가입 플로우를 복구한다.
+        relinked = store.relink_firebase_uid_by_email(
+            email=payload.email,
+            firebase_uid=payload.firebase_uid,
+        )
+        if relinked is not None:
+            logger.warning(
+                "signup_uid_relinked_by_email: uid=%s email=%s",
+                payload.firebase_uid,
+                payload.email,
+            )
+            return relinked
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="email_or_uid_already_exists",

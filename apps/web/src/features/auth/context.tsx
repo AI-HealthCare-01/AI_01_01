@@ -35,7 +35,7 @@ import {
   saveOnboardingProfile,
   signupBootstrap
 } from "./api-client";
-import { getFirebaseAuthClient, isFirebaseConfigured } from "./firebase";
+import { getFirebaseAuthClient, isAuthEmulatorEnabled, isFirebaseConfigured } from "./firebase";
 import { clearSessionCookies, setSessionCookies } from "./session-cookie";
 import type {
   BaselineAssessmentRequest,
@@ -75,7 +75,8 @@ function isContinueUrlError(error: unknown): boolean {
   return (
     code.includes("auth/invalid-continue-uri") ||
     code.includes("auth/unauthorized-continue-uri") ||
-    code.includes("auth/missing-continue-uri")
+    code.includes("auth/missing-continue-uri") ||
+    code.includes("auth/invalid-dynamic-link-domain")
   );
 }
 
@@ -138,13 +139,68 @@ function mapErrorCode(error: unknown): string {
   return "unknown_error";
 }
 
+function isLikelyInvalidCredentialError(code: string): boolean {
+  return code.includes("auth/invalid-credential") || code.includes("auth/invalid-login-credentials");
+}
+
+async function classifySignInErrorCode(
+  auth: ReturnType<typeof getFirebaseAuthClient>,
+  email: string,
+  rawCode: string
+): Promise<string> {
+  if (!isLikelyInvalidCredentialError(rawCode)) {
+    return rawCode;
+  }
+
+  try {
+    const methods = await fetchSignInMethodsForEmail(auth, email);
+    const normalizedMethods = methods.map((method) => method.toLowerCase());
+
+    if (normalizedMethods.includes("password")) {
+      return "auth/wrong-password";
+    }
+
+    if (normalizedMethods.length > 0) {
+      return "auth/account-exists-with-different-credential";
+    }
+
+    // Firebase Email Enumeration Protection이 활성화된 프로젝트는
+    // fetchSignInMethodsForEmail이 빈 배열을 반환할 수 있어 원인 단정이 어렵다.
+    return rawCode;
+  } catch (lookupError) {
+    const lookupCode = mapErrorCode(lookupError);
+    if (lookupCode.includes("auth/too-many-requests")) {
+      return "auth/too-many-requests";
+    }
+    if (lookupCode.includes("auth/network-request-failed")) {
+      return "auth/network-request-failed";
+    }
+    return rawCode;
+  }
+}
+
+function isLocalHostUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+
 function resolveContinueUrl(pathname: string): string | undefined {
   const baseFromEnv = process.env.NEXT_PUBLIC_AUTH_CONTINUE_BASE_URL?.trim();
   if (baseFromEnv) {
+    if (!isAuthEmulatorEnabled() && isLocalHostUrl(baseFromEnv)) {
+      return undefined;
+    }
     return new URL(pathname, baseFromEnv).toString();
   }
 
   if (typeof window !== "undefined") {
+    if (!isAuthEmulatorEnabled() && isLocalHostUrl(window.location.origin)) {
+      return undefined;
+    }
     return new URL(pathname, window.location.origin).toString();
   }
 
@@ -270,8 +326,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithEmail = useCallback(
     async (email: string, password: string): Promise<SessionContract | null> => {
       const auth = getFirebaseAuthClient();
-      const credential = await signInWithEmailAndPassword(auth, email, password);
-      return bootstrapForUser(credential.user);
+      try {
+        const credential = await signInWithEmailAndPassword(auth, email, password);
+        return bootstrapForUser(credential.user);
+      } catch (error) {
+        const rawCode = mapErrorCode(error);
+        const classifiedCode = await classifySignInErrorCode(auth, email, rawCode);
+        throw new Error(classifiedCode);
+      }
     },
     [bootstrapForUser]
   );

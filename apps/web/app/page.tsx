@@ -18,6 +18,7 @@ import {
   SectionContainer,
 } from "../src/components/ui";
 import { useAuthContext } from "../src/features/auth";
+import { mapLoginErrorMessage } from "../src/features/auth/login-error";
 import { isOnboardingComplete, shouldGoOnboarding } from "../src/features/auth/status";
 import {
   CoreApiError,
@@ -180,28 +181,6 @@ function parseError(error: unknown): string {
     return "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
   }
   return "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
-}
-
-function mapLoginError(code: string): string {
-  if (code.includes("auth/invalid-credential") || code.includes("auth/wrong-password")) {
-    return "이메일 또는 비밀번호를 다시 확인해주세요.";
-  }
-  if (code.includes("auth/user-not-found")) {
-    return "등록되지 않은 계정입니다.";
-  }
-  if (code.includes("firebase_token_invalid")) {
-    return "로그인은 되었지만 서버 세션 확인에 실패했습니다. 잠시 후 다시 시도해주세요.";
-  }
-  if (code.includes("missing_firebase_auth")) {
-    return "인증 토큰이 누락되었습니다. 페이지를 새로고침 후 다시 시도해주세요.";
-  }
-  if (code.includes("account_not_found")) {
-    return "계정 동기화가 완료되지 않았습니다. 잠시 후 다시 시도하거나 로그인 화면에서 재시도해주세요.";
-  }
-  if (code.includes("session_bootstrap_failed")) {
-    return "로그인 후 계정 상태를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.";
-  }
-  return "로그인에 실패했습니다. 잠시 후 다시 시도해주세요.";
 }
 
 function getAccessGuide(
@@ -677,7 +656,7 @@ export default function HomePage() {
       router.replace("/onboarding");
     } catch (error) {
       const code = error instanceof Error ? error.message : "unknown";
-      setLandingError(mapLoginError(code));
+      setLandingError(mapLoginErrorMessage(code));
     } finally {
       setLandingSubmitting(false);
     }

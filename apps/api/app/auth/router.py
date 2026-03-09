@@ -12,6 +12,8 @@ from .config import load_auth_settings
 from .firebase import get_firebase_identity
 from .models import (
     BaselineAssessmentRequest,
+    ChangeEmailAvailabilityRequest,
+    ChangeEmailAvailabilityResponse,
     FirebaseIdentity,
     OnboardingProfileRequest,
     SessionBootstrapRequest,
@@ -157,6 +159,27 @@ def session_bootstrap(
         if session is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="account_not_found")
     return session
+
+
+@router.post("/auth/change-email/availability", response_model=ChangeEmailAvailabilityResponse)
+def change_email_availability(
+    payload: ChangeEmailAvailabilityRequest,
+    identity: FirebaseIdentity = Depends(get_firebase_identity),
+    store: AuthStore = Depends(get_auth_store),
+) -> ChangeEmailAvailabilityResponse:
+    user_id = store.get_user_id_by_firebase_uid(identity.firebase_uid)
+    if not user_id:
+        _recover_signup_shell(
+            store=store,
+            firebase_uid=identity.firebase_uid,
+            email=identity.email,
+        )
+        user_id = store.get_user_id_by_firebase_uid(identity.firebase_uid)
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="account_not_found")
+
+    duplicate = store.is_email_in_use(payload.new_email, exclude_user_id=user_id)
+    return ChangeEmailAvailabilityResponse(is_available=not duplicate)
 
 
 @router.post("/onboarding/profile", response_model=SessionContract)

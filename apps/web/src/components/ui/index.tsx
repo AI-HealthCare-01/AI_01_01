@@ -139,6 +139,9 @@ export function AppShell({ brand = "MindSight", headerAction, navItems, children
   const pathname = usePathname();
   const [canSeeAdminEntry, setCanSeeAdminEntry] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutErrorMessage, setLogoutErrorMessage] = useState<string | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -195,24 +198,34 @@ export function AppShell({ brand = "MindSight", headerAction, navItems, children
 
   const nickname = session?.account.nickname || firebaseUser?.displayName || firebaseUser?.email || "사용자";
 
-  const onLogout = async () => {
-    if (typeof window !== "undefined") {
-      const accepted = window.confirm("로그아웃 하시겠습니까?");
-      if (!accepted) {
-        return;
-      }
-    }
+  const onRequestLogout = () => {
+    setUserMenuOpen(false);
+    setLogoutErrorMessage(null);
+    setLogoutModalOpen(true);
+  };
 
+  const onCloseLogoutModal = () => {
+    if (isLoggingOut) {
+      return;
+    }
+    setLogoutModalOpen(false);
+  };
+
+  const onConfirmLogout = async () => {
+    if (isLoggingOut) {
+      return;
+    }
     try {
+      setIsLoggingOut(true);
+      setLogoutErrorMessage(null);
       await logout();
       if (typeof window !== "undefined") {
         window.location.href = "/";
       }
     } catch {
-      if (typeof window !== "undefined") {
-        window.alert("로그아웃에 실패했습니다. 잠시 후 다시 시도해주세요.");
-      }
+      setLogoutErrorMessage("로그아웃에 실패했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
+      setIsLoggingOut(false);
       setUserMenuOpen(false);
     }
   };
@@ -275,7 +288,7 @@ export function AppShell({ brand = "MindSight", headerAction, navItems, children
                           관리자페이지
                         </Link>
                       ) : null}
-                      <button type="button" className="ms-user-menu__item ms-user-menu__item--danger" role="menuitem" onClick={() => void onLogout()}>
+                      <button type="button" className="ms-user-menu__item ms-user-menu__item--danger" role="menuitem" onClick={onRequestLogout}>
                         로그아웃
                       </button>
                     </div>
@@ -307,6 +320,25 @@ export function AppShell({ brand = "MindSight", headerAction, navItems, children
       <main className="ms-app-shell__main">
         <div className="ms-app-shell__surface">{children}</div>
       </main>
+      <Modal
+        open={logoutModalOpen}
+        title="로그아웃 하시겠습니까?"
+        description="현재 기기에서 세션이 종료됩니다."
+        onClose={onCloseLogoutModal}
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={onCloseLogoutModal} disabled={isLoggingOut}>
+              취소
+            </Button>
+            <Button type="button" variant="danger" onClick={() => void onConfirmLogout()} loading={isLoggingOut}>
+              로그아웃
+            </Button>
+          </>
+        }
+      >
+        <p className="ms-card__desc">저장되지 않은 변경사항이 있으면 사라질 수 있습니다.</p>
+        {logoutErrorMessage ? <Banner variant="danger" title="요청 실패" description={logoutErrorMessage} /> : null}
+      </Modal>
     </div>
   );
 }
@@ -428,9 +460,11 @@ export function IconButton({
 }
 
 interface BaseFieldProps {
-  label: string;
+  label: ReactNode;
   helperText?: string;
   errorText?: string;
+  labelHint?: string;
+  hideRequiredMark?: boolean;
 }
 
 export interface InputProps
@@ -441,6 +475,8 @@ export function Input({
   label,
   helperText,
   errorText,
+  labelHint,
+  hideRequiredMark,
   id,
   className,
   required,
@@ -455,8 +491,16 @@ export function Input({
   return (
     <div className={cx("ms-field", errorText && "ms-field--error")}>
       <label htmlFor={fieldId} className="ms-field__label">
-        {label}
-        {required ? " *" : ""}
+        <span>{label}</span>
+        {required && !hideRequiredMark ? <span aria-hidden="true"> *</span> : null}
+        {labelHint ? (
+          <span className="ms-field__label-hint" aria-label={labelHint} tabIndex={0}>
+            i
+            <span className="ms-field__label-tooltip" role="tooltip">
+              {labelHint}
+            </span>
+          </span>
+        ) : null}
       </label>
       <ShadInput
         id={fieldId}
@@ -486,6 +530,8 @@ export function PasswordInput({
   label,
   helperText,
   errorText,
+  labelHint,
+  hideRequiredMark,
   id,
   className,
   required,
@@ -501,8 +547,16 @@ export function PasswordInput({
   return (
     <div className={cx("ms-field", errorText && "ms-field--error")}>
       <label htmlFor={fieldId} className="ms-field__label">
-        {label}
-        {required ? " *" : ""}
+        <span>{label}</span>
+        {required && !hideRequiredMark ? <span aria-hidden="true"> *</span> : null}
+        {labelHint ? (
+          <span className="ms-field__label-hint" aria-label={labelHint} tabIndex={0}>
+            i
+            <span className="ms-field__label-tooltip" role="tooltip">
+              {labelHint}
+            </span>
+          </span>
+        ) : null}
       </label>
       <div className="ms-input-wrap">
         <ShadInput
@@ -547,6 +601,8 @@ export function Textarea({
   label,
   helperText,
   errorText,
+  labelHint,
+  hideRequiredMark,
   maxLengthHint,
   id,
   className,
@@ -563,8 +619,16 @@ export function Textarea({
   return (
     <div className={cx("ms-field", errorText && "ms-field--error")}>
       <label htmlFor={fieldId} className="ms-field__label">
-        {label}
-        {required ? " *" : ""}
+        <span>{label}</span>
+        {required && !hideRequiredMark ? <span aria-hidden="true"> *</span> : null}
+        {labelHint ? (
+          <span className="ms-field__label-hint" aria-label={labelHint} tabIndex={0}>
+            i
+            <span className="ms-field__label-tooltip" role="tooltip">
+              {labelHint}
+            </span>
+          </span>
+        ) : null}
       </label>
       <ShadTextarea
         id={fieldId}
@@ -609,6 +673,8 @@ export function Select({
   label,
   helperText,
   errorText,
+  labelHint,
+  hideRequiredMark,
   options,
   id,
   className,
@@ -624,8 +690,16 @@ export function Select({
   return (
     <div className={cx("ms-field", errorText && "ms-field--error")}>
       <label htmlFor={fieldId} className="ms-field__label">
-        {label}
-        {required ? " *" : ""}
+        <span>{label}</span>
+        {required && !hideRequiredMark ? <span aria-hidden="true"> *</span> : null}
+        {labelHint ? (
+          <span className="ms-field__label-hint" aria-label={labelHint} tabIndex={0}>
+            i
+            <span className="ms-field__label-tooltip" role="tooltip">
+              {labelHint}
+            </span>
+          </span>
+        ) : null}
       </label>
       <ShadSelect
         id={fieldId}

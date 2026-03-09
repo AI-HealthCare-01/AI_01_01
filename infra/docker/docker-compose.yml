@@ -1,0 +1,90 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mindsight-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mindsight_local
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - mindsight_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mindsight_local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  auth-emulator:
+    build:
+      context: ../..
+      dockerfile: infra/docker/auth-emulator.Dockerfile
+    container_name: mindsight-auth-emulator
+    restart: unless-stopped
+    ports:
+      - "${AUTH_EMULATOR_PORT:-9099}:9099"
+      - "${AUTH_EMULATOR_UI_PORT:-4000}:4000"
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    container_name: mindsight-api
+    restart: unless-stopped
+    environment:
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_AUTH_EMULATOR_HOST: ${FIREBASE_AUTH_EMULATOR_HOST:-}
+      FIREBASE_ADMIN_PROJECT_ID: ${FIREBASE_ADMIN_PROJECT_ID:-}
+      FIREBASE_ADMIN_CLIENT_EMAIL: ${FIREBASE_ADMIN_CLIENT_EMAIL:-}
+      FIREBASE_ADMIN_PRIVATE_KEY: ${FIREBASE_ADMIN_PRIVATE_KEY:-}
+      AUTH_ALLOW_EMULATOR_UID_FALLBACK: ${AUTH_ALLOW_EMULATOR_UID_FALLBACK:-false}
+      AUTH_DATABASE_PATH: /data/auth_account.db
+      DATABASE_URL: ${DATABASE_URL:-}
+      MODEL_BUNDLE_DIR: /app/model
+      CORS_ALLOW_ORIGINS: http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001
+      ADMIN_OWNER_EMAIL: ${ADMIN_OWNER_EMAIL:-}
+      ADMIN_OWNER_FIREBASE_UID: ${ADMIN_OWNER_FIREBASE_UID:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - mindsight_api_data:/data
+      - ../../model:/app/model:ro
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${WEB_API_BASE_URL:-http://localhost:8000}
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
+        NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
+        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
+        NEXT_PUBLIC_FIREBASE_APP_ID: ${NEXT_PUBLIC_FIREBASE_APP_ID:-}
+        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:-}
+        NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: ${WEB_AUTH_EMULATOR_HOST:-}
+        NEXT_PUBLIC_AUTH_CONTINUE_BASE_URL: ${WEB_BASE_URL:-http://localhost:3000}
+    container_name: mindsight-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${WEB_API_BASE_URL:-http://localhost:8000}
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
+      NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
+      NEXT_PUBLIC_FIREBASE_APP_ID: ${NEXT_PUBLIC_FIREBASE_APP_ID:-}
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:-}
+      NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: ${WEB_AUTH_EMULATOR_HOST:-}
+      NEXT_PUBLIC_AUTH_CONTINUE_BASE_URL: ${WEB_BASE_URL:-http://localhost:3000}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+
+volumes:
+  mindsight_postgres_data:
+  mindsight_api_data:

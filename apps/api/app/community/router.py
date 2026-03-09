@@ -55,7 +55,7 @@ def _map_store_error(error: ValueError) -> HTTPException:
     }:
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=code)
 
-    if code in {"ticket_closed"}:
+    if code in {"ticket_closed", "already_reported"}:
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=code)
 
     if code in {
@@ -65,6 +65,8 @@ def _map_store_error(error: ValueError) -> HTTPException:
         "invalid_birth_year",
         "nickname_invalid",
         "coach_name_invalid",
+        "invalid_post_body",
+        "invalid_post_body_bytes",
     }:
         return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=code)
 

@@ -90,3 +90,4 @@ design/reference_images/
 
 # Docker compose symlink
 docker-compose.yml
+!infra/docker/docker-compose.yml

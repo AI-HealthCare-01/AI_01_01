@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "test \"$MINDSIGHT_ROOT_DEV\" = \"1\" || (echo \"[MindSight] Do not run from apps/web. Run from repo root: npm run dev | npm run dev:web:emulator\" && exit 1); next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "eslint . --max-warnings=0",

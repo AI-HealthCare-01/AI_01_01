@@ -8,7 +8,9 @@
   ],
   "scripts": {
     "dev": "npm run dev:web",
-    "dev:web": "npm run dev --workspace @mindsight/web",
+    "dev:web": "./scripts/dev-web.sh",
+    "dev:web:real": "USE_FIREBASE_AUTH_EMULATOR=false ./scripts/dev-web.sh",
+    "dev:web:emulator": "USE_FIREBASE_AUTH_EMULATOR=true ./scripts/dev-web.sh",
     "build": "npm run build:packages && npm run build:web",
     "build:web": "npm run build --workspace @mindsight/web",
     "build:packages": "npm run build --workspace @mindsight/shared && npm run build --workspace @mindsight/domain",
@@ -20,7 +22,13 @@
     "test:web": "npm run test --workspace @mindsight/web",
     "test:packages": "npm run test --workspace @mindsight/shared && npm run test --workspace @mindsight/domain",
     "typecheck": "npm run typecheck:web",
-    "typecheck:web": "npm run typecheck --workspace @mindsight/web"
+    "typecheck:web": "npm run typecheck --workspace @mindsight/web",
+    "dev:doctor:emulator": "./scripts/doctor-env.sh emulator",
+    "dev:doctor:real": "./scripts/doctor-env.sh real",
+    "dev:reset:emulator": "./scripts/reset-dev.sh emulator",
+    "dev:reset:real": "./scripts/reset-dev.sh real",
+    "dev:up:emulator": "./scripts/reset-dev.sh emulator --start",
+    "dev:up:real": "./scripts/reset-dev.sh real --start"
   },
   "devDependencies": {
     "firebase-tools": "^15.8.0"

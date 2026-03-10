@@ -48,11 +48,7 @@ class CbtLimitedLlm:
                 "core_belief_hint": "string|null",
             },
             "evidence": {"evidence_item": "string|null"},
-            "alternative_plan": {
-                "alternative_thought": "string|null",
-                "commitment_type": "behavior|thought_practice|null",
-                "commitment_text": "string|null",
-            },
+            "alternative_plan": {"alternative_thought": "string|null"},
         }
 
         prompt = (
@@ -208,6 +204,25 @@ class CbtLimitedLlm:
             f"commitment_mode={commitment_mode}"
         )
         return self._call_json(prompt=prompt, fallback_reason="commitment_suggestion_failed")
+
+    def compose_session_closure(
+        self,
+        *,
+        current_state: dict[str, Any],
+    ) -> tuple[dict[str, Any], LimitedLlmMeta]:
+        if not self.enabled:
+            return {}, LimitedLlmMeta(False, None, None, "llm_disabled")
+
+        prompt = (
+            "CBT 세션의 마지막 마무리 메시지를 작성하세요. "
+            "한국어 해요체로 2문장만 작성하고, 진단/치료 단정 표현은 피하세요. "
+            "1문장은 오늘 대화 요약, 1문장은 부담이 낮은 조언이나 마무리 격려로 작성하세요. "
+            "TO DO를 강요하지 말고, 사용자가 지금 기억해둘 한 가지를 짚어주세요. "
+            "반드시 JSON object만 반환하세요.\n"
+            "출력 스키마: {\"summary\": string, \"advice\": string}\n"
+            f"current_state={json.dumps(current_state, ensure_ascii=False)}"
+        )
+        return self._call_json(prompt=prompt, fallback_reason="session_closure_failed")
 
     def compose_repair_message(
         self,

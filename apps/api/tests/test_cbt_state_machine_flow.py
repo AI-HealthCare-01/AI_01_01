@@ -103,10 +103,7 @@ def test_evidence_quick_sets_are_strictly_separated_by_subphase() -> None:
         raw_state=to_evidence_for.state,
         user_input="관찰한 사실: 상사가 표정이 굳어 보였어요.",
     )
-    to_evidence_against = engine.process_turn(
-        raw_state=to_evidence_against.state,
-        user_input="내 경험: 최근 비슷한 발표에서 실수했어요.",
-    )
+    to_evidence_against = engine.process_turn(raw_state=to_evidence_against.state, user_input="", quick_reply_action_id=ACTION_NEXT_STAGE)
     assert to_evidence_against.phase_key == "evidence"
     assert to_evidence_against.subphase_key == "evidence_against"
     labels_against = {item.get("label", "") for item in to_evidence_against.quick_replies}
@@ -245,6 +242,72 @@ def test_emotion_none_response_skips_to_thought_without_first_word_label() -> No
     assert all("걍의 정도" not in message for message in to_thought.assistant_messages)
 
 
+def test_emotion_ambiguous_response_reprompts_with_examples() -> None:
+    engine = CbtThoughtRecordEngine()
+    bootstrap = engine.bootstrap(
+        today_record=_today_record(),
+        coach_nickname="은하코치",
+        user_nickname="지음",
+    )
+    to_emotion = engine.process_turn(raw_state=bootstrap.state, user_input="일이 너무 많이 밀렸어요.")
+    ambiguous = engine.process_turn(raw_state=to_emotion.state, user_input="복합적이에요. 잘 모르겠어요.")
+
+    assert ambiguous.phase_key == "emotion"
+    assert ambiguous.subphase_key == "label"
+    assert any("불안, 피곤함, 무기력함" in message for message in ambiguous.assistant_messages)
+
+
+def test_emotion_tired_and_burdened_words_map_to_supported_label() -> None:
+    engine = CbtThoughtRecordEngine()
+    bootstrap = engine.bootstrap(
+        today_record=_today_record(),
+        coach_nickname="은하코치",
+        user_nickname="지음",
+    )
+    to_emotion = engine.process_turn(raw_state=bootstrap.state, user_input="요즘 일이 너무 많아서 고돼요.")
+    to_intensity = engine.process_turn(raw_state=to_emotion.state, user_input="고되다 힘들다")
+
+    assert to_intensity.phase_key == "emotion"
+    assert to_intensity.subphase_key == "intensity"
+    assert any("부담감" in message or "정도를 숫자로" in message for message in to_intensity.assistant_messages)
+
+
+def test_emotion_freeform_labels_move_to_intensity_without_loop() -> None:
+    engine = CbtThoughtRecordEngine()
+    cases = ("힘들다", "고되다", "답답하다", "버겁다", "착잡하다")
+
+    for emotion_text in cases:
+        bootstrap = engine.bootstrap(
+            today_record=_today_record(),
+            coach_nickname="은하코치",
+            user_nickname="지음",
+        )
+        to_emotion = engine.process_turn(raw_state=bootstrap.state, user_input="요즘 복습할 게 너무 많아요.")
+        to_intensity = engine.process_turn(raw_state=to_emotion.state, user_input=emotion_text)
+
+        assert to_intensity.phase_key == "emotion"
+        assert to_intensity.subphase_key == "intensity"
+        assert any("정도를 숫자로" in message for message in to_intensity.assistant_messages)
+        assert all("가장 가까운 하나만" not in message for message in to_intensity.assistant_messages)
+
+
+def test_emotion_intensity_invalid_input_gets_friendlier_retry() -> None:
+    engine = CbtThoughtRecordEngine()
+    bootstrap = engine.bootstrap(
+        today_record=_today_record(),
+        coach_nickname="은하코치",
+        user_nickname="지음",
+    )
+    to_emotion = engine.process_turn(raw_state=bootstrap.state, user_input="회의 생각만 하면 불안해요.")
+    if to_emotion.subphase_key == "label":
+        to_emotion = engine.process_turn(raw_state=to_emotion.state, user_input="불안")
+    retry = engine.process_turn(raw_state=to_emotion.state, user_input="숫자로는 잘 모르겠어요")
+
+    assert retry.phase_key == "emotion"
+    assert retry.subphase_key == "intensity"
+    assert any("30은 조금 불편함" in message or "40 / 60 / 80" in message for message in retry.assistant_messages)
+
+
 def test_core_confirm_step_is_shown_before_evidence_and_prompt_contains_core() -> None:
     engine = CbtThoughtRecordEngine()
     bootstrap = engine.bootstrap(
@@ -258,9 +321,10 @@ def test_core_confirm_step_is_shown_before_evidence_and_prompt_contains_core() -
     to_probe = engine.process_turn(raw_state=to_thought.state, user_input="결국 실수해서 신뢰를 잃을 것 같아요.")
 
     assert to_probe.phase_key == "thought"
-    assert to_probe.subphase_key == "core_probe"
-
-    to_confirm = engine.process_turn(raw_state=to_probe.state, user_input="신뢰를 잃고 무능한 사람으로 보일까 봐요.")
+    to_confirm = to_probe if to_probe.subphase_key == "core_confirm" else engine.process_turn(
+        raw_state=to_probe.state,
+        user_input="신뢰를 잃고 무능한 사람으로 보일까 봐요.",
+    )
 
     assert to_confirm.phase_key == "thought"
     assert to_confirm.subphase_key == "core_confirm"
@@ -336,6 +400,151 @@ def test_core_confirm_accepts_short_colloquial_yes_variants() -> None:
         advanced = engine.process_turn(raw_state=to_confirm.state, user_input=reply)
         assert advanced.phase_key == "evidence"
         assert advanced.subphase_key == "evidence_for"
+
+
+def test_thought_realistic_auto_thought_goes_to_core_confirm() -> None:
+    engine = CbtThoughtRecordEngine()
+    bootstrap = engine.bootstrap(
+        today_record=_today_record(),
+        coach_nickname="은하코치",
+        user_nickname="지음",
+    )
+    to_emotion = engine.process_turn(raw_state=bootstrap.state, user_input="발표 직전만 되면 긴장돼요.")
+    to_intensity = engine.process_turn(raw_state=to_emotion.state, user_input="불안")
+    to_thought = engine.process_turn(raw_state=to_intensity.state, user_input="70")
+    to_confirm = engine.process_turn(raw_state=to_thought.state, user_input="또 망할 것 같아요.")
+
+    assert to_confirm.phase_key == "thought"
+    assert to_confirm.subphase_key == "core_confirm"
+
+
+def test_evidence_against_empty_input_returns_scaffold_not_invalid() -> None:
+    engine = CbtThoughtRecordEngine()
+    bootstrap = engine.bootstrap(
+        today_record=_today_record(),
+        coach_nickname="은하코치",
+        user_nickname="지음",
+    )
+    to_emotion = engine.process_turn(raw_state=bootstrap.state, user_input="발표 앞두고 너무 떨려요.")
+    to_intensity = engine.process_turn(raw_state=to_emotion.state, user_input="불안")
+    to_thought = engine.process_turn(raw_state=to_intensity.state, user_input="70")
+    to_probe = engine.process_turn(raw_state=to_thought.state, user_input="무시당할 것 같아요.")
+    to_confirm = engine.process_turn(raw_state=to_probe.state, user_input="무시당할 것 같아.")
+    to_for = engine.process_turn(raw_state=to_confirm.state, user_input="ㅇㅇ")
+    to_for_more = engine.process_turn(raw_state=to_for.state, user_input="상사가 표정이 굳어 보였어요.")
+    to_against = engine.process_turn(
+        raw_state=to_for_more.state,
+        user_input="",
+        quick_reply_action_id=ACTION_NEXT_STAGE,
+    )
+    scaffold = engine.process_turn(raw_state=to_against.state, user_input="")
+
+    assert scaffold.phase_key == "evidence"
+    assert scaffold.subphase_key == "evidence_against"
+    assert any("예외" in message or "사실과 해석" in message for message in scaffold.assistant_messages)
+
+
+def test_evidence_short_text_next_intent_moves_to_next_substep() -> None:
+    engine = CbtThoughtRecordEngine()
+    bootstrap = engine.bootstrap(
+        today_record=_today_record(),
+        coach_nickname="은하코치",
+        user_nickname="지음",
+    )
+    to_emotion = engine.process_turn(raw_state=bootstrap.state, user_input="발표 앞두고 너무 떨려요.")
+    to_intensity = engine.process_turn(raw_state=to_emotion.state, user_input="불안")
+    to_thought = engine.process_turn(raw_state=to_intensity.state, user_input="70")
+    to_probe = engine.process_turn(raw_state=to_thought.state, user_input="무시당할 것 같아요.")
+    to_confirm = engine.process_turn(raw_state=to_probe.state, user_input="무시당할 것 같아.")
+    to_for = engine.process_turn(raw_state=to_confirm.state, user_input="ㅇㅇ")
+    moved = engine.process_turn(raw_state=to_for.state, user_input="다음으로")
+
+    assert moved.phase_key == "evidence"
+    assert moved.subphase_key == "evidence_against"
+
+
+def test_evidence_low_quality_inputs_are_not_appended() -> None:
+    engine = CbtThoughtRecordEngine()
+    bootstrap = engine.bootstrap(
+        today_record=_today_record(),
+        coach_nickname="은하코치",
+        user_nickname="지음",
+    )
+    to_emotion = engine.process_turn(raw_state=bootstrap.state, user_input="발표 앞두고 너무 떨려요.")
+    to_intensity = engine.process_turn(raw_state=to_emotion.state, user_input="불안")
+    to_thought = engine.process_turn(raw_state=to_intensity.state, user_input="70")
+    to_probe = engine.process_turn(raw_state=to_thought.state, user_input="무시당할 것 같아요.")
+    to_confirm = engine.process_turn(raw_state=to_probe.state, user_input="무시당할 것 같아.")
+    to_for = engine.process_turn(raw_state=to_confirm.state, user_input="ㅇㅇ")
+    low_quality = engine.process_turn(raw_state=to_for.state, user_input="몰루")
+
+    assert low_quality.phase_key == "evidence"
+    assert low_quality.subphase_key == "evidence_for"
+    assert low_quality.state.get("evidence_for") == []
+    assert any("사실" in message or "다음으로" in message for message in low_quality.assistant_messages)
+
+
+def test_evidence_prefix_only_and_generic_against_inputs_do_not_count() -> None:
+    engine = CbtThoughtRecordEngine()
+    bootstrap = engine.bootstrap(
+        today_record=_today_record(),
+        coach_nickname="은하코치",
+        user_nickname="지음",
+    )
+    to_emotion = engine.process_turn(raw_state=bootstrap.state, user_input="발표 앞두고 너무 떨려요.")
+    to_intensity = engine.process_turn(raw_state=to_emotion.state, user_input="불안")
+    to_thought = engine.process_turn(raw_state=to_intensity.state, user_input="70")
+    to_probe = engine.process_turn(raw_state=to_thought.state, user_input="무시당할 것 같아요.")
+    to_confirm = engine.process_turn(raw_state=to_probe.state, user_input="무시당할 것 같아.")
+    to_for = engine.process_turn(raw_state=to_confirm.state, user_input="ㅇㅇ")
+    to_for_more = engine.process_turn(raw_state=to_for.state, user_input="표정이 굳어 보였어요.")
+    to_against = engine.process_turn(raw_state=to_for_more.state, user_input="ㅇㅇ")
+    low_quality = engine.process_turn(raw_state=to_against.state, user_input="확인되지 않은 부분:")
+    low_quality = engine.process_turn(raw_state=low_quality.state, user_input="반대 근거: 반대임")
+
+    assert low_quality.phase_key == "evidence"
+    assert low_quality.subphase_key == "evidence_against"
+    assert low_quality.state.get("evidence_against") == []
+
+
+def test_evidence_accepts_two_items_then_text_next_moves_forward() -> None:
+    engine = CbtThoughtRecordEngine()
+    bootstrap = engine.bootstrap(
+        today_record=_today_record(),
+        coach_nickname="은하코치",
+        user_nickname="지음",
+    )
+    to_emotion = engine.process_turn(raw_state=bootstrap.state, user_input="발표 앞두고 너무 떨려요.")
+    to_intensity = engine.process_turn(raw_state=to_emotion.state, user_input="불안")
+    to_thought = engine.process_turn(raw_state=to_intensity.state, user_input="70")
+    to_probe = engine.process_turn(raw_state=to_thought.state, user_input="무시당할 것 같아요.")
+    to_confirm = engine.process_turn(raw_state=to_probe.state, user_input="무시당할 것 같아.")
+    to_for = engine.process_turn(raw_state=to_confirm.state, user_input="ㅇㅇ")
+    one = engine.process_turn(raw_state=to_for.state, user_input="표정이 굳어 보였어요.")
+    two = engine.process_turn(raw_state=one.state, user_input="내가 중간에 말을 멈췄어요.")
+    moved = engine.process_turn(raw_state=two.state, user_input="ㅇㅇ")
+
+    assert len(moved.state.get("evidence_for") or []) == 2
+    assert moved.phase_key == "evidence"
+    assert moved.subphase_key == "evidence_against"
+
+
+def test_invalid_response_softens_before_summary_close() -> None:
+    engine = CbtThoughtRecordEngine()
+    bootstrap = engine.bootstrap(
+        today_record=_today_record(),
+        coach_nickname="은하코치",
+        user_nickname="지음",
+    )
+    to_emotion = engine.process_turn(raw_state=bootstrap.state, user_input="회의 발표를 앞두고 머리가 하얘졌어요.")
+    first = engine.process_turn(raw_state=to_emotion.state, user_input="!")
+    second = engine.process_turn(raw_state=first.state, user_input="!")
+    third = engine.process_turn(raw_state=second.state, user_input="!")
+
+    assert first.phase_key == "emotion"
+    assert second.phase_key == "emotion"
+    assert third.phase_key == "emotion"
+    assert third.conversation_closed is False
 
 
 def test_core_refine_uses_revised_sentence_instead_of_original_loop() -> None:

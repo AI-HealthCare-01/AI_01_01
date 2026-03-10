@@ -51,6 +51,7 @@ THOUGHT_PROBE_QUESTIONS: tuple[str, ...] = (
 )
 EMOTION_SYNONYM_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("불안", ("불안", "초조", "조마조마", "긴장", "걱정", "부담", "압박")),
+    ("부담", ("버겁", "벅차", "힘들", "고되", "지치", "진빠지", "기빨리", "답답", "막막", "괴롭", "착잡")),
     ("무기력함", ("무기력", "기운이없", "기력이없", "의욕이없", "축처", "처지", "지침")),
     ("피곤함", ("피곤", "지쳤", "졸리", "잠이와", "녹초", "기진맥진")),
     ("슬픔", ("슬프", "우울", "허무", "울적")),
@@ -368,8 +369,72 @@ class CbtThoughtRecordEngine:
             "쓸모없",
             "혼자남",
             "통제못",
+            "망할것같",
+            "실패할것같",
+            "또망할",
+            "또실수",
+            "무시당할것같",
+            "무능해보일",
+            "결국안돼",
+            "난결국안돼",
+            "안될것같",
+            "실망시킬것같",
         )
         return any(marker in normalized for marker in markers)
+
+    @staticmethod
+    def _looks_valid_thought_sentence(text: str) -> bool:
+        normalized = text.lower().replace(" ", "")
+        if len(normalized) < 3:
+            return False
+        markers = (
+            "것같",
+            "같아",
+            "두려",
+            "걱정",
+            "무섭",
+            "망할",
+            "실패",
+            "무시당",
+            "안될",
+            "실망",
+        )
+        return any(marker in normalized for marker in markers)
+
+    @staticmethod
+    def _needs_evidence_scaffold(text: str) -> bool:
+        normalized = text.lower().replace(" ", "")
+        markers = ("모르겠", "없어", "안떠올라", "애매", "딱히", "잘안보여", "잘모르")
+        return any(marker in normalized for marker in markers)
+
+    @staticmethod
+    def _looks_evidence_next_intent(text: str) -> bool:
+        normalized = re.sub(r"[^0-9a-zA-Z가-힣ㄱ-ㅎㅏ-ㅣ]+", "", str(text or "").lower())
+        return normalized in {"다음으로", "넘어가자", "다음", "ㅇㅇ", "응", "go"}
+
+    @staticmethod
+    def _is_low_quality_evidence(text: str) -> bool:
+        raw = str(text or "").strip()
+        if not raw:
+            return True
+        normalized = raw.lower().replace(" ", "")
+        if normalized in {
+            "확인되지않은부분",
+            "확인되지않은부분:",
+            "반대근거",
+            "반대근거:",
+            "관찰한사실",
+            "관찰한사실:",
+            "내경험",
+            "내경험:",
+            "다른가능성",
+            "다른가능성:",
+            "예외였던순간",
+            "예외였던순간:",
+        }:
+            return True
+        low_quality_markers = ("몰루", "모르겠", "없어요", "없음", "안떠올라", "반대임", "잘모르", "딱히")
+        return any(marker in normalized for marker in low_quality_markers)
 
     @staticmethod
     def _resolve_core_confirm_action(text: str) -> str | None:
@@ -420,6 +485,46 @@ class CbtThoughtRecordEngine:
         return [label for _, label in hits]
 
     @staticmethod
+    def _normalize_freeform_emotion_label(text: str) -> str:
+        raw = re.sub(r"\s+", " ", str(text or "")).strip()
+        if len(raw) < 2:
+            return ""
+        compact = raw.lower().replace(" ", "")
+        if (
+            CbtThoughtRecordEngine._looks_no_emotion_response(compact)
+            or CbtThoughtRecordEngine._looks_ambiguous_emotion_response(compact)
+        ):
+            return ""
+        detected = CbtThoughtRecordEngine._detect_emotion_labels(compact)
+        if detected:
+            return detected[0]
+        trimmed = re.sub(r"(이라고|라고|이라서|라서|하다고|다고|이에요|예요|해요|하다|한데|함|다)$", "", raw).strip()
+        if len(trimmed) >= 2 and len(trimmed.split()) == 1:
+            return trimmed[:40]
+        return ""
+
+    @staticmethod
+    def _recent_emotion_label_inputs(state: dict[str, Any], *, limit: int = 3) -> list[str]:
+        turn_log = state.get("turn_log")
+        if not isinstance(turn_log, list):
+            return []
+        items: list[str] = []
+        for entry in reversed(turn_log):
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("role") != "user":
+                continue
+            if entry.get("stage") != "emotion" or entry.get("subphase") != "label":
+                continue
+            text = str(entry.get("content") or "").strip()
+            if not text:
+                continue
+            items.append(text)
+            if len(items) >= limit:
+                break
+        return list(reversed(items))
+
+    @staticmethod
     def _looks_no_emotion_response(text: str) -> bool:
         normalized = text.lower().replace(" ", "")
         markers = (
@@ -434,6 +539,85 @@ class CbtThoughtRecordEngine:
             "걍",
         )
         return any(marker in normalized for marker in markers)
+
+    @staticmethod
+    def _looks_ambiguous_emotion_response(text: str) -> bool:
+        normalized = text.lower().replace(" ", "")
+        markers = (
+            "복합적",
+            "여러가지",
+            "잘모르겠",
+            "모르겠",
+            "그냥안좋",
+            "안좋",
+            "애매",
+            "오락가락",
+        )
+        return any(marker in normalized for marker in markers)
+
+    @staticmethod
+    def _intensity_retry_prompt(label: str, *, count: int) -> str:
+        resolved = CbtThoughtRecordEngine._emotion_degree_label(label or "감정")
+        prompts = (
+            f"{resolved} 정도를 숫자로 말해볼까요?\n예: 30은 조금 불편함, 70은 꽤 힘듦, 90은 매우 버거움이에요.",
+            f"정확하지 않아도 괜찮아요. 대충 숫자로만 적어주세요.\n예: {resolved} 40 / 60 / 80",
+            f"감으로 골라도 괜찮아요. 30, 50, 70, 90 중 가장 가까운 숫자 하나만 보내주세요.",
+        )
+        return prompts[min(max(count, 0), len(prompts) - 1)]
+
+    @staticmethod
+    def _evidence_scaffold_prompt(*, mode: str, core: str, count: int) -> str:
+        if mode == "for":
+            prompts = (
+                f"맞아 보이는 이유가 바로 안 떠오르면, 사실 하나만 적어도 괜찮아요.\n예: ‘{core}’라고 느낀 장면에서 상대 표정이 굳어 보였어요.",
+                "생각 말고 확인된 사실만 골라볼까요?\n예: 답장이 늦었어요 / 말을 짧게 했어요 / 내가 중간에 멈췄어요",
+                "한 줄이면 충분해요. 말, 표정, 사건, 내 몸 반응 중 하나만 적어주세요.",
+            )
+        else:
+            prompts = (
+                f"반대 근거가 안 떠오르면 예외 하나만 찾아볼까요?\n‘{core}’가 100% 확실하진 않은 이유가 있을까요?",
+                "사실과 해석을 나눠볼까요?\n확인된 사실 말고 내가 추측한 부분이 있다면 그걸 적어주세요.",
+                "다른 사람 시점으로 보면 어떤 말이 가능할까요?\n예: 한 번 실수했다고 늘 그런 건 아니에요 / 아직 확인된 건 없어요",
+            )
+        return prompts[min(max(count, 0), len(prompts) - 1)]
+
+    def _soft_invalid_guidance(
+        self,
+        stage: str,
+        subphase: str,
+        *,
+        count: int,
+        state: dict[str, Any],
+    ) -> tuple[list[str], list[dict[str, str]]]:
+        if stage == "emotion" and subphase == "label":
+            prompts = (
+                "감정 이름이 딱 맞지 않아도 괜찮아요. 불안, 피곤함, 무기력함처럼 제일 가까운 하나만 골라볼까요?",
+                "한 단어로만 적어도 돼요.\n예: 불안 / 피곤함 / 답답함 / 무기력함",
+                "아래 선택지에서 가장 가까운 감정을 눌러도 괜찮아요.",
+            )
+            return [prompts[min(count - 1, 2)]], self._quick_set("emotion", "label")
+        if stage == "emotion" and subphase == "intensity":
+            label = str(state.get("emotion_label") or "감정")
+            return [self._intensity_retry_prompt(label, count=count - 1)], self._quick_set("emotion", "intensity")
+        if stage == "thought":
+            prompts = (
+                "완벽한 문장일 필요는 없어요. 그때 머릿속에 스친 말 한마디만 적어볼까요?",
+                "예: 또 망할 것 같아 / 무시당할 것 같아 / 난 결국 안 돼",
+                "아래 예시 중 가까운 걸 눌러서 시작해도 괜찮아요.",
+            )
+            key = "core_probe" if subphase in {"core_probe", "core_blocked"} else "auto_thought"
+            return [prompts[min(count - 1, 2)]], self._quick_set("thought", key)
+        if stage == "evidence":
+            mode = "against" if subphase == "evidence_against" else "for"
+            core = str(state.get("core_message_text") or "").strip() or "그 생각"
+            return [self._evidence_scaffold_prompt(mode=mode, core=core, count=count - 1)], self._quick_set("evidence", subphase)
+        prompts = (
+            "지금은 딱 맞는 답이 바로 안 떠오를 수도 있어요. 같은 질문을 조금 더 쉽게 다시 볼게요.",
+            "짧게 한 줄만 적거나, 아래 선택지를 눌러도 괜찮아요.",
+            "필요하면 주제를 다시 잡아도 괜찮아요.",
+        )
+        key = "hard_required" if stage == "situation" else "general"
+        return [prompts[min(count - 1, 2)]], self._quick_set("fallback", key)
 
     @staticmethod
     def _looks_valid_label(text: str) -> bool:
@@ -1683,7 +1867,7 @@ class CbtThoughtRecordEngine:
         action_id: str,
     ) -> tuple[str, str, str, list[dict[str, str]], list[dict[str, str]]] | None:
         lowered = user_text.lower()
-        is_skip = action_id == ACTION_SKIP_STAGE or any(token in lowered for token in SKIP_KEYWORDS)
+        is_skip = action_id == ACTION_SKIP_STAGE or "건너뛰기" in lowered or "skip" in lowered
         substep = str(state["meta"].get("emotion_substep") or "label")
         label = str(extracted.get("emotion_label") or "").strip()
         intensity = extracted.get("emotion_intensity_0_100")
@@ -1706,6 +1890,21 @@ class CbtThoughtRecordEngine:
             normalized_text = self._strip_prefill_seed(user_text, allow_prefix_only=True)
             split = normalized_text.replace(",", " ").split()
             detected_labels = self._detect_emotion_labels(normalized_text)
+            freeform_label = self._normalize_freeform_emotion_label(normalized_text)
+            recent_inputs = self._recent_emotion_label_inputs(state)
+            if not label and not detected_labels and self._looks_ambiguous_emotion_response(normalized_text):
+                prompt = (
+                    "감정이 한 가지로 딱 떨어지지 않아도 괜찮아요.\n불안, 피곤함, 무기력함, 답답함 중 가장 가까운 하나만 골라볼까요?"
+                    if len(recent_inputs) <= 1
+                    else "딱 맞는 감정 단어가 아니어도 괜찮아요.\n가장 가까운 느낌 하나만 말해주면 제가 대표 감정으로 이어서 정리할게요. 예: 부담 / 피곤함 / 무기력함"
+                )
+                return (
+                    "emotion",
+                    "label",
+                    prompt,
+                    self._quick_set("emotion", "label"),
+                    [],
+                )
             if not label and not detected_labels and self._looks_no_emotion_response(normalized_text):
                 state["emotion_label"] = ""
                 state["emotion_intensity_0_100"] = None
@@ -1721,6 +1920,8 @@ class CbtThoughtRecordEngine:
                 )
             if not label and detected_labels:
                 label = detected_labels[0]
+            elif not label and freeform_label:
+                label = freeform_label
             for token in split:
                 if token.isdigit():
                     intensity = int(token)
@@ -1731,7 +1932,11 @@ class CbtThoughtRecordEngine:
                 return (
                     "emotion",
                     "label",
-                    "감정 이름이 바로 안 떠오르면, 불안·피곤함·무기력함처럼 가장 가까운 하나만 적어도 괜찮아요.",
+                    (
+                        "감정 이름이 바로 안 떠오르면, 불안·피곤함·무기력함처럼 가장 가까운 하나만 적어도 괜찮아요."
+                        if len(recent_inputs) <= 1
+                        else "딱 맞는 말이 아니어도 괜찮아요. 짧게 한 단어로만 적어주면 그 느낌을 기준으로 이어갈게요.\n예: 답답함 / 버거움 / 피곤함"
+                    ),
                     self._quick_set("emotion", "label"),
                     [],
                 )
@@ -1762,7 +1967,7 @@ class CbtThoughtRecordEngine:
                     f"우선 가장 크게 느껴지는 {self._emotion_degree_label(state['emotion_label'])}의 정도(0~100)를 알려주세요."
                 )
             else:
-                intensity_prompt = f"{self._emotion_degree_label(state['emotion_label'])}의 정도(0~100)를 알려주세요."
+                intensity_prompt = self._intensity_retry_prompt(state["emotion_label"], count=0)
             return (
                 "emotion",
                 "intensity",
@@ -1789,7 +1994,13 @@ class CbtThoughtRecordEngine:
         except (TypeError, ValueError):
             score = -1
         if score < 0 or score > 100:
-            return None
+            return (
+                "emotion",
+                "intensity",
+                self._intensity_retry_prompt(str(state.get("emotion_label") or "감정"), count=1),
+                self._quick_set("emotion", "intensity"),
+                [],
+            )
         state["emotion_intensity_0_100"] = score
         state["emotions"] = [{"name": state["emotion_label"] or "감정", "intensity": score}]
         state["meta"]["emotion_substep"] = "label"
@@ -1838,7 +2049,10 @@ class CbtThoughtRecordEngine:
             self._analyze_core_pattern(state, state["auto_thought_text"])
             if (
                 not str(state.get("core_message_text") or "").strip()
-                or not self._looks_core_message(state["auto_thought_text"])
+                or (
+                    not self._looks_core_message(state["auto_thought_text"])
+                    and not self._looks_valid_thought_sentence(state["auto_thought_text"])
+                )
             ):
                 state["meta"]["thought_substep"] = "core_probe"
                 return (
@@ -1889,6 +2103,17 @@ class CbtThoughtRecordEngine:
                     [],
                 )
             if manual and manual not in {"기타", "기타:"}:
+                if not self._resolve_core_confirm_action(manual) and len(manual) >= 3:
+                    state["meta"]["thought_substep"] = "core_confirm"
+                    state["core_message_text"] = manual[:220]
+                    self._analyze_core_pattern(state, manual)
+                    return (
+                        "thought",
+                        "core_confirm",
+                        self._core_confirm_prompt(state),
+                        self._quick_set("thought", "core_confirm"),
+                        [],
+                    )
                 state["core_message_text"] = manual[:220]
                 self._analyze_core_pattern(state, manual)
             return (
@@ -1912,7 +2137,13 @@ class CbtThoughtRecordEngine:
             candidate = str(extracted.get("core_belief_hint") or user_text).strip()
             candidate = self._strip_prefill_seed(candidate, allow_prefix_only=True)
             if len(candidate) < 2 or candidate in {"기타", "기타:"}:
-                return None
+                return (
+                    "thought",
+                    "core_refine",
+                    "한 문장으로 딱 정리되지 않아도 괜찮아요.\n예: 또 망할 것 같아 / 무시당할 것 같아 / 난 결국 안 돼",
+                    self._core_refine_quick_set(state),
+                    [],
+                )
             state["core_message_text"] = candidate[:220]
             self._analyze_core_pattern(state, candidate)
             state["meta"]["thought_substep"] = "core_confirm"
@@ -1973,7 +2204,7 @@ class CbtThoughtRecordEngine:
             return (
                 "thought",
                 "core_probe",
-                self._current_stage_prompt(stage="thought", subphase="core_probe", state=state),
+                "길게 적지 않아도 괜찮아요.\n그때 머릿속 한마디를 짧게 적어볼까요? 예: 또 망할 것 같아",
                 self._quick_set("thought", "core_probe"),
                 [],
             )
@@ -1996,18 +2227,65 @@ class CbtThoughtRecordEngine:
         *,
         action_id: str,
     ) -> tuple[str, str, str, list[dict[str, str]], list[dict[str, str]]] | None:
-        substep = str(state["meta"].get("evidence_substep") or "for")
+        raw_substep = str(state["meta"].get("evidence_substep") or "for")
+        substep = "evidence_against" if raw_substep in {"against", "evidence_against"} else "evidence_for"
         is_skip = action_id == ACTION_SKIP_STAGE or any(token in user_text.lower() for token in SKIP_KEYWORDS)
-        is_next = action_id == ACTION_NEXT_STAGE
+        is_next = action_id == ACTION_NEXT_STAGE or self._looks_evidence_next_intent(user_text)
         item = str(extracted.get("evidence_item") or user_text).strip()
         item = self._strip_prefill_seed(item, allow_prefix_only=True)
-        if not is_skip and not is_next and len(item) < 2:
-            return None
+        low_quality = self._is_low_quality_evidence(user_text) or self._is_low_quality_evidence(item)
+        if not is_skip and not is_next and (len(item) < 2 or low_quality):
+            core = str(state.get("core_message_text") or "").strip() or "그 생각"
+            if substep == "evidence_for" and len(state["evidence_for"]) >= 1:
+                prompt = (
+                    "좋아요. 맞아 보이는 이유는 이미 하나 찾았어요.\n"
+                    "더 떠오르면 한 줄 더 적고, 아니면 ‘다음으로’라고 적어도 괜찮아요."
+                )
+            elif substep == "evidence_against" and len(state["evidence_against"]) >= 1:
+                prompt = (
+                    "좋아요. 꼭 그렇지 않을 수 있는 근거도 이미 하나 찾았어요.\n"
+                    "더 떠오르면 한 줄 더 적고, 아니면 ‘다음으로’라고 적어도 괜찮아요."
+                )
+            else:
+                prompt = self._evidence_scaffold_prompt(
+                    mode="against" if substep == "evidence_against" else "for",
+                    core=core,
+                    count=int(state["meta"].get("stage_repeat_count", 0) or 0),
+                )
+            return (
+                "evidence",
+                substep,
+                prompt,
+                self._quick_set("evidence", substep),
+                [],
+            )
 
-        if substep == "for":
-            if not is_skip and item not in state["evidence_for"] and len(state["evidence_for"]) < EVIDENCE_TARGET_MAX:
+        if substep == "evidence_for":
+            if not is_skip and not is_next and item not in state["evidence_for"] and len(state["evidence_for"]) < EVIDENCE_TARGET_MAX:
                 state["evidence_for"].append(item[:260])
-            if len(state["evidence_for"]) < EVIDENCE_TARGET_DEFAULT and not is_skip and not is_next:
+            if not is_next and (self._needs_evidence_scaffold(user_text) or low_quality):
+                core = str(state.get("core_message_text") or "").strip() or "그 생각"
+                return (
+                    "evidence",
+                    "evidence_for",
+                    self._evidence_scaffold_prompt(mode="for", core=core, count=1),
+                    self._quick_set("evidence", "evidence_for"),
+                    [],
+                )
+            if len(state["evidence_for"]) >= 1 and not is_skip and not is_next:
+                return (
+                    "evidence",
+                    "evidence_for",
+                    (
+                        "좋아요. 그 근거 하나만으로도 충분히 시작할 수 있어요.\n"
+                        "더 있으면 한 줄 더 적고, 아니면 ‘다음으로’를 눌러도 괜찮아요."
+                        if len(state["evidence_for"]) == 1
+                        else "좋아요. 맞아 보이는 이유를 여러 개 모았어요.\n이제 ‘다음으로’라고 적으면 반대 근거 단계로 넘어갈게요."
+                    ),
+                    self._quick_set("evidence", "evidence_for"),
+                    [],
+                )
+            if len(state["evidence_for"]) < 1 and not is_skip and not is_next:
                 core = str(state.get("core_message_text") or "").strip() or "그 생각"
                 next_question = (
                     f"좋아요. ‘{core}’라고 느껴진 이유를 한 가지만 더 적어볼까요?\n"
@@ -2033,11 +2311,34 @@ class CbtThoughtRecordEngine:
         if (
             not is_skip
             and not is_next
+            and not low_quality
             and item not in state["evidence_against"]
             and len(state["evidence_against"]) < EVIDENCE_TARGET_MAX
         ):
             state["evidence_against"].append(item[:260])
-        if len(state["evidence_against"]) < EVIDENCE_TARGET_DEFAULT and not is_skip and not is_next:
+        if not is_next and (self._needs_evidence_scaffold(user_text) or low_quality):
+            core = str(state.get("core_message_text") or "").strip() or "그 생각"
+            return (
+                "evidence",
+                "evidence_against",
+                self._evidence_scaffold_prompt(mode="against", core=core, count=1),
+                self._quick_set("evidence", "evidence_against"),
+                [],
+            )
+        if len(state["evidence_against"]) >= 1 and not is_skip and not is_next:
+            return (
+                "evidence",
+                "evidence_against",
+                (
+                    "좋아요. 반대 근거도 하나 찾았어요.\n"
+                    "더 떠오르면 한 줄 더 적고, 아니면 ‘다음으로’를 눌러 균형 생각으로 넘어가볼까요?"
+                    if len(state["evidence_against"]) == 1
+                    else "좋아요. 꼭 그렇지 않을 수 있는 이유도 여러 개 모았어요.\n이제 ‘다음으로’라고 적으면 균형 생각 단계로 넘어갈게요."
+                ),
+                self._quick_set("evidence", "evidence_against"),
+                [],
+            )
+        if len(state["evidence_against"]) < 1 and not is_skip and not is_next:
             core = str(state.get("core_message_text") or "").strip() or "그 생각"
             next_question = (
                 f"좋아요. ‘{core}’가 꼭 사실이 아닐 수도 있는 이유를 한 가지만 더 적어볼까요?\n"
@@ -2154,7 +2455,7 @@ class CbtThoughtRecordEngine:
         state["meta"]["stage_repeat_count"] = count
         state["meta"]["state_repeat_count"] = count
 
-        if count >= 3:
+        if count >= 4:
             state["meta"]["conversation_closed"] = True
             state["current_stage"] = "summary"
             state["summary_text"] = self._build_summary_text(state, force_short=True)
@@ -2168,14 +2469,28 @@ class CbtThoughtRecordEngine:
             closed = True
         else:
             state["current_stage"] = stage
-            assistant_messages = [
-                repair_message or "지금은 딱 맞는 답이 바로 안 떠오를 수도 있어요.",
-                retry_prompt or "같은 질문으로 다시 해보거나, 주제를 다시 잡아도 괜찮아요.",
-            ]
-            if stage == "situation":
-                quick = self._quick_set("fallback", "hard_required")
+            if stage == "evidence" and fallback_reason == "empty_input":
+                softened_messages, quick = self._soft_invalid_guidance(
+                    stage,
+                    subphase,
+                    count=max(count, 2),
+                    state=state,
+                )
+                assistant_messages = softened_messages
+            elif count == 1:
+                assistant_messages = [
+                    repair_message or "지금은 딱 맞는 답이 바로 안 떠오를 수도 있어요.",
+                    retry_prompt or "같은 질문으로 다시 해보거나, 짧게 한 줄만 적어도 괜찮아요.",
+                ]
+                quick = self._quick_set("fallback", "hard_required" if stage == "situation" else "general")
             else:
-                quick = self._quick_set("fallback", "general")
+                softened_messages, quick = self._soft_invalid_guidance(
+                    stage,
+                    subphase,
+                    count=count,
+                    state=state,
+                )
+                assistant_messages = softened_messages
             stage_out = stage
             subphase_out = subphase
             closed = False
@@ -2385,6 +2700,8 @@ class CbtThoughtRecordEngine:
         return [c1[:220], c2[:220], c3[:220]]
 
     def _commitment_quick_set(self, state: dict[str, Any], *, mode: str) -> list[dict[str, str]]:
+        # Legacy compatibility: current CBT chat flow no longer enters commitment substeps,
+        # but session save / older states still reference this helper.
         core = str(state.get("core_message_text") or "").strip()
         ranked = state.get("pattern_ranked")
         llm_suggestions, llm_meta = self._llm.suggest_commitment_candidates(

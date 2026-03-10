@@ -5,17 +5,21 @@
 ### 1) 모델 서빙 API (`apps/api/app/modeling`)
 
 - `GET /v1/modeling/runtime`
-  - 모델 번들 경로/준비 여부, 의존성 준비 여부, feature 개수 확인
+  - 모델 번들 경로/계약 준비 여부, 의존성 준비 여부, feature 개수 확인
 - `POST /v1/modeling/nowcast/predict`
-  - `model/` 번들의 `model_feature_columns.json` + `*.joblib`를 로딩해
+  - `model/contracts/*.json` 계약을 기준으로 입력 검증/보정 후
     `dep/anx/ins` nowcast 예측 반환
-  - 누락 feature는 `model/data/train_user_day_nowcast.csv` 1행 기본값으로 보정
+  - 기본 백엔드는 `baseline`(가중치 없이 동작)
+  - `MODEL_BACKEND=artifact` + `MODEL_ARTIFACT_PATH` 설정 시 artifact 로딩 시도
+  - artifact 로딩 실패 시 자동 baseline fallback
+  - 누락 feature는 계약(`feature_schema.json`)의 default 값으로 보정
   - 예측 이력 저장은 `capture_for_retraining=true`(기본)
 - `GET /v1/modeling/nowcast/history`
   - 사용자별 예측 이력 조회
 
 저장 테이블:
 - `model_nowcast_prediction`
+  - `used_backend`, `schema_version`, `logic_version` 메타 포함 저장
 
 ### 2) 승인형 재학습 Job (`apps/api/app/admin_console`)
 
@@ -58,6 +62,8 @@ Owner 승인 연동:
 ## 환경변수
 
 - `MODEL_BUNDLE_DIR` (기본: `<repo>/model`)
+- `MODEL_BACKEND` (`baseline` | `artifact`, 기본 `baseline`)
+- `MODEL_ARTIFACT_PATH` (artifact 모드에서만 사용)
 
 ## 현재 한계
 

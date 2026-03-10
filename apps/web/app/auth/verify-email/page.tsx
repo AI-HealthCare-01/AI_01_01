@@ -14,6 +14,7 @@ import {
   SectionContainer
 } from "../../../src/components/ui";
 import { AuthRouteGuard, useAuthContext } from "../../../src/features/auth";
+import { isOnboardingComplete } from "../../../src/features/auth/status";
 import { isAuthEmulatorEnabled } from "../../../src/features/auth/firebase";
 
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -93,7 +94,7 @@ export default function VerifyEmailPage() {
         if (firebaseUser.emailVerified && nextSession) {
           window.sessionStorage.removeItem("ms_pending_email_change");
           setPendingEmail(null);
-          if (nextSession.account.account_status === "active") {
+          if (isOnboardingComplete(nextSession)) {
             router.replace("/");
           } else {
             router.replace("/onboarding");
@@ -178,7 +179,7 @@ export default function VerifyEmailPage() {
       if (firebaseUser.emailVerified && nextSession) {
         window.sessionStorage.removeItem("ms_pending_email_change");
         setPendingEmail(null);
-        if (nextSession.account.account_status === "active") {
+        if (isOnboardingComplete(nextSession)) {
           router.replace("/");
         } else {
           router.replace("/onboarding");

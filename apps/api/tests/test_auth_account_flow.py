@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
@@ -319,3 +320,65 @@ def test_baseline_requires_onboarding_assessment_source(tmp_path) -> None:
     )
     assert baseline.status_code == 400
     assert baseline.json()["detail"] == "assessment_source_invalid"
+
+
+def test_delete_account_marks_deleted_and_allows_resignup(tmp_path) -> None:
+    db_path = tmp_path / "auth-delete.sqlite3"
+
+    os.environ["AUTH_DATABASE_PATH"] = str(db_path)
+    os.environ["FIREBASE_AUTH_EMULATOR_HOST"] = "127.0.0.1:9099"
+    os.environ["AUTH_ALLOW_EMULATOR_UID_FALLBACK"] = "true"
+
+    get_auth_settings.cache_clear()
+    get_auth_store.cache_clear()
+    get_core_input_store.cache_clear()
+
+    client = TestClient(app)
+    old_uid = "delete-user-uid-0001"
+    new_uid = "delete-user-uid-0002"
+    email = "delete-user@example.com"
+
+    signup = client.post(
+        "/v1/auth/signup",
+        json={
+            "firebase_uid": old_uid,
+            "email": email,
+            "nickname": "delete-user",
+            "terms_required": True,
+            "privacy_required": True,
+            "age_required": True,
+        },
+    )
+    assert signup.status_code == 200
+
+    delete_response = client.post(
+        "/v1/auth/account/delete",
+        headers=_headers(uid=old_uid, email=email, verified=True),
+    )
+    assert delete_response.status_code == 200
+    assert delete_response.json()["result"] == "deleted"
+
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT firebase_uid, email, account_status FROM account_user WHERE user_id = ?",
+            (signup.json()["account"]["user_id"],),
+        ).fetchone()
+    assert row is not None
+    assert row[0] != old_uid
+    assert row[1] != email
+    assert row[2] == "deleted"
+
+    resignup = client.post(
+        "/v1/auth/signup",
+        json={
+            "firebase_uid": new_uid,
+            "email": email,
+            "nickname": "delete-user-rejoin",
+            "terms_required": True,
+            "privacy_required": True,
+            "age_required": True,
+        },
+    )
+    assert resignup.status_code == 200
+    assert resignup.json()["account"]["firebase_uid"] == new_uid
+    assert resignup.json()["account"]["email"] == email

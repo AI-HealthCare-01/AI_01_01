@@ -43,6 +43,11 @@ services:
       AUTH_DATABASE_PATH: /data/auth_account.db
       DATABASE_URL: ${DATABASE_URL:-}
       MODEL_BUNDLE_DIR: /app/model
+      BOARD_TOXIC_MODEL_ENABLED: ${BOARD_TOXIC_MODEL_ENABLED:-false}
+      BOARD_TOXIC_MODEL_NAME: ${BOARD_TOXIC_MODEL_NAME:-jinkyeongk/kcELECTRA-toxic-detector}
+      BOARD_TOXIC_MODEL_THRESHOLD: ${BOARD_TOXIC_MODEL_THRESHOLD:-0.82}
+      BOARD_TOXIC_MODEL_POSITIVE_LABELS: ${BOARD_TOXIC_MODEL_POSITIVE_LABELS:-toxic,hate,abusive,abuse,offensive,insult,obscene,label_1}
+      BOARD_TOXIC_MODEL_NEGATIVE_LABELS: ${BOARD_TOXIC_MODEL_NEGATIVE_LABELS:-clean,neutral,safe,non-toxic,non_toxic,label_0}
       CORS_ALLOW_ORIGINS: http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001
       ADMIN_OWNER_EMAIL: ${ADMIN_OWNER_EMAIL:-}
       ADMIN_OWNER_FIREBASE_UID: ${ADMIN_OWNER_FIREBASE_UID:-}

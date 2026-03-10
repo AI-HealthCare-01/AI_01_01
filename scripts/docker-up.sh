@@ -81,14 +81,11 @@ pick_port() {
 WEB_PORT="${WEB_PORT:-$(pick_port 3000 3001)}"
 API_PORT="${API_PORT:-$(pick_port 8000 8010)}"
 DB_PORT="${DB_PORT:-$(pick_port 5432 5433)}"
+USE_FIREBASE_AUTH_EMULATOR="${USE_FIREBASE_AUTH_EMULATOR:-$(read_env_fallback USE_FIREBASE_AUTH_EMULATOR)}"
 USE_FIREBASE_AUTH_EMULATOR="${USE_FIREBASE_AUTH_EMULATOR:-false}"
 
 AUTH_EMULATOR_PORT=""
 AUTH_EMULATOR_UI_PORT=""
-if is_truthy "${USE_FIREBASE_AUTH_EMULATOR}"; then
-  AUTH_EMULATOR_PORT="${AUTH_EMULATOR_PORT:-$(pick_port 9099 9100)}"
-  AUTH_EMULATOR_UI_PORT="${AUTH_EMULATOR_UI_PORT:-$(pick_port 4000 4001)}"
-fi
 
 if [ -z "${WEB_PORT}" ] || [ -z "${API_PORT}" ] || [ -z "${DB_PORT}" ]; then
   echo "필수 포트가 이미 사용 중입니다."
@@ -109,7 +106,42 @@ export API_PORT
 export DB_PORT
 export WEB_API_BASE_URL="http://localhost:${API_PORT}"
 export WEB_BASE_URL="http://localhost:${WEB_PORT}"
-export USE_FIREBASE_AUTH_EMULATOR
+
+requested_use_emulator="${USE_FIREBASE_AUTH_EMULATOR}"
+effective_use_emulator="${requested_use_emulator}"
+
+if ! is_truthy "${requested_use_emulator}"; then
+  missing_real_firebase=()
+  for key in \
+    NEXT_PUBLIC_FIREBASE_PROJECT_ID \
+    NEXT_PUBLIC_FIREBASE_API_KEY \
+    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN \
+    NEXT_PUBLIC_FIREBASE_APP_ID \
+    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID; do
+    value="$(resolve_var "${key}")"
+    if [ -z "${value}" ]; then
+      missing_real_firebase+=("${key}")
+    fi
+  done
+
+  resolved_firebase_project_id="${FIREBASE_PROJECT_ID:-$(resolve_var NEXT_PUBLIC_FIREBASE_PROJECT_ID)}"
+  if [ -z "${resolved_firebase_project_id}" ]; then
+    missing_real_firebase+=("FIREBASE_PROJECT_ID")
+  fi
+
+  if [ "${#missing_real_firebase[@]}" -gt 0 ]; then
+    effective_use_emulator="true"
+    echo "실 Firebase 필수값이 비어 있어 에뮬레이터 모드로 전환합니다."
+    echo "누락 항목: ${missing_real_firebase[*]}"
+  fi
+fi
+
+export USE_FIREBASE_AUTH_EMULATOR="${effective_use_emulator}"
+
+if is_truthy "${USE_FIREBASE_AUTH_EMULATOR}"; then
+  AUTH_EMULATOR_PORT="${AUTH_EMULATOR_PORT:-$(pick_port 9099 9100)}"
+  AUTH_EMULATOR_UI_PORT="${AUTH_EMULATOR_UI_PORT:-$(pick_port 4000 4001)}"
+fi
 
 services=(postgres api web)
 if is_truthy "${USE_FIREBASE_AUTH_EMULATOR}"; then
@@ -130,32 +162,8 @@ else
   export WEB_AUTH_EMULATOR_HOST=""
   export FIREBASE_AUTH_EMULATOR_HOST=""
   export AUTH_ALLOW_EMULATOR_UID_FALLBACK="${AUTH_ALLOW_EMULATOR_UID_FALLBACK:-false}"
-
-  if [ -z "${FIREBASE_PROJECT_ID:-}" ]; then
-    export FIREBASE_PROJECT_ID="$(resolve_var NEXT_PUBLIC_FIREBASE_PROJECT_ID)"
-  fi
-  export FIREBASE_ADMIN_PROJECT_ID="${FIREBASE_ADMIN_PROJECT_ID:-${FIREBASE_PROJECT_ID:-}}"
-
-  missing=()
-  for key in \
-    NEXT_PUBLIC_FIREBASE_PROJECT_ID \
-    NEXT_PUBLIC_FIREBASE_API_KEY \
-    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN \
-    NEXT_PUBLIC_FIREBASE_APP_ID \
-    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID \
-    FIREBASE_PROJECT_ID; do
-    value="$(resolve_var "${key}")"
-    if [ -z "${value}" ]; then
-      missing+=("${key}")
-    fi
-  done
-
-  if [ "${#missing[@]}" -gt 0 ]; then
-    echo "실 Firebase 모드 실행에 필요한 환경변수가 누락되었습니다."
-    echo "누락 항목: ${missing[*]}"
-    echo ".env를 채우거나 USE_FIREBASE_AUTH_EMULATOR=true로 실행하세요."
-    exit 1
-  fi
+  export FIREBASE_PROJECT_ID="${resolved_firebase_project_id}"
+  export FIREBASE_ADMIN_PROJECT_ID="${FIREBASE_ADMIN_PROJECT_ID:-${FIREBASE_PROJECT_ID}}"
 fi
 
 compose_args=(-f "${COMPOSE_FILE}")

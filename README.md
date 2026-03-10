@@ -48,7 +48,8 @@ Docker로 한번에 실행(권장):
 - 종료: `make docker-down`
   - 기본 포트가 점유된 경우 `docker-up` 스크립트가 대체 포트(3001/8010/5433/9100/4001)를 자동 선택해 출력한다.
   - `docker-up/down`은 루트 `.env`를 자동 로드한다.
-  - 기본 모드는 `USE_FIREBASE_AUTH_EMULATOR=false` (실 Firebase)다.
+  - `USE_FIREBASE_AUTH_EMULATOR=false`여도 실 Firebase 필수값이 비어 있으면 `docker-up`은 자동으로 에뮬레이터 모드로 전환한다.
+  - 실 Firebase를 강제로 쓰려면 `.env`에 `NEXT_PUBLIC_FIREBASE_*`, `FIREBASE_PROJECT_ID`를 모두 채운 뒤 `make docker-up-real`을 사용한다.
   - 에뮬레이터 모드는 `make docker-up-emulator` 또는 `USE_FIREBASE_AUTH_EMULATOR=true make docker-up` 으로 실행한다.
 
 에뮬레이터 로컬 개발:
@@ -97,6 +98,8 @@ Docker로 한번에 실행(권장):
 
 - 게시판: 피드/공지/북마크 탭 + 최신순 더보기 + 고유번호 검색
 - 모더레이션: 신고/유해언어/안전 큐 분리
+  - 1차 규칙 기반 키워드 필터 유지
+  - 2차 선택형 `kcELECTRA` 유해언어 모델 연동(`BOARD_TOXIC_MODEL_ENABLED=true`)
 - 문의/피드백: 티켓 생성/상세/재오픈 + 사용자 알림
 - 마이페이지: 개인 허브(회원정보/보안/활동로그/북마크/내글/내댓글/내문의/리포트보관함/동의)
 
@@ -117,8 +120,11 @@ Docker로 한번에 실행(권장):
   - `POST /v1/modeling/nowcast/predict`
   - `GET /v1/modeling/nowcast/history`
 - `make api-install`은 API 기본 개발 의존성과 함께 모델 런타임 extra(`ml`)를 설치
-- `model/` 번들(`docs/model_feature_columns.json`, `models/*.joblib`)을 API에서 직접 로딩
-- 누락 feature는 번들 샘플 row(`model/data/train_user_day_nowcast.csv`) 기반 기본값 보정
+- 모델 계약(`model/contracts/*.json`)을 단일 진실원천으로 사용
+- 기본 백엔드는 `baseline`이며, 가중치 없이도 API/웹 동작
+- `MODEL_BACKEND=artifact` + `MODEL_ARTIFACT_PATH`가 설정된 경우에만 가중치 로딩 시도
+  - artifact 로딩 실패 시 자동 baseline fallback
+- 누락 feature는 계약의 default 값으로 보정
 - 예측 이력은 `model_nowcast_prediction` 테이블에 저장(옵션)
 - 모델 재학습은 승인형 job 스캐폴드로 관리
   - `POST /v1/admin/model-ops/{model_change_id}/retraining-jobs`
@@ -138,6 +144,8 @@ Docker로 한번에 실행(권장):
   - `FIREBASE_PROJECT_ID`
   - `FIREBASE_ADMIN_PROJECT_ID`(미설정 시 `FIREBASE_PROJECT_ID` 사용)
   - `MODEL_BUNDLE_DIR=./model`
+  - `MODEL_BACKEND=baseline` (기본)
+  - `MODEL_ARTIFACT_PATH` (artifact 모드에서만)
 
 실 Firebase 실행 예시:
 - 로컬 프로세스: `make web-dev-real` + `make api-dev-real`

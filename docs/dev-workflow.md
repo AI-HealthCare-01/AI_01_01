@@ -43,9 +43,10 @@
 - API 개발 서버: `make api-dev-real` (또는 `make api-dev-emulator`)
 - DB 중지: `make db-down`
 
-기본 실행 스크립트는 실 Firebase 모드를 기본으로 동작한다.
+기본 실행 스크립트는 실 Firebase 값을 우선 사용한다.
 - `dev-web.sh`: 실 Firebase 설정값이 없으면 실행 전 실패
 - `dev-api.sh`: `USE_FIREBASE_AUTH_EMULATOR=false`일 때 `FIREBASE_PROJECT_ID` 필수
+- `docker-up.sh`: 실 Firebase 필수값이 비어 있으면 자동으로 Auth Emulator 모드로 폴백
 - continue URL 고정이 필요하면 `NEXT_PUBLIC_AUTH_CONTINUE_BASE_URL` 사용
 - `USE_FIREBASE_AUTH_EMULATOR=true` 를 주면 emulator 연결 경로로 전환한다.
 

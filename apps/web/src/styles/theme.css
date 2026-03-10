@@ -31,9 +31,9 @@
   --color-status-danger: #eb7282;
   --color-status-info: #7eaef7;
 
-  --color-chart-depression: #7c6cf6;
-  --color-chart-anxiety: #f39ac1;
-  --color-chart-insomnia: #6ec7c1;
+  --color-chart-depression: #9dc2f3;
+  --color-chart-anxiety: #f0ce86;
+  --color-chart-insomnia: #b89ce8;
   --color-chart-grid: #e9ecf4;
   --color-chart-axis: #8e97ab;
 
@@ -3167,6 +3167,52 @@ a {
   gap: var(--space-2);
 }
 
+.ms-home-calendar-legend {
+  margin-top: var(--space-4);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.ms-home-calendar-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ms-home-calendar-legend__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.ms-home-calendar-legend__dot--happy {
+  background: #ffd9ec;
+  border-color: color-mix(in oklab, #f5a9cc 66%, white);
+}
+
+.ms-home-calendar-legend__dot--anxious {
+  background: #ffefcd;
+  border-color: color-mix(in oklab, #f0ce86 62%, white);
+}
+
+.ms-home-calendar-legend__dot--depressed {
+  background: #d9e9ff;
+  border-color: color-mix(in oklab, #9dc2f3 64%, white);
+}
+
+.ms-home-calendar-legend__dot--sleep {
+  background: #e9defe;
+  border-color: color-mix(in oklab, #b89ce8 62%, white);
+}
+
+.ms-home-calendar-legend__text {
+  font-size: 0.75rem;
+  color: var(--color-semantic-text-secondary);
+  white-space: nowrap;
+}
+
 .ms-home-calendar-weekdays span {
   text-align: center;
   font-size: var(--font-caption-size);
@@ -3655,6 +3701,58 @@ a {
   border-color: color-mix(in oklab, var(--color-status-success) 30%, white);
   background: color-mix(in oklab, var(--color-status-success) 18%, white);
   color: color-mix(in oklab, var(--color-status-success) 65%, black);
+}
+
+.ms-cbt-step-flow {
+  margin-top: var(--space-1);
+  padding-top: var(--space-3);
+  border-top: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 82%, white);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ms-cbt-step-flow__title {
+  margin: 0;
+  font-size: var(--font-caption-size);
+  font-weight: 700;
+  color: var(--color-semantic-text-secondary);
+}
+
+.ms-cbt-step-flow__items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ms-cbt-step-flow__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-body-sm-size);
+  color: var(--color-semantic-text-secondary);
+}
+
+.ms-cbt-step-flow__item--active {
+  color: var(--color-semantic-text-primary);
+  font-weight: 700;
+}
+
+.ms-cbt-step-flow__item--complete {
+  color: color-mix(in oklab, var(--color-status-success) 68%, black);
+}
+
+.ms-cbt-step-flow__index {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in oklab, var(--color-semantic-border-strong) 88%, white);
+  background: color-mix(in oklab, var(--color-semantic-surface-base) 94%, white);
+  font-size: var(--font-caption-size);
+  font-weight: 700;
 }
 
 .ms-cbt-hint-list {

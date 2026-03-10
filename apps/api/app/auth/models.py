@@ -117,6 +117,10 @@ class ChangeEmailAvailabilityResponse(BaseModel):
     is_available: bool
 
 
+class DeleteAccountResponse(BaseModel):
+    result: str
+
+
 class OnboardingConsentRequest(BaseModel):
     sensitive_data_required: bool
     personalization_optional: bool = False

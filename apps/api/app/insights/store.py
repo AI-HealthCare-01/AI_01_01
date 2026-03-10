@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import calendar
 import json
+import os
 import sqlite3
 import statistics
 import uuid
@@ -151,6 +152,7 @@ class InsightsStore:
     def __init__(self, database_path: Path):
         self.database_path = database_path
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        self._modeling_store = None
         # Reuse base schema from core input module.
         CoreInputStore(database_path)
         self._cbt_state_schema = self._load_cbt_state_schema()
@@ -165,6 +167,38 @@ class InsightsStore:
     @staticmethod
     def _now_iso() -> str:
         return datetime.now(UTC).isoformat()
+
+    def _get_modeling_store(self):
+        if self._modeling_store is not None:
+            return self._modeling_store
+
+        from app.modeling.store import ModelingStore
+
+        default_bundle_dir = Path(__file__).resolve().parents[4] / "model"
+        model_bundle_dir = Path(
+            os.getenv("MODEL_BUNDLE_DIR", str(default_bundle_dir))
+        ).resolve()
+        self._modeling_store = ModelingStore(
+            database_path=self.database_path,
+            model_bundle_dir=model_bundle_dir,
+        )
+        return self._modeling_store
+
+    def _refresh_nowcast_prediction(
+        self,
+        user_id: str,
+        *,
+        reference_date: date,
+        force: bool,
+    ) -> None:
+        try:
+            self._get_modeling_store().ensure_nowcast_prediction_from_sources(
+                user_id=user_id,
+                reference_date=reference_date,
+                force=force,
+            )
+        except ValueError:
+            return
 
     @staticmethod
     def _assistant_message(content: str, sender_name: str) -> CbtConversationMessage:
@@ -1416,6 +1450,11 @@ class InsightsStore:
 
             conn.commit()
 
+        self._refresh_nowcast_prediction(
+            user_id=user_id,
+            reference_date=target_date,
+            force=True,
+        )
         return self.get_cbt_session_summary(user_id, session_id)
 
     def save_manual_risk_signal(
@@ -1858,6 +1897,51 @@ class InsightsStore:
         return payload_map
 
     @staticmethod
+    def _prediction_rows(
+        conn: sqlite3.Connection,
+        user_id: str,
+        start_date: date,
+        end_date: date,
+    ) -> dict[date, tuple[float, float, float]]:
+        table_row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'model_nowcast_prediction'",
+        ).fetchone()
+        if not table_row:
+            return {}
+
+        has_reference_date = any(
+            str(row["name"]) == "reference_date"
+            for row in conn.execute("PRAGMA table_info(model_nowcast_prediction)").fetchall()
+        )
+        date_expr = "COALESCE(reference_date, substr(created_at, 1, 10))" if has_reference_date else "substr(created_at, 1, 10)"
+
+        rows = conn.execute(
+            f"""
+            SELECT
+              {date_expr} AS ref_date,
+              dep_score,
+              anx_score,
+              ins_score
+            FROM model_nowcast_prediction
+            WHERE user_id = ?
+              AND date({date_expr}) BETWEEN ? AND ?
+            ORDER BY date({date_expr}) ASC,
+                     datetime(created_at) ASC
+            """,
+            (user_id, start_date.isoformat(), end_date.isoformat()),
+        ).fetchall()
+
+        prediction_map: dict[date, tuple[float, float, float]] = {}
+        for row in rows:
+            ref_day = date.fromisoformat(str(row["ref_date"]))
+            prediction_map[ref_day] = (
+                round(float(row["dep_score"] or 0.0), 1),
+                round(float(row["anx_score"] or 0.0), 1),
+                round(float(row["ins_score"] or 0.0), 1),
+            )
+        return prediction_map
+
+    @staticmethod
     def _states_from_payload(payload: dict[str, object]) -> tuple[float, float, float]:
         mood = int(payload.get("mood_1_5") or 3)
         anxiety = int(payload.get("anxiety_1_5") or 3)
@@ -1938,11 +2022,17 @@ class InsightsStore:
         mode: DashboardSymptomMode,
     ) -> SymptomDashboardResponse:
         today = date.today()
+        self._refresh_nowcast_prediction(
+            user_id=user_id,
+            reference_date=today,
+            force=False,
+        )
 
         with self._connect() as conn:
             if mode == DashboardSymptomMode.mode_7d:
                 start_date = today - timedelta(days=6)
                 payload_map = self._checkin_payload_rows(conn, user_id, start_date, today)
+                prediction_map = self._prediction_rows(conn, user_id, start_date, today)
                 labels = [
                     (start_date + timedelta(days=index)).strftime("%m-%d")
                     for index in range(7)
@@ -1961,10 +2051,14 @@ class InsightsStore:
 
                 for index in range(7):
                     target_day = start_date + timedelta(days=index)
-                    payload = payload_map.get(target_day)
+                    predicted = prediction_map.get(target_day)
                     dep, anx, ins = (None, None, None)
-                    if payload:
-                        dep, anx, ins = self._states_from_payload(payload)
+                    if predicted:
+                        dep, anx, ins = predicted
+                    else:
+                        payload = payload_map.get(target_day)
+                        if payload:
+                            dep, anx, ins = self._states_from_payload(payload)
 
                     per_metric_values[SymptomMetric.dep].append(dep)
                     per_metric_values[SymptomMetric.anx].append(anx)
@@ -2001,13 +2095,27 @@ class InsightsStore:
                         for metric in [SymptomMetric.dep, SymptomMetric.anx, SymptomMetric.ins]
                     )
                 )
+                recorded_days_by_metric = {
+                    SymptomMetric.dep: len([value for value in per_metric_values[SymptomMetric.dep] if value is not None]),
+                    SymptomMetric.anx: len([value for value in per_metric_values[SymptomMetric.anx] if value is not None]),
+                    SymptomMetric.ins: len([value for value in per_metric_values[SymptomMetric.ins] if value is not None]),
+                }
             else:
                 start_date = today - timedelta(days=27)
                 payload_map = self._checkin_payload_rows(conn, user_id, start_date, today)
+                prediction_map = self._prediction_rows(conn, user_id, start_date, today)
 
                 daily_values: dict[date, tuple[float, float, float]] = {}
-                for target_day, payload in payload_map.items():
-                    daily_values[target_day] = self._states_from_payload(payload)
+                cursor = start_date
+                while cursor <= today:
+                    predicted = prediction_map.get(cursor)
+                    if predicted:
+                        daily_values[cursor] = predicted
+                    else:
+                        payload = payload_map.get(cursor)
+                        if payload:
+                            daily_values[cursor] = self._states_from_payload(payload)
+                    cursor += timedelta(days=1)
 
                 points = {
                     SymptomMetric.dep: [],
@@ -2083,6 +2191,11 @@ class InsightsStore:
 
                 window_days = 28
                 recorded_days_any_metric = len(daily_values)
+                recorded_days_by_metric = {
+                    SymptomMetric.dep: len([1 for values in daily_values.values() if values[0] is not None]),
+                    SymptomMetric.anx: len([1 for values in daily_values.values() if values[1] is not None]),
+                    SymptomMetric.ins: len([1 for values in daily_values.values() if values[2] is not None]),
+                }
 
             labels = {
                 SymptomMetric.dep: "우울",
@@ -2095,13 +2208,7 @@ class InsightsStore:
                 values = [value for value in per_metric_values[metric] if value is not None]
                 current_score = values[-1] if values else None
                 window_mean = round(statistics.mean(values), 1) if values else None
-                recorded_days = 0
-                if mode == DashboardSymptomMode.mode_7d:
-                    recorded_days = len(values)
-                else:
-                    recorded_days = len(
-                        self._checkin_payload_rows(conn, user_id, start_date, today)
-                    )
+                recorded_days = int(recorded_days_by_metric.get(metric, 0))
 
                 series.append(
                     SymptomSeries(
@@ -2125,11 +2232,30 @@ class InsightsStore:
                 """,
                 (user_id,),
             ).fetchone()
+            model_updated = None
+            has_model_prediction_table = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'model_nowcast_prediction'",
+            ).fetchone()
+            if has_model_prediction_table:
+                model_updated = conn.execute(
+                    """
+                    SELECT created_at
+                    FROM model_nowcast_prediction
+                    WHERE user_id = ?
+                    ORDER BY datetime(created_at) DESC
+                    LIMIT 1
+                    """,
+                    (user_id,),
+                ).fetchone()
             last_updated_at = (
                 datetime.fromisoformat(str(last_updated["checked_at"]))
                 if last_updated and last_updated["checked_at"]
                 else None
             )
+            if model_updated and model_updated["created_at"]:
+                model_updated_at = datetime.fromisoformat(str(model_updated["created_at"]))
+                if last_updated_at is None or model_updated_at > last_updated_at:
+                    last_updated_at = model_updated_at
 
             return SymptomDashboardResponse(
                 mode=mode,

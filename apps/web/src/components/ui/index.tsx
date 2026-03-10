@@ -157,7 +157,6 @@ export function AppShell({ brand = "MindSight", headerAction, navItems, children
     const cached = getAdminAccessCache(firebaseUser.uid);
     if (cached !== null) {
       setCanSeeAdminEntry(cached);
-      return;
     }
 
     let cancelled = false;

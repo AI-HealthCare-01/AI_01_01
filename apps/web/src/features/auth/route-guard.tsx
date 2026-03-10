@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 
 import { Card, LoadingSkeleton } from "../../components/ui";
 import { useAuthContext } from "./context";
+import { isOnboardingComplete, shouldGoOnboarding } from "./status";
 
 type GuardPolicy = "public-only" | "require-unverified" | "require-onboarding" | "require-active";
 
@@ -24,7 +25,9 @@ function GateLoading(): JSX.Element {
 
 function getTargetForSignedIn(
   emailVerified: boolean,
-  accountStatus: string | undefined,
+  sessionKnown: boolean,
+  complete: boolean,
+  needsOnboarding: boolean,
   fallbackPathname: string
 ): string | null {
   if (!emailVerified) {
@@ -34,11 +37,19 @@ function getTargetForSignedIn(
     return "/auth/verify-email";
   }
 
-  if (accountStatus === "active") {
+  if (!sessionKnown) {
+    return null;
+  }
+
+  if (complete) {
     return "/";
   }
 
-  return "/onboarding";
+  if (needsOnboarding) {
+    return "/onboarding";
+  }
+
+  return "/auth/login";
 }
 
 function readForceLoginFlag(pathname: string): boolean {
@@ -60,7 +71,9 @@ export function AuthRouteGuard({ policy, children }: AuthRouteGuardProps) {
     }
 
     const user = phase === "signed_in" ? firebaseUser : null;
-    const accountStatus = session?.account.account_status;
+    const hasSession = Boolean(session);
+    const complete = isOnboardingComplete(session);
+    const needsOnboarding = shouldGoOnboarding(session);
     const forceLoginPage = readForceLoginFlag(pathname);
 
     if (policy === "public-only") {
@@ -70,7 +83,13 @@ export function AuthRouteGuard({ policy, children }: AuthRouteGuardProps) {
       if (!user) {
         return;
       }
-      const target = getTargetForSignedIn(user.emailVerified, accountStatus, pathname);
+      const target = getTargetForSignedIn(
+        user.emailVerified,
+        hasSession,
+        complete,
+        needsOnboarding,
+        pathname,
+      );
       if (target && target !== pathname) {
         router.replace(target);
       }
@@ -83,7 +102,13 @@ export function AuthRouteGuard({ policy, children }: AuthRouteGuardProps) {
         return;
       }
       if (user.emailVerified) {
-        const target = getTargetForSignedIn(true, accountStatus, pathname);
+        const target = getTargetForSignedIn(
+          true,
+          hasSession,
+          complete,
+          needsOnboarding,
+          pathname,
+        );
         if (target && target !== pathname) {
           router.replace(target);
         }
@@ -100,7 +125,10 @@ export function AuthRouteGuard({ policy, children }: AuthRouteGuardProps) {
         router.replace("/auth/verify-email");
         return;
       }
-      if (accountStatus === "active") {
+      if (!hasSession) {
+        return;
+      }
+      if (complete) {
         router.replace("/");
       }
       return;
@@ -115,8 +143,15 @@ export function AuthRouteGuard({ policy, children }: AuthRouteGuardProps) {
         router.replace("/auth/verify-email");
         return;
       }
-      if (accountStatus !== "active") {
+      if (!hasSession) {
+        return;
+      }
+      if (needsOnboarding) {
         router.replace("/onboarding");
+        return;
+      }
+      if (!complete) {
+        router.replace("/auth/login");
       }
     }
   }, [phase, isBootstrapping, firebaseUser, session, policy, router, pathname]);
@@ -148,11 +183,17 @@ export function AuthRouteGuard({ policy, children }: AuthRouteGuardProps) {
   }
 
   if (policy === "require-onboarding") {
-    return session?.account.account_status === "active" ? <GateLoading /> : <>{children}</>;
+    if (!session) {
+      return <GateLoading />;
+    }
+    return shouldGoOnboarding(session) ? <>{children}</> : <GateLoading />;
   }
 
   if (policy === "require-active") {
-    return session?.account.account_status === "active" ? <>{children}</> : <GateLoading />;
+    if (!session) {
+      return <GateLoading />;
+    }
+    return isOnboardingComplete(session) ? <>{children}</> : <GateLoading />;
   }
 
   return <>{children}</>;

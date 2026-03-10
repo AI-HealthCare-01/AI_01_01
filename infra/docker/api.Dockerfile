@@ -11,7 +11,7 @@ COPY apps/api/app ./apps/api/app
 RUN mkdir -p ./blueprint/cbt/02_domain
 COPY blueprint/cbt/02_domain/cbt_state_schema.json ./blueprint/cbt/02_domain/cbt_state_schema.json
 
-RUN pip install --no-cache-dir -e ./apps/api
+RUN pip install --no-cache-dir -e "./apps/api[ml]"
 
 WORKDIR /app/apps/api
 EXPOSE 8000

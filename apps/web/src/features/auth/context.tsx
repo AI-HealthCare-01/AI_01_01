@@ -30,6 +30,7 @@ import {
   ApiError,
   bootstrapSession,
   checkChangeEmailAvailability,
+  deleteAccountSession,
   completeBaselineAssessment,
   saveOnboardingProfile,
   signupBootstrap
@@ -163,9 +164,7 @@ async function classifySignInErrorCode(
       return "auth/account-exists-with-different-credential";
     }
 
-    // Firebase Email Enumeration Protection이 활성화된 프로젝트는
-    // fetchSignInMethodsForEmail이 빈 배열을 반환할 수 있어 원인 단정이 어렵다.
-    return rawCode;
+    return "auth/user-not-found";
   } catch (lookupError) {
     const lookupCode = mapErrorCode(lookupError);
     if (lookupCode.includes("auth/too-many-requests")) {
@@ -325,12 +324,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithEmail = useCallback(
     async (email: string, password: string): Promise<SessionContract | null> => {
       const auth = getFirebaseAuthClient();
+      const normalizedEmail = email.trim();
       try {
-        const credential = await signInWithEmailAndPassword(auth, email, password);
+        const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
         return bootstrapForUser(credential.user);
       } catch (error) {
         const rawCode = mapErrorCode(error);
-        const classifiedCode = await classifySignInErrorCode(auth, email, rawCode);
+        const classifiedCode = await classifySignInErrorCode(auth, normalizedEmail, rawCode);
         throw new Error(classifiedCode);
       }
     },
@@ -389,6 +389,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
       await reauthenticateWithCredential(firebaseUser, credential);
+      await deleteAccountSession(firebaseUser);
       await deleteUser(firebaseUser);
       setSession(null);
       clearSessionCookies();

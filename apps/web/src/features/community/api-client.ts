@@ -7,6 +7,9 @@ import type {
   BoardCommentItem,
   BoardFeedItem,
   BoardListResponse,
+  ModerationActionCode,
+  ModerationQueueActionResponse,
+  ModerationQueueDetailResponse,
   ModerationQueuesResponse,
   MyPageCommentSummary,
   MyPageConsentResponse,
@@ -229,6 +232,31 @@ export async function listModerationQueues(
   return requestJson<ModerationQueuesResponse>(
     `/v1/admin/moderation/queues${toQuery({ limit })}`,
     firebaseUser
+  );
+}
+
+export async function getModerationQueueDetail(
+  firebaseUser: User,
+  queueItemId: string
+): Promise<ModerationQueueDetailResponse> {
+  return requestJson<ModerationQueueDetailResponse>(
+    `/v1/admin/moderation/queues/${queueItemId}`,
+    firebaseUser
+  );
+}
+
+export async function applyModerationQueueAction(
+  firebaseUser: User,
+  queueItemId: string,
+  actionCode: ModerationActionCode
+): Promise<ModerationQueueActionResponse> {
+  return requestJson<ModerationQueueActionResponse>(
+    `/v1/admin/moderation/queues/${queueItemId}/action`,
+    firebaseUser,
+    {
+      method: "POST",
+      body: JSON.stringify({ action_code: actionCode }),
+    }
   );
 }
 

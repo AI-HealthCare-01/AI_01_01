@@ -51,10 +51,21 @@ model/**/*.joblib
 model/**/*.pkl
 model/**/*.pt
 model/**/*.onnx
+model/**/*.safetensors
 model/**/*.h5
 model/**/*.ckpt
 model/**/*.npy
 model/**/*.npz
+model/datasets/
+model/runs/
+model/artifacts/
+model/_intermediate_raw/
+model/data/
+*.pkl
+*.joblib
+*.pt
+*.onnx
+*.safetensors
 
 # Large generated data
 model/synthetic_data/generated/

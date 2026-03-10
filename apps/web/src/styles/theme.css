@@ -3703,6 +3703,58 @@ a {
   color: color-mix(in oklab, var(--color-status-success) 65%, black);
 }
 
+.ms-cbt-step-flow {
+  margin-top: var(--space-1);
+  padding-top: var(--space-3);
+  border-top: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 82%, white);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ms-cbt-step-flow__title {
+  margin: 0;
+  font-size: var(--font-caption-size);
+  font-weight: 700;
+  color: var(--color-semantic-text-secondary);
+}
+
+.ms-cbt-step-flow__items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ms-cbt-step-flow__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-body-sm-size);
+  color: var(--color-semantic-text-secondary);
+}
+
+.ms-cbt-step-flow__item--active {
+  color: var(--color-semantic-text-primary);
+  font-weight: 700;
+}
+
+.ms-cbt-step-flow__item--complete {
+  color: color-mix(in oklab, var(--color-status-success) 68%, black);
+}
+
+.ms-cbt-step-flow__index {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in oklab, var(--color-semantic-border-strong) 88%, white);
+  background: color-mix(in oklab, var(--color-semantic-surface-base) 94%, white);
+  font-size: var(--font-caption-size);
+  font-weight: 700;
+}
+
 .ms-cbt-hint-list {
   display: flex;
   flex-direction: column;

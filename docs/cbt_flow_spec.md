@@ -10,8 +10,8 @@
 2. `emotion` : 그 상황의 감정 라벨 + 강도(0~100)
 3. `thought` : 순간 떠오른 생각 → 핵심생각 정교화 → 확인
 4. `evidence` : 맞아 보이는 이유(`evidence_for`) / 꼭 그렇지 않을 수 있는 이유(`evidence_against`)
-5. `alternative_plan` : 균형 생각 + 약속(행동 또는 생각 연습)
-6. `summary` : 요약/저장/마무리
+5. `alternative_plan` : 균형 생각 정리
+6. `summary` : 조언·요약/저장/마무리
 
 진행 단계 UI는 서버의 `phase_key`, `subphase_key`, `phase_index`와 1:1 동기화합니다.
 
@@ -31,9 +31,9 @@
 - `analyze_core_pattern`: 핵심생각 + 내부 생각패턴 분석(JSON)
 - `compose_response`: 공감/재진술/다음 질문 생성(JSON)
 - `suggest_alternative_candidates`: 새 생각 후보 추천(JSON)
-- `suggest_commitment_candidates`: 약속 후보 추천(JSON)
 - `compose_repair_message`: 맥락 이탈 복구 문장(JSON)
 - `classify_risk`: 위험 보조 분류(JSON)
+- `compose_session_closure`: 마지막 조언/요약 문장 생성(JSON)
 
 모든 LLM 응답은 JSON 파싱 실패 시 규칙 기반 fallback으로 대체합니다.
 
@@ -60,10 +60,10 @@
   - action: `retry_stage`, `reset_topic`, `end_session`
 - 동일 단계 실패 카운트가 3회 이상이면 요약 단계로 안전 종료할 수 있습니다.
 
-## TO DO / 회고 연동
-- `alternative_plan`에서 약속 텍스트가 확정되면 `commitment_text`와 `commitment_type`이 state에 저장됩니다.
-- 세션 저장 시 TO DO는 state 기반으로 자동 생성됩니다(수동 선택 UI 없음).
-- 회고 완료 시 TO DO pending 목록에서 제거되고, 회고 내용이 세션 요약에 append 저장됩니다.
+## 현재 구현 메모
+- 현재 대화형 CBT의 기본 흐름은 `새 생각 -> 조언·요약`으로 마무리됩니다.
+- 마지막 단계에서 TO DO/약속을 강제하지 않고, LLM이 대화 내용을 바탕으로 짧은 요약과 부담이 낮은 마무리 조언을 생성합니다.
+- 세션 저장 API와 기존 TO DO/회고 구조는 호환성 때문에 남아 있지만, 기본 대화 흐름에서는 자동 TO DO 생성을 전제하지 않습니다.
 
 ## 용어/제약
 - CBT 화면에서는 `체크인`이라는 단어를 사용하지 않습니다. `오늘 기록`만 허용합니다.

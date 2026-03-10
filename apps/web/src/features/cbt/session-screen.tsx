@@ -41,7 +41,7 @@ const CBT_STEPS = [
   { key: "thought", label: "생각" },
   { key: "evidence", label: "근거" },
   { key: "alternative_plan", label: "새 생각" },
-  { key: "summary", label: "약속·요약" },
+  { key: "summary", label: "조언·요약" },
 ] as const;
 
 const CBT_STAGE_INDEX: Record<string, number> = {
@@ -302,12 +302,14 @@ export default function CbtSessionScreen() {
     const raw = draftState.commitment_type;
     return typeof raw === "string" ? raw : "";
   }, [draftState.commitment_type]);
-  const draftTodoRoute = useMemo(() => {
-    if (!draftCommitmentText) {
-      return null;
-    }
-    return /(산책|호흡|수면|감각|운동|햇빛|루틴|패턴)/.test(draftCommitmentText) ? "/challenge" : null;
-  }, [draftCommitmentText]);
+  const draftAlternativeThought = useMemo(() => {
+    const raw = draftState.alternative_thought;
+    return typeof raw === "string" ? raw.trim() : "";
+  }, [draftState.alternative_thought]);
+  const draftSummaryText = useMemo(() => {
+    const raw = draftState.summary_text;
+    return typeof raw === "string" ? raw.trim() : "";
+  }, [draftState.summary_text]);
 
   const selectedReflection = useMemo(
     () =>
@@ -1112,23 +1114,15 @@ export default function CbtSessionScreen() {
                         </div>
                       </Card>
 
-                      <Card className="ms-cbt-side-card" title="TO DO">
-                        {draftCommitmentText ? (
+                      <Card className="ms-cbt-side-card" title="마무리 포인트">
+                        {draftAlternativeThought ? (
                           <div className="ms-cbt-action-box">
-                            <p className="ms-cbt-action-type">{draftCommitmentText}</p>
-                            <p className="ms-cbt-action-desc">
-                              {draftCommitmentType === "thought_practice" ? "생각 연습 TO DO" : "행동 TO DO"}
-                            </p>
-                            {draftTodoRoute ? (
-                              <div className="ms-row">
-                                <Button size="sm" variant="secondary" onClick={() => router.push(draftTodoRoute)}>
-                                  오늘의 추천 챌린지 보기
-                                </Button>
-                              </div>
-                            ) : null}
+                            <p className="ms-cbt-action-type">{draftAlternativeThought}</p>
+                            <p className="ms-cbt-action-desc">지금 세션에서 정리한 균형 문장</p>
+                            {draftSummaryText ? <p className="ms-cbt-action-desc">{draftSummaryText}</p> : null}
                           </div>
                         ) : (
-                          <p className="ms-cbt-action-empty">대화에서 약속이 확정되면 TO DO가 자동으로 생성됩니다.</p>
+                          <p className="ms-cbt-action-empty">대화를 마무리하면 조언과 요약이 여기에 정리됩니다.</p>
                         )}
                       </Card>
                     </div>
@@ -1140,7 +1134,7 @@ export default function CbtSessionScreen() {
                 </div>
 
                 {savedSession ? (
-                  <Card className="ms-cbt-postsave-card" title="세션 내용 요약" description="세션 저장 후 생성된 요약과 TO DO입니다.">
+                  <Card className="ms-cbt-postsave-card" title="세션 내용 요약" description="세션 저장 후 생성된 조언과 요약입니다.">
                     <div className="ms-cbt-saved-list">
                       {renderSessionRecord(savedSession)}
                     </div>

@@ -2,6 +2,16 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChallengeChecklist } from "../../../../../src/components/challenge/ChallengeChecklist";
+import { ConfidenceListWidget } from "../../../../../src/components/challenge/ConfidenceListWidget";
+import { InterpersonalMapWidget } from "../../../../../src/components/challenge/InterpersonalMapWidget";
+import { SunlightWidget } from "../../../../../src/components/challenge/SunlightWidget";
+import { ChallengeTimer } from "../../../../../src/components/challenge/ChallengeTimer";
+import { MeditationAudioPlayer } from "../../../../../src/components/challenge/MeditationAudioPlayer";
+import { SensoryGroundingWidget } from "../../../../../src/components/challenge/SensoryGroundingWidget";
+import { WaterIntakeWidget } from "../../../../../src/components/challenge/WaterIntakeWidget";
+import { WeatherWidget } from "../../../../../src/components/challenge/WeatherWidget";
+import { RelationshipMapComparison } from "../../../../../src/components/challenge/RelationshipMapComparison";
 
 import {
   AppShell,
@@ -34,8 +44,9 @@ import {
 type ExecutionMode = "external" | "timer" | "text";
 
 const EXTERNAL_EXECUTION_IDS = new Set(["CH_SLEEP_001", "CH_ACT_001", "CH_ACT_002", "CH_ACT_003"]);
-const TIMER_EXECUTION_IDS = new Set(["CH_REG_001", "CH_REG_002"]);
-const TEXT_EXECUTION_IDS = new Set(["CH_SOC_001", "CH_WELL_001"]);
+const TIMER_EXECUTION_IDS = new Set<string>([]);
+const TEXT_EXECUTION_IDS = new Set(["CH_SOC_001", "CH_WELL_001", "CH_REG_002", "water-intake"]);
+const NEW_UI_IDS = new Set(["CH_ACT_001", "CH_SLEEP_001", "CH_ACT_002", "CH_ACT_003", "CH_ACT_005", "CH_SOC_001", "CH_WELL_001", "CH_REG_002", "water-intake"]);
 
 function todayString(): string {
   const now = new Date();
@@ -81,9 +92,6 @@ function resolveExecutionMode(challengeId: string, programType: ChallengeProgram
 }
 
 function defaultTimerSeconds(challengeId: string): number {
-  if (challengeId === "CH_REG_001") {
-    return 180;
-  }
   if (challengeId === "CH_REG_002") {
     return 300;
   }
@@ -124,6 +132,7 @@ export default function ChallengeProgressPage() {
   const [timerSecondsRemaining, setTimerSecondsRemaining] = useState(180);
   const [timerRunning, setTimerRunning] = useState(false);
   const [timerCompleted, setTimerCompleted] = useState(false);
+  const [activeTab, setActiveTab] = useState<"setup" | "activity" | "save">("activity");
 
   const load = useCallback(async () => {
     if (!firebaseUser || !enrollmentId) {
@@ -477,275 +486,517 @@ export default function ChallengeProgressPage() {
               />
             ) : (
               <>
-                <div className="ms-grid ms-grid--three">
-                  <StatCard
-                    label="진행률"
-                    value={`${progressPct}%`}
-                    helperText={`${detail.done_days}/${detail.enrollment.target_days}일 완료`}
-                  />
-                  <StatCard
-                    label="남은 일수"
-                    value={`${detail.remaining_days}일`}
-                    helperText={`상태 ${detail.enrollment.status}`}
-                  />
-                  <Card title="세션 제어" description="진행 중인 챌린지 상태를 조정합니다.">
-                    <div className="ms-row">
-                      {detail.enrollment.status === "active" ? (
-                        <>
-                          <Button variant="ghost" onClick={() => void onSkipToday()} loading={working}>
-                            오늘 건너뛰기
-                          </Button>
-                          <Button variant="secondary" onClick={() => void togglePause()} loading={working}>
-                            일시중지
-                          </Button>
-                          <Button variant="danger" onClick={() => void onDrop()} disabled={working}>
-                            중단
-                          </Button>
-                        </>
-                      ) : detail.enrollment.status === "paused" ? (
-                        <>
-                          <Button onClick={() => void togglePause()} loading={working}>
-                            재개
-                          </Button>
-                          <Button variant="danger" onClick={() => void onDrop()} disabled={working}>
-                            중단
-                          </Button>
-                        </>
-                      ) : (
-                        <Button variant="danger" onClick={() => void onDrop()} disabled={working || detail.enrollment.status === "completed"}>
-                          중단
-                        </Button>
-                      )}
+                {NEW_UI_IDS.has(detail.challenge.challenge_id) ? (
+                  <>
+                    <div className="progress-tab-bar">
+                      <button className={`ptb-tab ${activeTab === "setup" ? "active" : ""}`} onClick={() => setActiveTab("setup")}>기간설정</button>
+                      <button className={`ptb-tab ${activeTab === "activity" ? "active" : ""}`} onClick={() => setActiveTab("activity")}>활동</button>
+                      <button className={`ptb-tab ${activeTab === "save" ? "active" : ""}`} onClick={() => setActiveTab("save")}>수행저장</button>
                     </div>
-                    {detail.enrollment.status === "active" && detail.done_days >= detail.enrollment.target_days ? (
-                      <Button size="sm" variant="soft" onClick={() => void onComplete()} loading={working}>
-                        완료 처리
-                      </Button>
-                    ) : null}
-                  </Card>
-                </div>
 
-                <div ref={executeCardRef}>
-                  {todayCompleted && detail.enrollment.status === "active" ? (
-                    <Card title={`오늘의 ${detail.challenge.name_ko} 완료`} description="오늘 실행과 회고가 이미 저장되었습니다.">
-                      <p className="ms-card__desc">내일 다시 실행하거나 다른 날짜 회고를 수정할 수 있습니다.</p>
-                    </Card>
-                  ) : (
-                    <Card title="오늘의 챌린지 수행">
-                      <div className="ms-challenge-exec-flow">
-                        <Card title="사전 체크">
-                          <div className="ms-grid ms-grid--two">
-                            <Input
-                              label="날짜"
-                              type="date"
-                              value={targetDate}
-                              min={detail.enrollment.scheduled_start_date}
-                              max={detail.enrollment.scheduled_end_date}
-                              onChange={(event) => setTargetDate(event.target.value)}
-                            />
-                            <Input
-                              label="실행 전 기분(1~5)"
-                              type="number"
-                              min={1}
-                              max={5}
-                              value={preMood}
-                              onChange={(event) => setPreMood(clampScore(Number(event.target.value) || 1, 1, 5))}
-                            />
-                            <Input
-                              label="실행 전 불안(1~5)"
-                              type="number"
-                              min={1}
-                              max={5}
-                              value={preAnxiety}
-                              onChange={(event) => setPreAnxiety(clampScore(Number(event.target.value) || 1, 1, 5))}
-                            />
+                    {activeTab === "setup" && (
+                      <div className="ptb-content">
+                        <div className="cp-card">
+                          <p className="cp-card-name">{detail.challenge.name_ko}</p>
+                          <p className="cp-card-desc">{detail.challenge.summary_ko}</p>
+                          <div className="cp-tags">
+                            <span className="cp-tag cp-tag-gray">소요 {detail.enrollment.target_days}일</span>
+                            <span className="cp-tag cp-tag-gray">{detail.enrollment.program_type}</span>
+                            <span className="cp-tag cp-tag-purple">진행 중</span>
                           </div>
-                        </Card>
-
-                        <Card title="활동">
-                          <div className="ms-stack">
-                            {activityDetailItems.map((step, index) => (
-                              <div key={`${step}-${index}`} className="ms-stack">
-                                <p className="ms-card__desc">
-                                  {index + 1}. {step}
-                                </p>
-                                <Input
-                                  label={`세부 내용 ${index + 1}`}
-                                  value={activityNotes[index] ?? ""}
-                                  onChange={(event) =>
-                                    setActivityNotes((previous) => {
-                                      const next = [...previous];
-                                      next[index] = event.target.value;
-                                      return next;
-                                    })
-                                  }
-                                  placeholder="실행한 내용을 간단히 입력해 주세요."
-                                />
-                              </div>
-                            ))}
-                          </div>
-                          {executionMode === "external" ? (
-                            <div className="ms-stack">
-                              {(detail.template_steps.length > 0 ? detail.template_steps : ["실행 완료 확인"]).map((step, index) => (
-                                <label key={`${step}-${index}`} className="ms-check-row" htmlFor={`challenge-step-${index}`}>
-                                  <input
-                                    id={`challenge-step-${index}`}
-                                    type="checkbox"
-                                    checked={executionChecks[index] ?? false}
-                                    onChange={(event) =>
-                                      setExecutionChecks((previous) => {
-                                        const next = [...previous];
-                                        next[index] = event.target.checked;
-                                        return next;
-                                      })
-                                    }
-                                  />
-                                  {step}
-                                </label>
-                              ))}
+                        </div>
+                        <div className="cp-card">
+                          <p className="cp-card-title">● 프로그램 설정</p>
+                          <div className="cp-form-grid">
+                            <div className="cp-form-item">
+                              <label className="cp-form-label">시작일</label>
+                              <div className="cp-form-value">{detail.enrollment.scheduled_start_date}</div>
                             </div>
-                          ) : executionMode === "timer" ? (
-                            <div className="ms-stack">
-                              <Input
-                                label="타이머(분)"
-                                type="number"
-                                min={1}
-                                max={30}
-                                value={timerMinutes}
-                                onChange={(event) => {
-                                  const minutes = clampScore(Number(event.target.value) || 1, 1, 30);
-                                  const seconds = minutes * 60;
-                                  setTimerSecondsTotal(seconds);
-                                  setTimerSecondsRemaining(seconds);
-                                  setTimerCompleted(false);
-                                  setTimerRunning(false);
-                                }}
-                              />
-                              <p className="ms-card__title">
-                                {timerDisplayMin}:{timerDisplaySec}
-                              </p>
-                              <div className="ms-row">
-                                {!timerRunning ? (
-                                  <Button size="sm" onClick={() => setTimerRunning(true)} disabled={timerSecondsRemaining <= 0}>
-                                    타이머 시작
-                                  </Button>
-                                ) : (
-                                  <Button size="sm" variant="secondary" onClick={() => setTimerRunning(false)}>
-                                    일시정지
-                                  </Button>
-                                )}
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => {
-                                    setTimerRunning(false);
-                                    setTimerSecondsRemaining(timerSecondsTotal);
-                                    setTimerCompleted(false);
-                                  }}
-                                >
-                                  초기화
-                                </Button>
-                                {timerCompleted ? <Badge variant="success">타이머 완료</Badge> : null}
-                              </div>
+                            <div className="cp-form-item">
+                              <label className="cp-form-label">목표 일수</label>
+                              <div className="cp-form-value">{detail.enrollment.target_days}일</div>
                             </div>
-                          ) : (
-                            <Textarea
-                              label="실행 내용 작성"
-                              value={executionText}
-                              onChange={(event) => setExecutionText(event.target.value)}
-                              placeholder="챌린지 실행 내용을 기록해 주세요."
-                            />
-                          )}
-                        </Card>
-
-                        <Card title="회고">
-                          <div className="ms-grid ms-grid--two">
-                            <Input
-                              label="실행 후 기분(1~5)"
-                              type="number"
-                              min={1}
-                              max={5}
-                              value={postMood}
-                              onChange={(event) => setPostMood(clampScore(Number(event.target.value) || 1, 1, 5))}
-                            />
-                            <Input
-                              label="실행 후 불안(1~5)"
-                              type="number"
-                              min={1}
-                              max={5}
-                              value={postAnxiety}
-                              onChange={(event) => setPostAnxiety(clampScore(Number(event.target.value) || 1, 1, 5))}
-                            />
-                            <Input
-                              label="도움 정도(0~10)"
-                              type="number"
-                              min={0}
-                              max={10}
-                              value={helpfulness}
-                              onChange={(event) => setHelpfulness(clampScore(Number(event.target.value) || 0, 0, 10))}
-                            />
-                            <Input
-                              label="노력 정도(0~10)"
-                              type="number"
-                              min={0}
-                              max={10}
-                              value={effort}
-                              onChange={(event) => setEffort(clampScore(Number(event.target.value) || 0, 0, 10))}
-                            />
+                            <div className="cp-form-item">
+                              <label className="cp-form-label">리마인드 시간</label>
+                              <div className="cp-form-value">{detail.enrollment.reminder_time_local ?? "설정 안 함"}</div>
+                            </div>
+                            <div className="cp-form-item">
+                              <label className="cp-form-label">종료일</label>
+                              <div className="cp-form-value">{detail.enrollment.scheduled_end_date}</div>
+                            </div>
                           </div>
-                          <Textarea
-                            label="회고 메모(선택)"
-                            value={reflectionNote}
-                            onChange={(event) => setReflectionNote(event.target.value)}
-                            placeholder="오늘 실행에서 느낀 점을 간단히 기록해보세요."
-                          />
-                        </Card>
-
-                        <div className="ms-row">
-                          <Button onClick={() => void onSaveDailyRun()} loading={savingDailyRun} disabled={detail.enrollment.status !== "active"}>
-                            오늘 수행 저장
-                          </Button>
+                        </div>
+                        <div className="cp-card">
+                          <p className="cp-card-title">● 실행 단계</p>
+                          {detail.template_steps.map((step, i) => (
+                            <div key={i} className="cp-step">
+                              <div className="cp-step-num">{i + 1}</div>
+                              <p className="cp-step-text">{step}</p>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    </Card>
-                  )}
-                </div>
+                    )}
 
-                <Card title="일별 진행 타임라인" description="pending / done / skipped / late / missed 상태를 표시합니다.">
-                  {detail.progress_days.length === 0 ? (
-                    <EmptyState title="진행 데이터가 없습니다" description="실행을 시작하면 날짜별 로그가 표시됩니다." />
-                  ) : (
-                    <div className="ms-grid ms-grid--two">
-                      {detail.progress_days.map((day) => (
-                        <Card
-                          key={day.date}
-                          title={`${day.day_number}일차 · ${day.date}`}
-                          description={day.detail?.reflection_note || "회고 메모 없음"}
-                          action={<Tag variant={day.completed_flag ? "success" : "neutral"}>{day.day_status}</Tag>}
-                        >
-                          <div className="ms-stack">
-                            <p className="ms-card__desc">
-                              도움 {day.detail?.helpfulness_0_10 ?? "-"} / 노력 {day.detail?.effort_0_10 ?? "-"}
-                            </p>
-                            <p className="ms-card__desc">
-                              전후 기분 {day.detail?.pre_mood_1_5 ?? "-"} → {day.detail?.post_mood_1_5 ?? "-"}
-                            </p>
-                            <p className="ms-card__desc">
-                              전후 불안 {day.detail?.pre_anxiety_1_5 ?? "-"} → {day.detail?.post_anxiety_1_5 ?? "-"}
-                            </p>
+                    {activeTab === "activity" && (
+                      <div className="ptb-content">
+                        <div className="ptb-fixed-top">
+                          <div className="cp-stat-card">
+                            <p className="cp-stat-label">진행률</p>
+                            <p className="cp-stat-value" style={{ color: "var(--color-primary)" }}>{progressPct}%</p>
+                            <p className="cp-stat-sub">{detail.done_days}/{detail.enrollment.target_days}일 완료</p>
+                            <div className="progress-track">
+                              <div className="progress-fill" style={{ width: `${progressPct}%` }} />
+                            </div>
                           </div>
+                          <div className="cp-stat-card">
+                            <p className="cp-stat-label">남은 일수</p>
+                            <p className="cp-stat-value">{detail.remaining_days}일</p>
+                            <p className="cp-stat-sub">상태 {detail.enrollment.status}</p>
+                          </div>
+                          <div className="cp-ctrl-card">
+                            <p className="cp-ctrl-title">세션 제어</p>
+                            <div className="cp-ctrl-btns">
+                              {detail.enrollment.status === "active" ? (
+                                <>
+                                  <Button size="sm" variant="ghost" onClick={() => void onSkipToday()} loading={working}>오늘 건너뛰기</Button>
+                                  <Button size="sm" variant="secondary" onClick={() => void togglePause()} loading={working}>일시중지</Button>
+                                  <Button size="sm" variant="danger" onClick={() => void onDrop()} disabled={working}>중단</Button>
+                                </>
+                              ) : detail.enrollment.status === "paused" ? (
+                                <>
+                                  <Button size="sm" onClick={() => void togglePause()} loading={working}>재개</Button>
+                                  <Button size="sm" variant="danger" onClick={() => void onDrop()} disabled={working}>중단</Button>
+                                </>
+                              ) : null}
+                            </div>
+                            {detail.enrollment.status === "active" && detail.done_days >= detail.enrollment.target_days && (
+                              <Button size="sm" variant="soft" onClick={() => void onComplete()} loading={working}>완료 처리</Button>
+                            )}
+                          </div>
+                        </div>
+
+                        <hr className="ptb-divider" />
+
+                        <div className="cp-card">
+                          <p className="cp-card-title">● 오늘의 활동</p>
+                          {todayCompleted && detail.enrollment.status === "active" ? (
+                            <p className="cp-card-desc">
+                              오늘 실행과 회고가 이미 저장되었습니다. 내일 다시 실행하거나 수행저장 탭에서 수정할 수 있습니다.
+                            </p>
+                          ) : (
+                            <>
+                              {detail.challenge.challenge_id === "CH_ACT_001" && <ChallengeChecklist type="morning" />}
+                              {detail.challenge.challenge_id === "CH_SLEEP_001" && <ChallengeChecklist type="sleep" />}
+                              {detail.challenge.challenge_id === "CH_ACT_003" && (
+                                <div className="cw-two-col">
+                                  <WeatherWidget />
+                                  <div className="cw-walk-done">
+                                    <p className="cp-card-desc">오늘 산책을 완료했나요?</p>
+                                    <button className="ct-btn-primary" onClick={() => void onSaveDailyRun()}>
+                                      ✅ 오늘 산책 완료
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                              {detail.challenge.challenge_id === "CH_ACT_005" && (
+                                <div className="cw-two-col cp-meditation-layout">
+                                  <div className="cp-card cp-mini-card">
+                                    <p className="cp-card-title">● 5분 명상 타이머</p>
+                                    <ChallengeTimer totalSeconds={300} label="호흡에 집중하는 시간" />
+                                  </div>
+                                  <div className="cp-card cp-mini-card">
+                                    <p className="cp-card-title">● 배경 사운드</p>
+                                    <MeditationAudioPlayer />
+                                  </div>
+                                </div>
+                              )}
+                              {detail.challenge.challenge_id === "CH_ACT_002" && (
+                                <SunlightWidget
+                                  onChange={setExecutionText}
+                                  onComplete={() => void onSaveDailyRun()}
+                                  redirectPath={`/challenge/session/${enrollmentId}/progress`}
+                                />
+                              )}
+                              {detail.challenge.challenge_id === "CH_SOC_001" && (
+                                <InterpersonalMapWidget
+                                  onChange={setExecutionText}
+                                  onComplete={() => void onSaveDailyRun()}
+                                  redirectPath={`/challenge/session/${enrollmentId}/progress`}
+                                />
+                              )}
+                              {detail.challenge.challenge_id === "CH_WELL_001" && (
+                                <ConfidenceListWidget
+                                  onChange={setExecutionText}
+                                  onComplete={() => void onSaveDailyRun()}
+                                  redirectPath={`/challenge/session/${enrollmentId}/progress`}
+                                />
+                              )}
+                              {detail.challenge.challenge_id === "CH_REG_002" && (
+                                <SensoryGroundingWidget
+                                  onChange={setExecutionText}
+                                  onComplete={() => void onSaveDailyRun()}
+                                  redirectPath={`/challenge/session/${enrollmentId}/progress`}
+                                />
+                              )}
+                              {detail.challenge.challenge_id === "water-intake" && (
+                                <WaterIntakeWidget
+                                  onChange={setExecutionText}
+                                  onComplete={() => void onSaveDailyRun()}
+                                  redirectPath={`/challenge/session/${enrollmentId}/progress`}
+                                />
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === "save" && (
+                      <div className="ptb-content">
+                        <div className="cp-card">
+                          <p className="cp-card-title">● 오늘 수행 기록</p>
+                          <div className="cp-score-grid">
+                            <div className="cp-score-item">
+                              <p className="cp-form-label">실행 전 기분 (1~5)</p>
+                              <Input label="실행 전 기분" type="number" min={1} max={5} value={preMood} onChange={(e) => setPreMood(clampScore(Number(e.target.value) || 1, 1, 5))} />
+                            </div>
+                            <div className="cp-score-item">
+                              <p className="cp-form-label">실행 후 기분 (1~5)</p>
+                              <Input label="실행 후 기분" type="number" min={1} max={5} value={postMood} onChange={(e) => setPostMood(clampScore(Number(e.target.value) || 1, 1, 5))} />
+                            </div>
+                            <div className="cp-score-item">
+                              <p className="cp-form-label">실행 전 불안 (1~5)</p>
+                              <Input label="실행 전 불안" type="number" min={1} max={5} value={preAnxiety} onChange={(e) => setPreAnxiety(clampScore(Number(e.target.value) || 1, 1, 5))} />
+                            </div>
+                            <div className="cp-score-item">
+                              <p className="cp-form-label">실행 후 불안 (1~5)</p>
+                              <Input label="실행 후 불안" type="number" min={1} max={5} value={postAnxiety} onChange={(e) => setPostAnxiety(clampScore(Number(e.target.value) || 1, 1, 5))} />
+                            </div>
+                            <div className="cp-score-item">
+                              <p className="cp-form-label">도움 정도 (0~10)</p>
+                              <Input label="도움 정도" type="number" min={0} max={10} value={helpfulness} onChange={(e) => setHelpfulness(clampScore(Number(e.target.value) || 0, 0, 10))} />
+                            </div>
+                            <div className="cp-score-item">
+                              <p className="cp-form-label">노력 정도 (0~10)</p>
+                              <Input label="노력 정도" type="number" min={0} max={10} value={effort} onChange={(e) => setEffort(clampScore(Number(e.target.value) || 0, 0, 10))} />
+                            </div>
+                          </div>
+                          <Textarea
+                            label="회고 메모 (선택)"
+                            value={reflectionNote}
+                            onChange={(e) => setReflectionNote(e.target.value)}
+                            placeholder="오늘 실행에서 느낀 점을 간단히 기록해보세요."
+                          />
+                          <div style={{ marginTop: 12 }}>
+                            <Button onClick={() => void onSaveDailyRun()} loading={savingDailyRun} disabled={detail.enrollment.status !== "active"}>
+                              오늘 수행 저장
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="cp-card">
+                          <p className="cp-card-title">● 일별 진행 타임라인</p>
+                          {detail.progress_days.length === 0 ? (
+                            <p className="cp-card-desc">실행을 시작하면 날짜별 로그가 표시됩니다.</p>
+                          ) : (
+                            <>
+                              <div className="cp-timeline-grid">
+                                {detail.progress_days.map((day) => (
+                                  <div key={day.date} className="cp-tl-item">
+                                    <div className="cp-tl-head">
+                                      <span className="cp-tl-day">{day.day_number}일차 · {day.date}</span>
+                                      <span className={`cp-tl-status ${day.day_status}`}>{day.day_status}</span>
+                                    </div>
+                                    <p className="cp-tl-memo">{day.detail?.reflection_note || "회고 메모 없음"}</p>
+                                    {detail.enrollment.status === "active" && (
+                                      <button className="cp-ctrl-btn" style={{ marginTop: 8, fontSize: 11 }} onClick={() => { setActiveTab("save"); setTargetDate(day.date); }}>
+                                        이 날짜 수정
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                              {detail.challenge.challenge_id === "CH_SOC_001" ? <RelationshipMapComparison /> : null}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="ms-grid ms-grid--three">
+                      <StatCard
+                        label="진행률"
+                        value={`${progressPct}%`}
+                        helperText={`${detail.done_days}/${detail.enrollment.target_days}일 완료`}
+                      />
+                      <StatCard
+                        label="남은 일수"
+                        value={`${detail.remaining_days}일`}
+                        helperText={`상태 ${detail.enrollment.status}`}
+                      />
+                      <Card title="세션 제어" description="진행 중인 챌린지 상태를 조정합니다.">
+                        <div className="ms-row">
                           {detail.enrollment.status === "active" ? (
+                            <>
+                              <Button variant="ghost" onClick={() => void onSkipToday()} loading={working}>
+                                오늘 건너뛰기
+                              </Button>
+                              <Button variant="secondary" onClick={() => void togglePause()} loading={working}>
+                                일시중지
+                              </Button>
+                              <Button variant="danger" onClick={() => void onDrop()} disabled={working}>
+                                중단
+                              </Button>
+                            </>
+                          ) : detail.enrollment.status === "paused" ? (
+                            <>
+                              <Button onClick={() => void togglePause()} loading={working}>
+                                재개
+                              </Button>
+                              <Button variant="danger" onClick={() => void onDrop()} disabled={working}>
+                                중단
+                              </Button>
+                            </>
+                          ) : (
+                            <Button variant="danger" onClick={() => void onDrop()} disabled={working || detail.enrollment.status === "completed"}>
+                              중단
+                            </Button>
+                          )}
+                        </div>
+                        {detail.enrollment.status === "active" && detail.done_days >= detail.enrollment.target_days ? (
+                          <Button size="sm" variant="soft" onClick={() => void onComplete()} loading={working}>
+                            완료 처리
+                          </Button>
+                        ) : null}
+                      </Card>
+                    </div>
+
+                    <div ref={executeCardRef}>
+                      {todayCompleted && detail.enrollment.status === "active" ? (
+                        <Card title={`오늘의 ${detail.challenge.name_ko} 완료`} description="오늘 실행과 회고가 이미 저장되었습니다.">
+                          <p className="ms-card__desc">내일 다시 실행하거나 다른 날짜 회고를 수정할 수 있습니다.</p>
+                        </Card>
+                      ) : (
+                        <Card title="오늘의 챌린지 수행">
+                          <div className="ms-challenge-exec-flow">
+                            <Card title="사전 체크">
+                              <div className="ms-grid ms-grid--two">
+                                <Input
+                                  label="날짜"
+                                  type="date"
+                                  value={targetDate}
+                                  min={detail.enrollment.scheduled_start_date}
+                                  max={detail.enrollment.scheduled_end_date}
+                                  onChange={(event) => setTargetDate(event.target.value)}
+                                />
+                                <Input
+                                  label="실행 전 기분(1~5)"
+                                  type="number"
+                                  min={1}
+                                  max={5}
+                                  value={preMood}
+                                  onChange={(event) => setPreMood(clampScore(Number(event.target.value) || 1, 1, 5))}
+                                />
+                                <Input
+                                  label="실행 전 불안(1~5)"
+                                  type="number"
+                                  min={1}
+                                  max={5}
+                                  value={preAnxiety}
+                                  onChange={(event) => setPreAnxiety(clampScore(Number(event.target.value) || 1, 1, 5))}
+                                />
+                              </div>
+                            </Card>
+
+                            <Card title="활동">
+                              <div className="ms-stack">
+                                {activityDetailItems.map((step, index) => (
+                                  <div key={`${step}-${index}`} className="ms-stack">
+                                    <p className="ms-card__desc">
+                                      {index + 1}. {step}
+                                    </p>
+                                    <Input
+                                      label={`세부 내용 ${index + 1}`}
+                                      value={activityNotes[index] ?? ""}
+                                      onChange={(event) =>
+                                        setActivityNotes((previous) => {
+                                          const next = [...previous];
+                                          next[index] = event.target.value;
+                                          return next;
+                                        })
+                                      }
+                                      placeholder="실행한 내용을 간단히 입력해 주세요."
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                              {executionMode === "external" ? (
+                                <div className="ms-stack">
+                                  {(detail.template_steps.length > 0 ? detail.template_steps : ["실행 완료 확인"]).map((step, index) => (
+                                    <label key={`${step}-${index}`} className="ms-check-row" htmlFor={`challenge-step-${index}`}>
+                                      <input
+                                        id={`challenge-step-${index}`}
+                                        type="checkbox"
+                                        checked={executionChecks[index] ?? false}
+                                        onChange={(event) =>
+                                          setExecutionChecks((previous) => {
+                                            const next = [...previous];
+                                            next[index] = event.target.checked;
+                                            return next;
+                                          })
+                                        }
+                                      />
+                                      {step}
+                                    </label>
+                                  ))}
+                                </div>
+                              ) : executionMode === "timer" ? (
+                                <div className="ms-stack">
+                                  <Input
+                                    label="타이머(분)"
+                                    type="number"
+                                    min={1}
+                                    max={30}
+                                    value={timerMinutes}
+                                    onChange={(event) => {
+                                      const minutes = clampScore(Number(event.target.value) || 1, 1, 30);
+                                      const seconds = minutes * 60;
+                                      setTimerSecondsTotal(seconds);
+                                      setTimerSecondsRemaining(seconds);
+                                      setTimerCompleted(false);
+                                      setTimerRunning(false);
+                                    }}
+                                  />
+                                  <p className="ms-card__title">
+                                    {timerDisplayMin}:{timerDisplaySec}
+                                  </p>
+                                  <div className="ms-row">
+                                    {!timerRunning ? (
+                                      <Button size="sm" onClick={() => setTimerRunning(true)} disabled={timerSecondsRemaining <= 0}>
+                                        타이머 시작
+                                      </Button>
+                                    ) : (
+                                      <Button size="sm" variant="secondary" onClick={() => setTimerRunning(false)}>
+                                        일시정지
+                                      </Button>
+                                    )}
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => {
+                                        setTimerRunning(false);
+                                        setTimerSecondsRemaining(timerSecondsTotal);
+                                        setTimerCompleted(false);
+                                      }}
+                                    >
+                                      초기화
+                                    </Button>
+                                    {timerCompleted ? <Badge variant="success">타이머 완료</Badge> : null}
+                                  </div>
+                                </div>
+                              ) : (
+                                <Textarea
+                                  label="실행 내용 작성"
+                                  value={executionText}
+                                  onChange={(event) => setExecutionText(event.target.value)}
+                                  placeholder="챌린지 실행 내용을 기록해 주세요."
+                                />
+                              )}
+                            </Card>
+
+                            <Card title="회고">
+                              <div className="ms-grid ms-grid--two">
+                                <Input
+                                  label="실행 후 기분(1~5)"
+                                  type="number"
+                                  min={1}
+                                  max={5}
+                                  value={postMood}
+                                  onChange={(event) => setPostMood(clampScore(Number(event.target.value) || 1, 1, 5))}
+                                />
+                                <Input
+                                  label="실행 후 불안(1~5)"
+                                  type="number"
+                                  min={1}
+                                  max={5}
+                                  value={postAnxiety}
+                                  onChange={(event) => setPostAnxiety(clampScore(Number(event.target.value) || 1, 1, 5))}
+                                />
+                                <Input
+                                  label="도움 정도(0~10)"
+                                  type="number"
+                                  min={0}
+                                  max={10}
+                                  value={helpfulness}
+                                  onChange={(event) => setHelpfulness(clampScore(Number(event.target.value) || 0, 0, 10))}
+                                />
+                                <Input
+                                  label="노력 정도(0~10)"
+                                  type="number"
+                                  min={0}
+                                  max={10}
+                                  value={effort}
+                                  onChange={(event) => setEffort(clampScore(Number(event.target.value) || 0, 0, 10))}
+                                />
+                              </div>
+                              <Textarea
+                                label="회고 메모(선택)"
+                                value={reflectionNote}
+                                onChange={(event) => setReflectionNote(event.target.value)}
+                                placeholder="오늘 실행에서 느낀 점을 간단히 기록해보세요."
+                              />
+                            </Card>
+
                             <div className="ms-row">
-                              <Button size="sm" variant="secondary" onClick={() => goToExecuteBox(day.date)}>
-                                이 날짜 수정
+                              <Button onClick={() => void onSaveDailyRun()} loading={savingDailyRun} disabled={detail.enrollment.status !== "active"}>
+                                오늘 수행 저장
                               </Button>
                             </div>
-                          ) : null}
+                          </div>
                         </Card>
-                      ))}
+                      )}
                     </div>
-                  )}
-                </Card>
+
+                    <Card title="일별 진행 타임라인" description="pending / done / skipped / late / missed 상태를 표시합니다.">
+                      {detail.progress_days.length === 0 ? (
+                        <EmptyState title="진행 데이터가 없습니다" description="실행을 시작하면 날짜별 로그가 표시됩니다." />
+                      ) : (
+                        <div className="ms-grid ms-grid--two">
+                          {detail.progress_days.map((day) => (
+                            <Card
+                              key={day.date}
+                              title={`${day.day_number}일차 · ${day.date}`}
+                              description={day.detail?.reflection_note || "회고 메모 없음"}
+                              action={<Tag variant={day.completed_flag ? "success" : "neutral"}>{day.day_status}</Tag>}
+                            >
+                              <div className="ms-stack">
+                                <p className="ms-card__desc">
+                                  도움 {day.detail?.helpfulness_0_10 ?? "-"} / 노력 {day.detail?.effort_0_10 ?? "-"}
+                                </p>
+                                <p className="ms-card__desc">
+                                  전후 기분 {day.detail?.pre_mood_1_5 ?? "-"} → {day.detail?.post_mood_1_5 ?? "-"}
+                                </p>
+                                <p className="ms-card__desc">
+                                  전후 불안 {day.detail?.pre_anxiety_1_5 ?? "-"} → {day.detail?.post_anxiety_1_5 ?? "-"}
+                                </p>
+                              </div>
+                              {detail.enrollment.status === "active" ? (
+                                <div className="ms-row">
+                                  <Button size="sm" variant="secondary" onClick={() => goToExecuteBox(day.date)}>
+                                    이 날짜 수정
+                                  </Button>
+                                </div>
+                              ) : null}
+                            </Card>
+                          ))}
+                        </div>
+                      )}
+                    </Card>
+                  </>
+                )}
               </>
             )}
           </SectionContainer>

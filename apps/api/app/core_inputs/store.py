@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import uuid
 from datetime import UTC, date, datetime, timedelta
@@ -83,9 +82,9 @@ CHALLENGE_CATALOG_SEED = [
         "domain": "activation",
         "challenge_type": "sustained",
         "program_type": "streak",
-        "default_target_days": 3,
+        "default_target_days": 2,
         "difficulty_level": "easy",
-        "summary_ko": "기상 후 1-2시간 내 햇빛 10분",
+        "summary_ko": "하루 10분, 자연광으로 기분을 바꿔보세요",
     },
     {
         "challenge_id": "CH_ACT_003",
@@ -99,37 +98,48 @@ CHALLENGE_CATALOG_SEED = [
         "summary_ko": "실외 10분 이상",
     },
     {
-        "challenge_id": "CH_REG_001",
-        "name_ko": "호흡 안정",
+        "challenge_id": "CH_ACT_005",
+        "name_ko": "5분 명상",
         "status": "core",
         "domain": "regulation",
-        "challenge_type": "one_time",
-        "program_type": "guided_reflection",
-        "default_target_days": 1,
+        "challenge_type": "sustained",
+        "program_type": "streak",
+        "default_target_days": 7,
+        "difficulty_level": "medium",
+        "summary_ko": "하루 5분, 조용히 앉아 호흡에 집중해보세요",
+    },
+    {
+        "challenge_id": "water-intake",
+        "name_ko": "내 물고기를 살려줘",
+        "status": "core",
+        "domain": "activation",
+        "challenge_type": "sustained",
+        "program_type": "streak",
+        "default_target_days": 7,
         "difficulty_level": "easy",
-        "summary_ko": "호흡 리듬을 가다듬어 몸의 긴장을 낮추는 짧은 루틴",
+        "summary_ko": "물 한 잔마다 물고기가 살아나요 🐠",
     },
     {
         "challenge_id": "CH_REG_002",
-        "name_ko": "감각 안정",
+        "name_ko": "감각 탐험 5-4-3-2-1",
         "status": "core",
         "domain": "regulation",
         "challenge_type": "one_time",
         "program_type": "guided_reflection",
         "default_target_days": 1,
         "difficulty_level": "easy",
-        "summary_ko": "지금 느껴지는 감각에 집중해 긴장을 낮추는 루틴",
+        "summary_ko": "지금 이 순간, 5가지 감각으로 현실에 닻을 내려요",
     },
     {
         "challenge_id": "CH_SOC_001",
-        "name_ko": "대인관계 지지자 생각하기",
+        "name_ko": "대인관계 지도",
         "status": "core",
         "domain": "social",
         "challenge_type": "one_time",
         "program_type": "one_time",
-        "default_target_days": 1,
+        "default_target_days": 2,
         "difficulty_level": "medium",
-        "summary_ko": "도움을 요청할 수 있는 사람을 떠올리고 연결 계획 세우기",
+        "summary_ko": "내 주변 관계를 정리하고 핵심 지지자를 찾아보세요",
     },
     {
         "challenge_id": "CH_WELL_001",
@@ -138,9 +148,9 @@ CHALLENGE_CATALOG_SEED = [
         "domain": "wellbeing",
         "challenge_type": "one_time",
         "program_type": "guided_reflection",
-        "default_target_days": 1,
+        "default_target_days": 2,
         "difficulty_level": "easy",
-        "summary_ko": "내가 해냈던 경험을 떠올려 자신감을 회복하는 기록",
+        "summary_ko": "내 강점과 성취를 기록하며 자기 효능감을 키워보세요",
     },
 ]
 
@@ -149,7 +159,8 @@ CHALLENGE_REASON_BY_ID: dict[str, tuple[str, str]] = {
     "CH_ACT_001": ("dep_low_energy", "아침 에너지 저하가 관찰되어, 작은 모닝 루틴부터 시작해 보세요."),
     "CH_ACT_002": ("dep_low_daylight", "햇빛 노출이 부족해 보여, 10분 햇빛 루틴을 추천합니다."),
     "CH_ACT_003": ("dep_low_activity", "최근 활동량이 낮아, 짧은 산책 루틴으로 부담 없이 시작할 수 있습니다."),
-    "CH_REG_001": ("anx_high_anxiety", "긴장 신호가 높아 보여, 짧은 호흡 안정 루틴을 먼저 권장합니다."),
+    "CH_ACT_005": ("anx_high_anxiety", "하루 5분 명상으로 호흡에 집중하며 긴장을 낮춰보세요."),
+    "water-intake": ("low_hydration", "수분 섭취가 부족해 보여요. 물고기 챌린지로 물 습관을 만들어보세요."),
     "CH_REG_002": ("acute_anxiety_spike", "불안이 급격히 올라온 날에는 감각 안정 루틴이 도움이 될 수 있습니다."),
     "CH_SOC_001": ("low_social_contact", "최근 지지 연결이 적어, 지지자를 떠올리고 연결 계획을 세워보세요."),
     "CH_WELL_001": ("low_self_confidence", "자기평가가 낮을 때, 해낸 경험을 정리하는 자신감 리스트가 도움이 될 수 있습니다."),
@@ -158,12 +169,43 @@ CHALLENGE_REASON_BY_ID: dict[str, tuple[str, str]] = {
 CHALLENGE_TEMPLATE_STEPS: dict[str, list[str]] = {
     "CH_SLEEP_001": ["기상시간 고정하기", "늦은 카페인 줄이기", "취침 전 루틴 기록하기"],
     "CH_ACT_001": ["기상 후 첫 행동 정하기", "아침 루틴 체크", "일주일 패턴 확인"],
-    "CH_ACT_002": ["기상 후 1-2시간 내 햇빛 10분"],
+    "CH_ACT_002": [
+        "S1: 컨디션 & 날씨 확인",
+        "S2: 햇빛 타이머",
+        "S3: 오늘의 햇빛 후기",
+    ],
     "CH_ACT_003": ["실외 산책 10분 이상"],
-    "CH_REG_001": ["호흡 안정 3분", "몸 긴장도 점검"],
-    "CH_REG_002": ["보이는 것 5개", "만지는 것 4개", "들리는 것 3개"],
-    "CH_SOC_001": ["지지자 1명 떠올리기", "연락 문장 초안 만들기"],
-    "CH_WELL_001": ["해낸 일 3가지 적기", "내 강점 1가지 적기"],
+    "CH_ACT_005": ["조용한 공간 찾기", "눈 감고 호흡 집중", "5분간 유지하기"],
+    "water-intake": [
+        "S1: 오늘의 목표 설정",
+        "S2: 물 마시기 기록",
+        "S3: 하루 마무리",
+    ],
+    "CH_REG_002": [
+        "S1: 👀 보이는 것 5가지",
+        "S2: 🤲 만져지는 것 4가지",
+        "S3: 👂 들리는 것 3가지",
+        "S4: 👃 맡아지는 것 2가지",
+        "S5: 👅 느껴지는 것 1가지",
+        "S6: 🌟 감각 지도 완성",
+    ],
+    "CH_SOC_001": [
+        "S1: 현재 상태 체크",
+        "S2: 주변 사람 떠올리기",
+        "S3: 관계 영역 배치",
+        "S4: 핵심 관계 선택",
+        "S5: 관계 심화 기록 1",
+        "S6: 관계 심화 기록 2",
+        "S7: 현재 초점 선택",
+        "S8: 다음 행동 설정",
+        "S9: 사후 체크 및 완료",
+    ],
+    "CH_WELL_001": [
+        "S1: 최근 잘한 일 떠올리기",
+        "S2: 강점 발견",
+        "S3: 나만의 강점 카드",
+        "S4: 앞으로의 한 걸음",
+    ],
 }
 
 DEFAULT_ONE_LINE_JOURNAL_CATEGORY_TAGS: list[str] = [
@@ -180,7 +222,6 @@ class CoreInputStore:
     def __init__(self, database_path: Path):
         self.database_path = database_path
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        self._modeling_store = None
         self._initialize_schema()
 
     def _connect(self) -> sqlite3.Connection:
@@ -191,38 +232,6 @@ class CoreInputStore:
     @staticmethod
     def _now_iso() -> str:
         return datetime.now(UTC).isoformat()
-
-    def _get_modeling_store(self):
-        if self._modeling_store is not None:
-            return self._modeling_store
-
-        from app.modeling.store import ModelingStore
-
-        default_bundle_dir = Path(__file__).resolve().parents[4] / "model"
-        model_bundle_dir = Path(
-            os.getenv("MODEL_BUNDLE_DIR", str(default_bundle_dir))
-        ).resolve()
-        self._modeling_store = ModelingStore(
-            database_path=self.database_path,
-            model_bundle_dir=model_bundle_dir,
-        )
-        return self._modeling_store
-
-    def _refresh_nowcast_prediction(
-        self,
-        user_id: str,
-        reference_date: date,
-        *,
-        force: bool,
-    ) -> None:
-        try:
-            self._get_modeling_store().ensure_nowcast_prediction_from_sources(
-                user_id=user_id,
-                reference_date=reference_date,
-                force=force,
-            )
-        except ValueError:
-            return
 
     def _initialize_schema(self) -> None:
         with self._connect() as conn:
@@ -526,6 +535,12 @@ class CoreInputStore:
                     item["summary_ko"],
                 ),
             )
+        conn.execute(
+            """
+            DELETE FROM challenge_catalog
+            WHERE challenge_id = 'CH_REG_001'
+            """
+        )
 
     @staticmethod
     def _sleep_total_midpoint(bucket: SleepTotalBucket) -> float:
@@ -773,11 +788,6 @@ class CoreInputStore:
             self._recalculate_user_day_activity_log(conn, user_id, checkin_date)
             conn.commit()
 
-        self._refresh_nowcast_prediction(
-            user_id=user_id,
-            reference_date=checkin_date,
-            force=True,
-        )
         return self.get_checkin_today(user_id, checkin_date)
 
     def _upsert_checkin_features(
@@ -1120,7 +1130,6 @@ class CoreInputStore:
         return None
 
     def complete_assessment(self, user_id: str, assessment_id: str) -> AssessmentSessionResponse:
-        completed_date = date.today()
         with self._connect() as conn:
             session = conn.execute(
                 """
@@ -1166,7 +1175,6 @@ class CoreInputStore:
             item9_nonzero = int(phq9_item9_nonzero["response_score"]) > 0 if phq9_item9_nonzero else False
 
             now_iso = self._now_iso()
-            completed_date = datetime.fromisoformat(now_iso).date()
             conn.execute(
                 """
                 INSERT INTO assessment_score (
@@ -1214,11 +1222,6 @@ class CoreInputStore:
             self._recalculate_user_day_activity_log(conn, user_id, datetime.fromisoformat(now_iso).date())
             conn.commit()
 
-        self._refresh_nowcast_prediction(
-            user_id=user_id,
-            reference_date=completed_date,
-            force=True,
-        )
         return self.get_assessment_session(user_id, assessment_id)
 
     def get_assessment_session(self, user_id: str, assessment_id: str) -> AssessmentSessionResponse:
@@ -1271,121 +1274,19 @@ class CoreInputStore:
             )
 
     def list_assessment_history(self, user_id: str, limit: int) -> list[AssessmentSessionResponse]:
-        sessions: list[AssessmentSessionResponse] = []
-
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT
-                  pa.assessment_id,
-                  pa.user_id,
-                  pa.scheduled_for,
-                  pa.started_at,
-                  pa.completed_at,
-                  pa.status,
-                  pa.recommended_cycle_days,
-                  pa.source,
-                  sc.phq9_total,
-                  sc.gad7_total,
-                  sc.isi_total,
-                  sc.phq9_band,
-                  sc.gad7_band,
-                  sc.isi_band,
-                  sc.phq9_item9_nonzero
+                SELECT pa.assessment_id
                 FROM periodic_assessment pa
-                LEFT JOIN assessment_score sc ON sc.assessment_id = pa.assessment_id
                 WHERE pa.user_id = ?
                 ORDER BY pa.started_at DESC
                 LIMIT ?
                 """,
-                (user_id, max(limit * 3, 30)),
+                (user_id, limit),
             ).fetchall()
 
-            periodic_ids: set[str] = set()
-            for row in rows:
-                assessment_id = str(row["assessment_id"])
-                periodic_ids.add(assessment_id)
-                sessions.append(
-                    AssessmentSessionResponse(
-                        assessment_id=assessment_id,
-                        user_id=str(row["user_id"]),
-                        scheduled_for=date.fromisoformat(str(row["scheduled_for"])) if row["scheduled_for"] else None,
-                        started_at=datetime.fromisoformat(str(row["started_at"])),
-                        completed_at=datetime.fromisoformat(str(row["completed_at"])) if row["completed_at"] else None,
-                        status=AssessmentStatus(str(row["status"])),
-                        recommended_cycle_days=int(row["recommended_cycle_days"]),
-                        source=str(row["source"]),
-                        scores={
-                            "phq9_total": row["phq9_total"],
-                            "gad7_total": row["gad7_total"],
-                            "isi_total": row["isi_total"],
-                            "phq9_band": row["phq9_band"],
-                            "gad7_band": row["gad7_band"],
-                            "isi_band": row["isi_band"],
-                            "phq9_item9_nonzero": bool(row["phq9_item9_nonzero"] or 0),
-                        },
-                    )
-                )
-
-            baseline_row: sqlite3.Row | None = None
-            if self._table_exists(conn, "baseline_assessment"):
-                select_assessment_id = (
-                    "assessment_id,"
-                    if self._table_has_column(conn, "baseline_assessment", "assessment_id")
-                    else "NULL AS assessment_id,"
-                )
-                baseline_row = conn.execute(
-                    f"""
-                    SELECT
-                      {select_assessment_id}
-                      depression_score,
-                      anxiety_score,
-                      insomnia_score,
-                      completed_at
-                    FROM baseline_assessment
-                    WHERE user_id = ?
-                    """,
-                    (user_id,),
-                ).fetchone()
-
-            if baseline_row and baseline_row["completed_at"]:
-                baseline_assessment_id = str(baseline_row["assessment_id"]) if baseline_row["assessment_id"] else None
-                include_baseline = baseline_assessment_id is None or baseline_assessment_id not in periodic_ids
-                if include_baseline:
-                    completed_at = datetime.fromisoformat(str(baseline_row["completed_at"]))
-                    sessions.append(
-                        AssessmentSessionResponse(
-                            assessment_id=baseline_assessment_id or f"asm_onboarding_baseline_{user_id}",
-                            user_id=user_id,
-                            scheduled_for=None,
-                            started_at=completed_at,
-                            completed_at=completed_at,
-                            status=AssessmentStatus.completed,
-                            recommended_cycle_days=28,
-                            source="onboarding",
-                            scores={
-                                "phq9_total": int(baseline_row["depression_score"]) if baseline_row["depression_score"] is not None else None,
-                                "gad7_total": int(baseline_row["anxiety_score"]) if baseline_row["anxiety_score"] is not None else None,
-                                "isi_total": int(baseline_row["insomnia_score"]) if baseline_row["insomnia_score"] is not None else None,
-                                "phq9_band": self._band_from_total(
-                                    "phq9",
-                                    int(baseline_row["depression_score"]) if baseline_row["depression_score"] is not None else None,
-                                ),
-                                "gad7_band": self._band_from_total(
-                                    "gad7",
-                                    int(baseline_row["anxiety_score"]) if baseline_row["anxiety_score"] is not None else None,
-                                ),
-                                "isi_band": self._band_from_total(
-                                    "isi",
-                                    int(baseline_row["insomnia_score"]) if baseline_row["insomnia_score"] is not None else None,
-                                ),
-                                "phq9_item9_nonzero": False,
-                            },
-                        )
-                    )
-
-        sessions.sort(key=lambda item: item.started_at, reverse=True)
-        return sessions[:limit]
+        return [self.get_assessment_session(user_id, str(row["assessment_id"])) for row in rows]
 
     def list_challenge_catalog(self) -> list[ChallengeCatalogItem]:
         with self._connect() as conn:
@@ -1606,8 +1507,7 @@ class CoreInputStore:
                 SELECT dep_score, anx_score, ins_score, created_at
                 FROM model_nowcast_prediction
                 WHERE user_id = ?
-                ORDER BY date(COALESCE(reference_date, substr(created_at, 1, 10))) DESC,
-                         datetime(created_at) DESC
+                ORDER BY datetime(created_at) DESC
                 LIMIT 1
                 """,
                 (user_id,),
@@ -1662,65 +1562,7 @@ class CoreInputStore:
             "ordered_dimensions": ["dep", "anx", "ins"],
         }
 
-    @staticmethod
-    def _build_recommendation_reason_copy(
-        *,
-        challenge_id: str,
-        challenge_name: str,
-        primary_dim: str,
-        signal_score: float | None,
-        signal_source: str,
-    ) -> str | None:
-        if signal_source not in {"model_nowcast", "assessment_score"}:
-            return None
-
-        score_suffix = f" ({signal_score:.1f})" if isinstance(signal_score, (int, float)) else ""
-
-        if primary_dim == "ins":
-            per_challenge = {
-                "CH_SLEEP_001": f"최근 수면 지표{score_suffix}가 가장 높게 나타나, '{challenge_name}'로 수면 리듬을 먼저 안정시키는 편이 좋습니다.",
-                "CH_REG_001": f"최근 수면 지표{score_suffix}가 높고 긴장 신호도 함께 보여, '{challenge_name}'로 잠들기 전 긴장을 먼저 낮춰보는 것을 권합니다.",
-                "CH_ACT_002": f"최근 수면 지표{score_suffix}가 높아, '{challenge_name}'처럼 아침 빛 노출을 늘려 수면 리듬을 다시 맞추는 데 도움을 줄 수 있습니다.",
-                "CH_REG_002": f"최근 수면 지표{score_suffix}가 높아 몸이 예민해진 상태로 보여, '{challenge_name}'로 저녁 긴장을 가볍게 풀어보는 것이 도움이 될 수 있습니다.",
-            }
-            return per_challenge.get(
-                challenge_id,
-                f"최근 수면 지표{score_suffix}를 기준으로 '{challenge_name}'를 추천합니다.",
-            )
-
-        if primary_dim == "anx":
-            per_challenge = {
-                "CH_REG_001": f"최근 긴장·불안 지표{score_suffix}가 가장 높게 나타나, '{challenge_name}'로 몸의 긴장을 먼저 낮추는 편이 좋습니다.",
-                "CH_REG_002": f"최근 긴장·불안 지표{score_suffix}가 높아, '{challenge_name}'로 주변 감각에 다시 집중해보는 것을 권합니다.",
-                "CH_SOC_001": f"최근 긴장·불안 지표{score_suffix}가 높고 혼자 버티는 부담이 커 보여, '{challenge_name}'로 지지 연결을 떠올려보는 것이 도움이 될 수 있습니다.",
-                "CH_SLEEP_001": f"최근 긴장·불안 지표{score_suffix}가 수면에도 영향을 주는 흐름으로 보여, '{challenge_name}'로 밤 루틴을 함께 안정시키는 것을 권합니다.",
-            }
-            return per_challenge.get(
-                challenge_id,
-                f"최근 긴장·불안 지표{score_suffix}를 기준으로 '{challenge_name}'를 추천합니다.",
-            )
-
-        if primary_dim == "dep":
-            per_challenge = {
-                "CH_ACT_001": f"최근 기분·활기 지표{score_suffix}가 가장 높게 나타나, '{challenge_name}'처럼 아침의 작은 시작점을 만드는 루틴이 도움이 될 수 있습니다.",
-                "CH_ACT_002": f"최근 기분·활기 지표{score_suffix}가 높아, '{challenge_name}'로 햇빛과 함께 몸을 조금 깨워보는 것을 권합니다.",
-                "CH_ACT_003": f"최근 기분·활기 지표{score_suffix}가 높아, '{challenge_name}'처럼 짧고 가벼운 움직임부터 시작해보는 편이 좋습니다.",
-                "CH_WELL_001": f"최근 기분·활기 지표{score_suffix}가 높고 자기평가가 내려간 흐름이 보여, '{challenge_name}'로 해낸 경험을 다시 확인해보는 것이 도움이 될 수 있습니다.",
-                "CH_SOC_001": f"최근 기분·활기 지표{score_suffix}가 높고 혼자 버티는 느낌이 커 보여, '{challenge_name}'로 연결 가능한 사람을 떠올려보는 것을 권합니다.",
-            }
-            return per_challenge.get(
-                challenge_id,
-                f"최근 기분·활기 지표{score_suffix}를 기준으로 '{challenge_name}'를 추천합니다.",
-            )
-
-        return None
-
     def get_today_recommendations(self, user_id: str) -> dict[str, object]:
-        self._refresh_nowcast_prediction(
-            user_id=user_id,
-            reference_date=date.today(),
-            force=False,
-        )
         with self._connect() as conn:
             risk_level = self._risk_level_for_challenge(conn, user_id)
             if risk_level >= 3:
@@ -1747,9 +1589,9 @@ class CoreInputStore:
             primary_dim = ordered_dims[0] if ordered_dims else "dep"
 
             challenge_priority_by_dimension: dict[str, list[str]] = {
-                "dep": ["CH_ACT_001", "CH_ACT_002", "CH_ACT_003", "CH_WELL_001", "CH_SOC_001"],
-                "anx": ["CH_REG_001", "CH_REG_002", "CH_SOC_001", "CH_SLEEP_001"],
-                "ins": ["CH_SLEEP_001", "CH_REG_001", "CH_ACT_002", "CH_REG_002"],
+                "dep": ["CH_ACT_001", "CH_ACT_002", "CH_ACT_003", "water-intake", "CH_WELL_001", "CH_SOC_001"],
+                "anx": ["CH_REG_002", "CH_SOC_001", "CH_SLEEP_001", "CH_ACT_005", "water-intake"],
+                "ins": ["CH_SLEEP_001", "CH_ACT_002", "CH_REG_002", "CH_ACT_005", "water-intake"],
             }
             priority_order: list[str] = []
             for dimension in ordered_dims:
@@ -1818,13 +1660,7 @@ class CoreInputStore:
 
                 if signal_source in {"model_nowcast", "assessment_score"} and challenge_id in priority_index:
                     reason_code = f"{signal_source}_{primary_dim}"
-                    reason_copy = self._build_recommendation_reason_copy(
-                        challenge_id=challenge_id,
-                        challenge_name=str(row["name_ko"]),
-                        primary_dim=primary_dim,
-                        signal_score=float(primary_signal_score) if isinstance(primary_signal_score, (int, float)) else None,
-                        signal_source=signal_source,
-                    ) or f"{reason_prefix} '{str(row['name_ko'])}'를 추천합니다."
+                    reason_copy = f"{reason_prefix} '{str(row['name_ko'])}'를 추천합니다."
 
                 selected.append(
                     ChallengeRecommendationItem(

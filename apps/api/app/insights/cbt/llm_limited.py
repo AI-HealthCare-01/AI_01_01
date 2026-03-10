@@ -29,6 +29,35 @@ class CbtLimitedLlm:
     def enabled(self) -> bool:
         return bool(self.api_key)
 
+    @staticmethod
+    def _recent_turn_texts(current_state: dict[str, Any], *, role: str, limit: int = 3) -> list[str]:
+        turn_log = current_state.get("turn_log")
+        if not isinstance(turn_log, list):
+            return []
+        items: list[str] = []
+        for entry in reversed(turn_log):
+            if not isinstance(entry, dict):
+                continue
+            if str(entry.get("role") or "") != role:
+                continue
+            text = str(entry.get("content") or "").strip()
+            if not text:
+                continue
+            items.append(text[:180])
+            if len(items) >= limit:
+                break
+        return list(reversed(items))
+
+    @staticmethod
+    def _closure_focus(current_state: dict[str, Any]) -> dict[str, str]:
+        keys = ("situation_text", "emotion_label", "core_message_text", "alternative_thought")
+        focus: dict[str, str] = {}
+        for key in keys:
+            value = str(current_state.get(key) or "").strip()
+            if value:
+                focus[key] = value[:220]
+        return focus
+
     def extract_fields(
         self,
         *,
@@ -74,16 +103,21 @@ class CbtLimitedLlm:
         if not self.enabled:
             return {}, LimitedLlmMeta(False, None, None, "llm_disabled")
 
+        recent_assistant = self._recent_turn_texts(current_state, role="assistant", limit=3)
         prompt = (
             "한국어 CBT 대화 응답을 짧게 구성하세요. "
             "진단/단정 표현 없이 따뜻한 문체를 유지하세요. "
             "전문용어는 피하고 일상어를 사용하세요. "
-            "해요체만 사용하고, 직전 3턴과 동일/유사한 문장은 피하세요. "
-            "공감 1문장 + 재진술 1문장 + 다음 질문 1문장 구성을 우선하세요. "
+            "해요체만 사용하고, 직전 3턴과 동일/유사한 opener나 범용 문장은 피하세요. "
+            "공감 1문장 + 재진술 0~1문장 + 다음 질문 1문장 구성을 우선하세요. "
+            "공감 문장에는 user_input의 핵심 단어 또는 표현을 최소 1개 반영하세요. "
+            "재진술은 원문을 거의 반복하게 되면 빈 문자열로 두세요. "
+            "‘좋아요. 이어서 진행해볼게요.’ 같은 범용 opener를 습관적으로 쓰지 마세요. "
             "JSON object만 반환하고 키는 empathy, restatement, next_question 입니다.\n"
             f"stage={stage}\n"
             f"user_input={user_text}\n"
             f"current_state={json.dumps(current_state, ensure_ascii=False)}\n"
+            f"recent_assistant_messages={json.dumps(recent_assistant, ensure_ascii=False)}\n"
             f"next_question={next_question}\n"
             f"fallback_empathy={fallback_empathy}"
         )
@@ -213,13 +247,19 @@ class CbtLimitedLlm:
         if not self.enabled:
             return {}, LimitedLlmMeta(False, None, None, "llm_disabled")
 
+        closure_focus = self._closure_focus(current_state)
         prompt = (
             "CBT 세션의 마지막 마무리 메시지를 작성하세요. "
             "한국어 해요체로 2문장만 작성하고, 진단/치료 단정 표현은 피하세요. "
-            "1문장은 오늘 대화 요약, 1문장은 부담이 낮은 조언이나 마무리 격려로 작성하세요. "
-            "TO DO를 강요하지 말고, 사용자가 지금 기억해둘 한 가지를 짚어주세요. "
+            "1문장은 오늘 대화 요약, 1문장은 사용자가 지금 기억해둘 한 가지를 짚는 문장으로 작성하세요. "
+            "summary는 current_state 안 실제 값 2개 이상을 가능하면 반영하세요. "
+            "emotion_label, situation_text, core_message_text, alternative_thought를 우선 사용하세요. "
+            "advice는 응원보다 '지금 기억해둘 한 가지' 중심으로 쓰세요. "
+            "‘잘할 수 있어요’, ‘너무 걱정하지 마세요’, ‘천천히 해보세요’, ‘괜찮아질 거예요’ 같은 상투 문구는 금지합니다. "
+            "대화에 없는 사실을 만들지 마세요. "
             "반드시 JSON object만 반환하세요.\n"
             "출력 스키마: {\"summary\": string, \"advice\": string}\n"
+            f"closure_focus={json.dumps(closure_focus, ensure_ascii=False)}\n"
             f"current_state={json.dumps(current_state, ensure_ascii=False)}"
         )
         return self._call_json(prompt=prompt, fallback_reason="session_closure_failed")
@@ -277,6 +317,14 @@ class CbtLimitedLlm:
         try:
             with request.urlopen(req, timeout=15) as response:
                 body = response.read().decode("utf-8")
+        except error.HTTPError:
+            elapsed = int((time.perf_counter() - started) * 1000)
+            return {}, LimitedLlmMeta(False, None, elapsed, f"{fallback_reason}_http_error")
+        except error.URLError:
+            elapsed = int((time.perf_counter() - started) * 1000)
+            return {}, LimitedLlmMeta(False, None, elapsed, f"{fallback_reason}_url_error")
+
+        try:
             parsed = json.loads(body)
             content = (
                 parsed.get("choices", [{}])[0]
@@ -284,10 +332,13 @@ class CbtLimitedLlm:
                 .get("content", "{}")
             )
             result = json.loads(content)
-            if not isinstance(result, dict):
-                raise RuntimeError("invalid_llm_json_shape")
+        except json.JSONDecodeError:
             elapsed = int((time.perf_counter() - started) * 1000)
-            return result, LimitedLlmMeta(True, self.model, elapsed, None)
-        except (error.HTTPError, error.URLError, json.JSONDecodeError, RuntimeError):
+            return {}, LimitedLlmMeta(False, None, elapsed, f"{fallback_reason}_json_decode")
+
+        if not isinstance(result, dict):
             elapsed = int((time.perf_counter() - started) * 1000)
-            return {}, LimitedLlmMeta(False, None, elapsed, fallback_reason)
+            return {}, LimitedLlmMeta(False, None, elapsed, f"{fallback_reason}_invalid_shape")
+
+        elapsed = int((time.perf_counter() - started) * 1000)
+        return result, LimitedLlmMeta(True, self.model, elapsed, None)

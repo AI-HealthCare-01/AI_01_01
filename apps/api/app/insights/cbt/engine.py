@@ -701,7 +701,12 @@ class CbtThoughtRecordEngine:
             seen.append(sig)
             previous_sig = sig
         if not prepared:
-            prepared = [cls._normalize_coach_message("좋아요. 이어서 진행해볼게요.")]
+            fallbacks = (
+                "좋아요. 다음 질문으로 이어가볼게요.",
+                "방금 적어준 내용을 바탕으로 이어서 볼게요.",
+                "지금 답을 기준으로 다음 단계로 넘어가볼게요.",
+            )
+            prepared = [cls._normalize_coach_message(fallbacks[len(previous_history) % len(fallbacks)])]
         meta["last_assistant_text"] = prepared[-1]
         history = previous_history + [cls._message_signature(item) for item in prepared]
         meta["assistant_history"] = history[-20:]
@@ -1701,10 +1706,17 @@ class CbtThoughtRecordEngine:
             if items:
                 return items, meta
 
+        situation = str(state.get("situation_text") or "").strip()
+        emotion = str(state.get("emotion_label") or "").strip()
         core = str(state.get("core_message_text") or "").strip()
         alternative = str(state.get("alternative_thought") or "").strip()
         thought = str(state.get("auto_thought_text") or "").strip()
-        if alternative and core:
+        if situation and emotion and alternative:
+            summary_line = (
+                f"오늘은 ‘{situation}’처럼 버겁게 느껴진 장면에서 올라온 {emotion}을 살펴보고, "
+                f"‘{alternative}’처럼 붙잡아둘 새 문장을 정리했어요."
+            )
+        elif alternative and core:
             summary_line = (
                 f"오늘은 ‘{core}’처럼 마음을 무겁게 하던 생각을 살펴보고, "
                 f"‘{alternative}’처럼 조금 더 균형 있게 보는 문장을 만들었어요."
@@ -1715,7 +1727,14 @@ class CbtThoughtRecordEngine:
             summary_line = f"오늘은 ‘{thought}’처럼 반복되던 생각을 붙잡아 보고, 그 생각의 이유를 차분히 살펴봤어요."
         else:
             summary_line = "오늘은 지금 마음을 어렵게 하는 상황과 떠오르는 생각을 차분히 정리해봤어요."
-        advice_line = "지금 바로 무언가를 바꾸려 하기보다, 오늘 정리한 문장을 필요할 때 한 번씩 다시 떠올려봐도 괜찮아요."
+        if alternative:
+            advice_line = f"지금 기억해둘 한 가지는 ‘{alternative}’처럼 한 번에 단정하지 않는 문장이에요."
+        elif core:
+            advice_line = f"지금 기억해둘 한 가지는 ‘{core}’가 떠올라도 그것이 사실 전체는 아닐 수 있다는 점이에요."
+        elif emotion:
+            advice_line = f"지금 기억해둘 한 가지는 {emotion}이 올라온 순간을 알아차린 것만으로도 정리가 시작됐다는 점이에요."
+        else:
+            advice_line = "지금 기억해둘 한 가지는 오늘 정리한 흐름을 짧게라도 다시 떠올려보는 일이 도움이 될 수 있다는 점이에요."
         return [summary_line[:220], advice_line[:220]], meta
 
     def _assess_risk(

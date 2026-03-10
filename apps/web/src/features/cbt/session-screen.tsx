@@ -36,12 +36,12 @@ type CbtTab = "chat" | "reflection" | "history";
 type YearMonth = { year: number; month: number };
 
 const CBT_STEPS = [
-  { key: "situation", label: "상황" },
-  { key: "emotion", label: "감정" },
-  { key: "thought", label: "생각" },
-  { key: "evidence", label: "근거" },
-  { key: "alternative_plan", label: "새 생각" },
-  { key: "summary", label: "조언·요약" },
+  { key: "situation", label: "상황 정리" },
+  { key: "emotion", label: "감정 확인" },
+  { key: "thought", label: "떠오른 생각" },
+  { key: "evidence", label: "근거 살피기" },
+  { key: "alternative_plan", label: "생각의 균형" },
+  { key: "summary", label: "정리와 조언" },
 ] as const;
 
 const CBT_STAGE_INDEX: Record<string, number> = {
@@ -877,7 +877,7 @@ export default function CbtSessionScreen() {
         }
       >
         <PageContainer size="lg">
-          <SectionContainer title="CBT 대화" description="상황 정리부터 다음 행동 계획까지 차례대로 진행합니다.">
+          <SectionContainer title="CBT 대화" description="상황 정리부터 균형 생각과 마무리 조언까지 차례대로 진행합니다.">
             {errorMessage ? <Banner variant="danger" title="오류" description={errorMessage} /> : null}
             {noticeMessage ? <Banner variant="success" title="저장 완료" description={noticeMessage} /> : null}
             {riskLevel >= 2 ? (

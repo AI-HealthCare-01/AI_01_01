@@ -82,9 +82,9 @@ CHALLENGE_CATALOG_SEED = [
         "domain": "activation",
         "challenge_type": "sustained",
         "program_type": "streak",
-        "default_target_days": 3,
+        "default_target_days": 2,
         "difficulty_level": "easy",
-        "summary_ko": "기상 후 1-2시간 내 햇빛 10분",
+        "summary_ko": "하루 10분, 자연광으로 기분을 바꿔보세요",
     },
     {
         "challenge_id": "CH_ACT_003",
@@ -109,37 +109,37 @@ CHALLENGE_CATALOG_SEED = [
         "summary_ko": "하루 5분, 조용히 앉아 호흡에 집중해보세요",
     },
     {
-        "challenge_id": "CH_REG_001",
-        "name_ko": "호흡 안정",
+        "challenge_id": "water-intake",
+        "name_ko": "내 물고기를 살려줘",
         "status": "core",
-        "domain": "regulation",
-        "challenge_type": "one_time",
-        "program_type": "guided_reflection",
-        "default_target_days": 1,
+        "domain": "activation",
+        "challenge_type": "sustained",
+        "program_type": "streak",
+        "default_target_days": 7,
         "difficulty_level": "easy",
-        "summary_ko": "호흡 리듬을 가다듬어 몸의 긴장을 낮추는 짧은 루틴",
+        "summary_ko": "물 한 잔마다 물고기가 살아나요 🐠",
     },
     {
         "challenge_id": "CH_REG_002",
-        "name_ko": "감각 안정",
+        "name_ko": "감각 탐험 5-4-3-2-1",
         "status": "core",
         "domain": "regulation",
         "challenge_type": "one_time",
         "program_type": "guided_reflection",
         "default_target_days": 1,
         "difficulty_level": "easy",
-        "summary_ko": "지금 느껴지는 감각에 집중해 긴장을 낮추는 루틴",
+        "summary_ko": "지금 이 순간, 5가지 감각으로 현실에 닻을 내려요",
     },
     {
         "challenge_id": "CH_SOC_001",
-        "name_ko": "대인관계 지지자 생각하기",
+        "name_ko": "대인관계 지도",
         "status": "core",
         "domain": "social",
         "challenge_type": "one_time",
         "program_type": "one_time",
-        "default_target_days": 1,
+        "default_target_days": 2,
         "difficulty_level": "medium",
-        "summary_ko": "도움을 요청할 수 있는 사람을 떠올리고 연결 계획 세우기",
+        "summary_ko": "내 주변 관계를 정리하고 핵심 지지자를 찾아보세요",
     },
     {
         "challenge_id": "CH_WELL_001",
@@ -148,9 +148,9 @@ CHALLENGE_CATALOG_SEED = [
         "domain": "wellbeing",
         "challenge_type": "one_time",
         "program_type": "guided_reflection",
-        "default_target_days": 1,
+        "default_target_days": 2,
         "difficulty_level": "easy",
-        "summary_ko": "내가 해냈던 경험을 떠올려 자신감을 회복하는 기록",
+        "summary_ko": "내 강점과 성취를 기록하며 자기 효능감을 키워보세요",
     },
 ]
 
@@ -160,7 +160,7 @@ CHALLENGE_REASON_BY_ID: dict[str, tuple[str, str]] = {
     "CH_ACT_002": ("dep_low_daylight", "햇빛 노출이 부족해 보여, 10분 햇빛 루틴을 추천합니다."),
     "CH_ACT_003": ("dep_low_activity", "최근 활동량이 낮아, 짧은 산책 루틴으로 부담 없이 시작할 수 있습니다."),
     "CH_ACT_005": ("anx_high_anxiety", "하루 5분 명상으로 호흡에 집중하며 긴장을 낮춰보세요."),
-    "CH_REG_001": ("anx_high_anxiety", "긴장 신호가 높아 보여, 짧은 호흡 안정 루틴을 먼저 권장합니다."),
+    "water-intake": ("low_hydration", "수분 섭취가 부족해 보여요. 물고기 챌린지로 물 습관을 만들어보세요."),
     "CH_REG_002": ("acute_anxiety_spike", "불안이 급격히 올라온 날에는 감각 안정 루틴이 도움이 될 수 있습니다."),
     "CH_SOC_001": ("low_social_contact", "최근 지지 연결이 적어, 지지자를 떠올리고 연결 계획을 세워보세요."),
     "CH_WELL_001": ("low_self_confidence", "자기평가가 낮을 때, 해낸 경험을 정리하는 자신감 리스트가 도움이 될 수 있습니다."),
@@ -169,13 +169,43 @@ CHALLENGE_REASON_BY_ID: dict[str, tuple[str, str]] = {
 CHALLENGE_TEMPLATE_STEPS: dict[str, list[str]] = {
     "CH_SLEEP_001": ["기상시간 고정하기", "늦은 카페인 줄이기", "취침 전 루틴 기록하기"],
     "CH_ACT_001": ["기상 후 첫 행동 정하기", "아침 루틴 체크", "일주일 패턴 확인"],
-    "CH_ACT_002": ["기상 후 1-2시간 내 햇빛 10분"],
+    "CH_ACT_002": [
+        "S1: 컨디션 & 날씨 확인",
+        "S2: 햇빛 타이머",
+        "S3: 오늘의 햇빛 후기",
+    ],
     "CH_ACT_003": ["실외 산책 10분 이상"],
     "CH_ACT_005": ["조용한 공간 찾기", "눈 감고 호흡 집중", "5분간 유지하기"],
-    "CH_REG_001": ["호흡 안정 3분", "몸 긴장도 점검"],
-    "CH_REG_002": ["보이는 것 5개", "만지는 것 4개", "들리는 것 3개"],
-    "CH_SOC_001": ["지지자 1명 떠올리기", "연락 문장 초안 만들기"],
-    "CH_WELL_001": ["해낸 일 3가지 적기", "내 강점 1가지 적기"],
+    "water-intake": [
+        "S1: 오늘의 목표 설정",
+        "S2: 물 마시기 기록",
+        "S3: 하루 마무리",
+    ],
+    "CH_REG_002": [
+        "S1: 👀 보이는 것 5가지",
+        "S2: 🤲 만져지는 것 4가지",
+        "S3: 👂 들리는 것 3가지",
+        "S4: 👃 맡아지는 것 2가지",
+        "S5: 👅 느껴지는 것 1가지",
+        "S6: 🌟 감각 지도 완성",
+    ],
+    "CH_SOC_001": [
+        "S1: 현재 상태 체크",
+        "S2: 주변 사람 떠올리기",
+        "S3: 관계 영역 배치",
+        "S4: 핵심 관계 선택",
+        "S5: 관계 심화 기록 1",
+        "S6: 관계 심화 기록 2",
+        "S7: 현재 초점 선택",
+        "S8: 다음 행동 설정",
+        "S9: 사후 체크 및 완료",
+    ],
+    "CH_WELL_001": [
+        "S1: 최근 잘한 일 떠올리기",
+        "S2: 강점 발견",
+        "S3: 나만의 강점 카드",
+        "S4: 앞으로의 한 걸음",
+    ],
 }
 
 DEFAULT_ONE_LINE_JOURNAL_CATEGORY_TAGS: list[str] = [
@@ -505,6 +535,12 @@ class CoreInputStore:
                     item["summary_ko"],
                 ),
             )
+        conn.execute(
+            """
+            DELETE FROM challenge_catalog
+            WHERE challenge_id = 'CH_REG_001'
+            """
+        )
 
     @staticmethod
     def _sleep_total_midpoint(bucket: SleepTotalBucket) -> float:
@@ -1553,9 +1589,9 @@ class CoreInputStore:
             primary_dim = ordered_dims[0] if ordered_dims else "dep"
 
             challenge_priority_by_dimension: dict[str, list[str]] = {
-                "dep": ["CH_ACT_001", "CH_ACT_002", "CH_ACT_003", "CH_WELL_001", "CH_SOC_001"],
-                "anx": ["CH_REG_001", "CH_REG_002", "CH_SOC_001", "CH_SLEEP_001"],
-                "ins": ["CH_SLEEP_001", "CH_REG_001", "CH_ACT_002", "CH_REG_002"],
+                "dep": ["CH_ACT_001", "CH_ACT_002", "CH_ACT_003", "water-intake", "CH_WELL_001", "CH_SOC_001"],
+                "anx": ["CH_REG_002", "CH_SOC_001", "CH_SLEEP_001", "CH_ACT_005", "water-intake"],
+                "ins": ["CH_SLEEP_001", "CH_ACT_002", "CH_REG_002", "CH_ACT_005", "water-intake"],
             }
             priority_order: list[str] = []
             for dimension in ordered_dims:

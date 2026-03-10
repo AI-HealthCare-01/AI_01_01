@@ -3,9 +3,15 @@
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChallengeChecklist } from "../../../../../src/components/challenge/ChallengeChecklist";
+import { ConfidenceListWidget } from "../../../../../src/components/challenge/ConfidenceListWidget";
+import { InterpersonalMapWidget } from "../../../../../src/components/challenge/InterpersonalMapWidget";
+import { SunlightWidget } from "../../../../../src/components/challenge/SunlightWidget";
 import { ChallengeTimer } from "../../../../../src/components/challenge/ChallengeTimer";
 import { MeditationAudioPlayer } from "../../../../../src/components/challenge/MeditationAudioPlayer";
+import { SensoryGroundingWidget } from "../../../../../src/components/challenge/SensoryGroundingWidget";
+import { WaterIntakeWidget } from "../../../../../src/components/challenge/WaterIntakeWidget";
 import { WeatherWidget } from "../../../../../src/components/challenge/WeatherWidget";
+import { RelationshipMapComparison } from "../../../../../src/components/challenge/RelationshipMapComparison";
 
 import {
   AppShell,
@@ -38,9 +44,9 @@ import {
 type ExecutionMode = "external" | "timer" | "text";
 
 const EXTERNAL_EXECUTION_IDS = new Set(["CH_SLEEP_001", "CH_ACT_001", "CH_ACT_002", "CH_ACT_003"]);
-const TIMER_EXECUTION_IDS = new Set(["CH_REG_001", "CH_REG_002"]);
-const TEXT_EXECUTION_IDS = new Set(["CH_SOC_001", "CH_WELL_001"]);
-const NEW_UI_IDS = new Set(["CH_ACT_001", "CH_SLEEP_001", "CH_ACT_003", "CH_ACT_005"]);
+const TIMER_EXECUTION_IDS = new Set<string>([]);
+const TEXT_EXECUTION_IDS = new Set(["CH_SOC_001", "CH_WELL_001", "CH_REG_002", "water-intake"]);
+const NEW_UI_IDS = new Set(["CH_ACT_001", "CH_SLEEP_001", "CH_ACT_002", "CH_ACT_003", "CH_ACT_005", "CH_SOC_001", "CH_WELL_001", "CH_REG_002", "water-intake"]);
 
 function todayString(): string {
   const now = new Date();
@@ -86,9 +92,6 @@ function resolveExecutionMode(challengeId: string, programType: ChallengeProgram
 }
 
 function defaultTimerSeconds(challengeId: string): number {
-  if (challengeId === "CH_REG_001") {
-    return 180;
-  }
   if (challengeId === "CH_REG_002") {
     return 300;
   }
@@ -608,6 +611,41 @@ export default function ChallengeProgressPage() {
                                   </div>
                                 </div>
                               )}
+                              {detail.challenge.challenge_id === "CH_ACT_002" && (
+                                <SunlightWidget
+                                  onChange={setExecutionText}
+                                  onComplete={() => void onSaveDailyRun()}
+                                  redirectPath={`/challenge/session/${enrollmentId}/progress`}
+                                />
+                              )}
+                              {detail.challenge.challenge_id === "CH_SOC_001" && (
+                                <InterpersonalMapWidget
+                                  onChange={setExecutionText}
+                                  onComplete={() => void onSaveDailyRun()}
+                                  redirectPath={`/challenge/session/${enrollmentId}/progress`}
+                                />
+                              )}
+                              {detail.challenge.challenge_id === "CH_WELL_001" && (
+                                <ConfidenceListWidget
+                                  onChange={setExecutionText}
+                                  onComplete={() => void onSaveDailyRun()}
+                                  redirectPath={`/challenge/session/${enrollmentId}/progress`}
+                                />
+                              )}
+                              {detail.challenge.challenge_id === "CH_REG_002" && (
+                                <SensoryGroundingWidget
+                                  onChange={setExecutionText}
+                                  onComplete={() => void onSaveDailyRun()}
+                                  redirectPath={`/challenge/session/${enrollmentId}/progress`}
+                                />
+                              )}
+                              {detail.challenge.challenge_id === "water-intake" && (
+                                <WaterIntakeWidget
+                                  onChange={setExecutionText}
+                                  onComplete={() => void onSaveDailyRun()}
+                                  redirectPath={`/challenge/session/${enrollmentId}/progress`}
+                                />
+                              )}
                             </>
                           )}
                         </div>
@@ -662,22 +700,25 @@ export default function ChallengeProgressPage() {
                           {detail.progress_days.length === 0 ? (
                             <p className="cp-card-desc">실행을 시작하면 날짜별 로그가 표시됩니다.</p>
                           ) : (
-                            <div className="cp-timeline-grid">
-                              {detail.progress_days.map((day) => (
-                                <div key={day.date} className="cp-tl-item">
-                                  <div className="cp-tl-head">
-                                    <span className="cp-tl-day">{day.day_number}일차 · {day.date}</span>
-                                    <span className={`cp-tl-status ${day.day_status}`}>{day.day_status}</span>
+                            <>
+                              <div className="cp-timeline-grid">
+                                {detail.progress_days.map((day) => (
+                                  <div key={day.date} className="cp-tl-item">
+                                    <div className="cp-tl-head">
+                                      <span className="cp-tl-day">{day.day_number}일차 · {day.date}</span>
+                                      <span className={`cp-tl-status ${day.day_status}`}>{day.day_status}</span>
+                                    </div>
+                                    <p className="cp-tl-memo">{day.detail?.reflection_note || "회고 메모 없음"}</p>
+                                    {detail.enrollment.status === "active" && (
+                                      <button className="cp-ctrl-btn" style={{ marginTop: 8, fontSize: 11 }} onClick={() => { setActiveTab("save"); setTargetDate(day.date); }}>
+                                        이 날짜 수정
+                                      </button>
+                                    )}
                                   </div>
-                                  <p className="cp-tl-memo">{day.detail?.reflection_note || "회고 메모 없음"}</p>
-                                  {detail.enrollment.status === "active" && (
-                                    <button className="cp-ctrl-btn" style={{ marginTop: 8, fontSize: 11 }} onClick={() => { setActiveTab("save"); setTargetDate(day.date); }}>
-                                      이 날짜 수정
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
+                                ))}
+                              </div>
+                              {detail.challenge.challenge_id === "CH_SOC_001" ? <RelationshipMapComparison /> : null}
+                            </>
                           )}
                         </div>
                       </div>

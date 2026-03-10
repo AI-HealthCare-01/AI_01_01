@@ -130,7 +130,7 @@ def test_core_inputs_and_activity_log_summary(tmp_path) -> None:
     enroll = client.post(
         "/challenge/enrollments",
         headers=_headers(uid, email, verified=True),
-        json={"challenge_id": "CH_REG_001"},
+        json={"challenge_id": "CH_REG_002"},
     )
     assert enroll.status_code == 200
     enrollment_id = enroll.json()["enrollment_id"]

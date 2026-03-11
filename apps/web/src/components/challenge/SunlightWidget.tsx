@@ -24,9 +24,9 @@ interface Props {
   redirectPath?: string
 }
 
-const SUNNY_COLOR = '#F6AD55'
-const CLOUDY_COLOR = '#B794F4'
-const DONE_COLOR = '#68D391'
+const SUNNY_COLOR = 'var(--sunlight-primary)'
+const CLOUDY_COLOR = 'var(--confidence-primary)'
+const DONE_COLOR = 'var(--walk-primary)'
 
 function getTimeSlot(hour: number): TimeSlot {
   if (hour >= 6 && hour <= 10) return 'morning'
@@ -38,7 +38,7 @@ function getIntroBanner(hour: number) {
   if (hour >= 6 && hour <= 10) {
     return {
       icon: '🌅',
-      bg: '#FFFDE7',
+      bg: 'var(--sunlight-bg)',
       title: '지금이 최고의 햇빛 타이밍이에요!',
       desc: '아침 햇빛은 하루 기분을 좌우해요.',
     }
@@ -46,14 +46,14 @@ function getIntroBanner(hour: number) {
   if (hour >= 11 && hour <= 16) {
     return {
       icon: '☀️',
-      bg: '#FFF3E0',
+      bg: 'var(--sunlight-bg)',
       title: '짧은 햇빛 휴식을 취하기 좋은 시간이에요.',
       desc: '',
     }
   }
   return {
     icon: '🌙',
-    bg: '#EDE9FE',
+    bg: 'var(--confidence-bg)',
     title: '오늘 햇빛을 아직 못 받으셨나요?',
     desc: '지금이라도 창가 햇빛을 받아보세요.',
   }
@@ -321,7 +321,7 @@ export function SunlightWidget({ onChange, onComplete, redirectPath = '/challeng
 
           <div className="sw-ring-wrap">
             <svg width="200" height="200" viewBox="0 0 200 200" className="sw-ring-svg">
-              <circle cx="100" cy="100" r={timerRing.radius} fill="none" stroke="#FFF3E0" strokeWidth="12" />
+              <circle cx="100" cy="100" r={timerRing.radius} fill="none" stroke="var(--sunlight-bg)" strokeWidth="12" />
               <circle
                 cx="100"
                 cy="100"

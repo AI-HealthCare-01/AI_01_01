@@ -75,10 +75,10 @@ function fishState(glasses: number, goal: number): 'need' | 'slow' | 'good' | 'g
 }
 
 function waterColor(ratio: number): string {
-  if (ratio <= 0.3) return '#BFDBFE'
-  if (ratio <= 0.6) return '#60A5FA'
-  if (ratio < 1) return '#3B82F6'
-  return '#1D4ED8'
+  if (ratio <= 0.3) return 'var(--tank-water-low)'
+  if (ratio <= 0.6) return 'var(--tank-water-mid)'
+  if (ratio < 1) return 'var(--tank-water-full)'
+  return 'var(--water-accent)'
 }
 
 function parseStorage(): WaterData {
@@ -149,13 +149,13 @@ function FishTank({
   const state = fishState(glasses, goal)
 
   const fishY = state === 'need' ? 130 : 90
-  const fishFill = state === 'need' ? '#9CA3AF' : '#F97316'
+  const fishFill = state === 'need' ? 'var(--text-muted)' : 'var(--sensory-primary)'
   const bubble = state === 'need' ? '물이 필요해요...' : state === 'slow' ? '조금 나아졌어요' : state === 'good' ? '기분이 좋아요!' : state === 'great' ? '최고예요! 💪' : '오늘 목표 완료! 🎉'
 
   return (
     <div className={`wi-tank ${readOnly ? 'readonly' : ''} ${celebration ? 'celebrate' : ''}`}>
       <svg viewBox="0 0 360 220" className="wi-tank-svg" role="img" aria-label="물고기 어항">
-        <rect x="20" y="20" width="320" height="170" rx="18" ry="18" fill="#FFFFFF" stroke="#BFDBFE" strokeWidth="3" />
+        <rect x="20" y="20" width="320" height="170" rx="18" ry="18" fill="var(--tank-bg)" stroke="var(--tank-border)" strokeWidth="3" />
 
         <text x="44" y="44" className="wi-plant">🌿</text>
         <text x="300" y="48" className="wi-plant">🌿</text>
@@ -166,19 +166,19 @@ function FishTank({
         <rect x="24" y={186 - waterHeight} width="312" height={waterHeight} fill={color} className="wi-water" />
         {ratio >= 1 ? (
           <g className="wi-wave" clipPath="url(#water-clip)">
-            <path d="M 24 88 Q 42 78 60 88 T 96 88 T 132 88 T 168 88 T 204 88 T 240 88 T 276 88 T 312 88 T 336 88" fill="none" stroke="#93C5FD" strokeWidth="3" />
+            <path d="M 24 88 Q 42 78 60 88 T 96 88 T 132 88 T 168 88 T 204 88 T 240 88 T 276 88 T 312 88 T 336 88" fill="none" stroke="var(--tank-water-low)" strokeWidth="3" />
           </g>
         ) : null}
 
         <g className={`wi-fish wi-fish-${state}`}>
           <ellipse cx="170" cy={fishY} rx={fishRadius + 6} ry={fishRadius} fill={fishFill} />
           <polygon points={`${170 + fishRadius + 6},${fishY} ${170 + fishRadius + 20},${fishY - 8} ${170 + fishRadius + 20},${fishY + 8}`} fill={fishFill} />
-          <circle cx={165} cy={fishY - 2} r="2" fill="#111827" />
+          <circle cx={165} cy={fishY - 2} r="2" fill="var(--text-primary)" />
           {state === 'done' ? <text x="188" y={fishY - 16} className="wi-sparkle">✨</text> : null}
           {showCrown ? <text x="168" y={fishY - fishRadius - 8} className="wi-crown">👑</text> : null}
         </g>
 
-        <rect x="76" y="52" width="208" height="26" rx="13" fill="#FFFFFFCC" />
+        <rect x="76" y="52" width="208" height="26" rx="13" fill="var(--bg-elevated)" opacity="0.8" />
         <text x="180" y="69" textAnchor="middle" className="wi-bubble-text">{bubble}</text>
       </svg>
     </div>
@@ -350,7 +350,7 @@ export function WaterIntakeWidget({ onChange, onComplete, redirectPath = '/chall
                 <div key={day.date} className="wi-bar-row">
                   <span className="wi-bar-label">Day{i + 1}</span>
                   <div className="wi-bar-track">
-                    <div className="wi-bar-fill" style={{ width: `${ratio * 100}%`, background: day.achieved ? '#3B82F6' : '#BFDBFE' }} />
+                    <div className="wi-bar-fill" style={{ width: `${ratio * 100}%`, background: day.achieved ? 'var(--tank-water-full)' : 'var(--tank-water-low)' }} />
                   </div>
                   <span className="wi-bar-meta">{day.glasses}/{goal}</span>
                 </div>

@@ -41,8 +41,8 @@ const SENSE_STEPS: SenseDef[] = [
     title: '지금 눈에 보이는 것들을 찾아보세요',
     subtitle: '색깔, 모양, 빛, 움직임 - 뭐든 좋아요',
     target: 5,
-    gradient: 'linear-gradient(145deg, #FFF9C4 0%, #FFF3E0 100%)',
-    accent: '#F59E0B',
+    gradient: 'linear-gradient(145deg, var(--sunlight-bg) 0%, var(--sunlight-bg) 100%)',
+    accent: 'var(--sunlight-primary)',
     chips: ['🪟 창문', '🌿 식물', '💡 불빛', '📱 화면', '🪑 가구', '👗 옷', '🎨 색깔', '🌤 하늘', '📚 책', '🖼 그림', '👐 내 손', '🚗 차량', '☕ 컵', '🕯 그림자', '🌸 꽃', '📦 물건', '🪞 거울', '🏠 벽', '✏️ 선', '💧 물'],
     nextLabel: '다음 감각으로 →',
   },
@@ -52,8 +52,8 @@ const SENSE_STEPS: SenseDef[] = [
     title: '지금 손이나 피부로 느껴지는 것들은요?',
     subtitle: '온도, 질감, 무게, 압력 - 느껴보세요',
     target: 4,
-    gradient: 'linear-gradient(145deg, #E8F5E9 0%, #F1F8E9 100%)',
-    accent: '#38A169',
+    gradient: 'linear-gradient(145deg, var(--walk-bg) 0%, var(--walk-bg) 100%)',
+    accent: 'var(--walk-primary)',
     chips: ['🧴 부드러움', '🪨 거칠음', '🌡 따뜻함', '❄️ 차가움', '💨 바람', '👕 옷감', '🖥 책상', '🛋 쿠션', '📱 폰 표면', '🧦 양말', '💍 금속', '🌿 식물', '💧 습기', '🔑 딱딱함', '🪑 의자'],
     nextLabel: '다음 감각으로 →',
   },
@@ -63,8 +63,8 @@ const SENSE_STEPS: SenseDef[] = [
     title: '잠깐 눈을 감고 들어보세요',
     subtitle: '멀리서 들리는 소리도 괜찮아요',
     target: 3,
-    gradient: 'linear-gradient(145deg, #E3F2FD 0%, #E8EAF6 100%)',
-    accent: '#3B82F6',
+    gradient: 'linear-gradient(145deg, var(--water-bg) 0%, var(--water-bg) 100%)',
+    accent: 'var(--water-primary)',
     chips: ['🚗 차 소리', '🌬 바람', '🎵 음악', '📺 TV', '👥 사람 목소리', '🐦 새소리', '⌨️ 타이핑', '🔔 알림음', '🚰 물소리', '🌿 나뭇잎', '❄️ 에어컨', '🔧 기계음', '👣 발소리', '🕐 시계', '💬 대화소리'],
     nextLabel: '다음 감각으로 →',
   },
@@ -74,8 +74,8 @@ const SENSE_STEPS: SenseDef[] = [
     title: '코로 천천히 숨을 들이쉬어 보세요',
     subtitle: '아주 희미한 냄새도 괜찮아요',
     target: 2,
-    gradient: 'linear-gradient(145deg, #FCE4EC 0%, #FFF0F5 100%)',
-    accent: '#EC4899',
+    gradient: 'linear-gradient(145deg, var(--sensory-bg) 0%, var(--sensory-bg) 100%)',
+    accent: 'var(--sensory-primary)',
     chips: ['☕ 커피', '🌸 꽃향기', '🍃 풀냄새', '🧼 비누', '🍳 음식', '💨 공기', '🌧 비냄새', '🕯 향초', '📚 종이', '🧴 로션', '🌲 나무', '🫧 청결함'],
     nextLabel: '다음 감각으로 →',
   },
@@ -85,8 +85,8 @@ const SENSE_STEPS: SenseDef[] = [
     title: '마지막! 입 안이나 목에서 느껴지는 건요?',
     subtitle: '지금 느껴지는 맛이나 감촉 하나면 돼요',
     target: 1,
-    gradient: 'linear-gradient(145deg, #EDE7F6 0%, #F3E8FF 100%)',
-    accent: '#8B5CF6',
+    gradient: 'linear-gradient(145deg, var(--confidence-bg) 0%, var(--confidence-bg) 100%)',
+    accent: 'var(--confidence-primary)',
     chips: ['💧 물맛', '☕ 쓴맛', '🍬 단맛', '🫙 짠맛', '🍋 신맛', '🫧 청량함', '👅 텅 빔', '🌿 상쾌함', '🥛 부드러움', '🔥 매운맛'],
     nextLabel: '감각 지도 완성 →',
   },
@@ -116,11 +116,11 @@ function SenseMap({
   animated?: boolean
 }) {
   const sectors = [
-    { icon: '👀', label: '시각', chips: payload.sight.slice(0, 3), color: '#F59E0B', start: -Math.PI * 0.9, end: -Math.PI * 0.58 },
-    { icon: '🤲', label: '촉각', chips: payload.touch.slice(0, 2), color: '#38A169', start: -Math.PI * 0.5, end: -Math.PI * 0.18 },
-    { icon: '👂', label: '청각', chips: payload.hearing.slice(0, 2), color: '#3B82F6', start: -Math.PI * 0.1, end: Math.PI * 0.22 },
-    { icon: '👃', label: '후각', chips: payload.smell.slice(0, 1), color: '#EC4899', start: Math.PI * 0.3, end: Math.PI * 0.62 },
-    { icon: '👅', label: '미각', chips: payload.taste.slice(0, 1), color: '#8B5CF6', start: Math.PI * 0.7, end: Math.PI * 1.02 },
+    { icon: '👀', label: '시각', chips: payload.sight.slice(0, 3), color: 'var(--sunlight-primary)', start: -Math.PI * 0.9, end: -Math.PI * 0.58 },
+    { icon: '🤲', label: '촉각', chips: payload.touch.slice(0, 2), color: 'var(--walk-primary)', start: -Math.PI * 0.5, end: -Math.PI * 0.18 },
+    { icon: '👂', label: '청각', chips: payload.hearing.slice(0, 2), color: 'var(--water-primary)', start: -Math.PI * 0.1, end: Math.PI * 0.22 },
+    { icon: '👃', label: '후각', chips: payload.smell.slice(0, 1), color: 'var(--sensory-primary)', start: Math.PI * 0.3, end: Math.PI * 0.62 },
+    { icon: '👅', label: '미각', chips: payload.taste.slice(0, 1), color: 'var(--confidence-primary)', start: Math.PI * 0.7, end: Math.PI * 1.02 },
   ]
   const cx = 190
   const cy = 160
@@ -150,7 +150,7 @@ function SenseMap({
             </g>
           )
         })}
-        <circle cx={cx} cy={cy} r="34" fill="#FFFFFF" stroke="#D1D5DB" strokeWidth="2" />
+        <circle cx={cx} cy={cy} r="34" fill="var(--bg-elevated)" stroke="var(--border-default)" strokeWidth="2" />
         <text x={cx} y={cy + 4} textAnchor="middle" className="sg-map-center">나</text>
       </svg>
     </div>
@@ -182,7 +182,7 @@ export function SensoryGroundingWidget({ onChange, onComplete, redirectPath = '/
 
   const introStyle = useMemo(
     () => ({
-      background: 'linear-gradient(130deg, #FFF9C4 0%, #E8F5E9 25%, #E3F2FD 50%, #FCE4EC 75%, #EDE7F6 100%)',
+      background: 'linear-gradient(130deg, var(--sunlight-bg) 0%, var(--walk-bg) 25%, var(--water-bg) 50%, var(--sensory-bg) 75%, var(--confidence-bg) 100%)',
       transition: 'background 0.5s ease',
     }),
     [],
@@ -190,8 +190,8 @@ export function SensoryGroundingWidget({ onChange, onComplete, redirectPath = '/
 
   const currentSense = step <= 5 ? SENSE_STEPS[step - 1] : null
   const activeBackground = step === 6
-    ? 'linear-gradient(130deg, #FFF9C4 0%, #E8F5E9 25%, #E3F2FD 50%, #FCE4EC 75%, #EDE7F6 100%)'
-    : (currentSense?.gradient ?? '#fff')
+    ? 'linear-gradient(130deg, var(--sunlight-bg) 0%, var(--walk-bg) 25%, var(--water-bg) 50%, var(--sensory-bg) 75%, var(--confidence-bg) 100%)'
+    : (currentSense?.gradient ?? 'var(--bg-elevated)')
 
   const optionsByStep = useMemo(() => {
     return {

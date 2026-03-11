@@ -231,3 +231,10 @@ select.ms-select {
 [class^="ms-"] {
   border-color: var(--border-default);
 }
+
+.ms-home-checkin-box,
+[class^="ms-home-"] {
+  background: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-default) !important;
+}

@@ -3008,11 +3008,7 @@ a {
 
 .ms-home-v3__card {
   min-height: 220px;
-  background: linear-gradient(
-    145deg,
-    color-mix(in oklab, var(--color-semantic-surface-base) 90%, white) 0%,
-    color-mix(in oklab, var(--color-brand-primary-soft) 22%, white) 100%
-  );
+  background: var(--bg-elevated);
 }
 
 .ms-home-checkin-box {
@@ -3024,7 +3020,7 @@ a {
   min-height: 248px;
   border: 1px dashed color-mix(in oklab, var(--color-semantic-border-default) 88%, white);
   border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--color-semantic-surface-muted) 80%, white);
+  background: var(--bg-surface);
   padding: var(--space-4);
 }
 
@@ -3224,7 +3220,7 @@ a {
   align-items: center;
   justify-content: center;
   font-size: var(--font-caption-size);
-  background: color-mix(in oklab, var(--color-semantic-surface-base) 88%, white);
+  background: var(--bg-elevated);
   color: var(--color-semantic-text-secondary);
 }
 
@@ -3420,7 +3416,7 @@ a {
   appearance: none;
   border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 84%, white);
   border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--color-semantic-surface-base) 90%, white);
+  background: var(--bg-elevated);
   padding: var(--space-2) var(--space-3);
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) auto;
@@ -3452,12 +3448,7 @@ a {
 .ms-home-hero-v2 {
   border: 1px solid var(--color-semantic-border-default);
   border-radius: var(--radius-xl);
-  background: linear-gradient(
-      122deg,
-      color-mix(in oklab, var(--color-accent-lavender) 26%, white) 0%,
-      color-mix(in oklab, var(--color-accent-sky) 18%, white) 42%,
-      color-mix(in oklab, var(--color-accent-pink) 24%, white) 100%
-    );
+  background: var(--bg-surface);
   padding: var(--space-5);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -3494,7 +3485,7 @@ a {
 .ms-home-mini-link {
   border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 90%, white);
   border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--color-semantic-surface-base) 86%, white);
+  background: var(--bg-elevated);
   box-shadow: var(--shadow-soft);
   padding: var(--space-3);
   display: flex;

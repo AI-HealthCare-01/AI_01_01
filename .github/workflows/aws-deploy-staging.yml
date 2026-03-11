@@ -35,26 +35,34 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate AWS auth configuration
+        id: auth-config
         env:
           AWS_ACCESS_KEY_ID_STAGING: ${{ secrets.AWS_ACCESS_KEY_ID_STAGING }}
           AWS_SECRET_ACCESS_KEY_STAGING: ${{ secrets.AWS_SECRET_ACCESS_KEY_STAGING }}
         run: |
           if [ -n "$ROLE_ARN" ]; then
             echo "Using OIDC role authentication for staging."
+            echo "auth_mode=oidc" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           if [ -n "$AWS_ACCESS_KEY_ID_STAGING" ] && [ -n "$AWS_SECRET_ACCESS_KEY_STAGING" ]; then
             echo "Using static AWS credentials for staging."
+            echo "auth_mode=static" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "Missing AWS auth configuration for staging."
-          echo "Set AWS_GHA_ROLE_ARN_STAGING or both AWS_ACCESS_KEY_ID_STAGING and AWS_SECRET_ACCESS_KEY_STAGING."
-          exit 1
+          echo "No AWS auth configuration found for staging. Skipping draft deploy."
+          echo "auth_mode=none" >> "$GITHUB_OUTPUT"
+
+      - name: Skip deploy when staging secrets are missing
+        if: ${{ steps.auth-config.outputs.auth_mode == 'none' }}
+        run: |
+          echo "Staging AWS credentials are not configured."
+          echo "Set AWS_GHA_ROLE_ARN_STAGING or both AWS_ACCESS_KEY_ID_STAGING and AWS_SECRET_ACCESS_KEY_STAGING to enable deploy."
 
       - name: Configure AWS credentials via OIDC
-        if: ${{ env.ROLE_ARN != '' }}
+        if: ${{ steps.auth-config.outputs.auth_mode == 'oidc' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.ROLE_ARN }}
@@ -62,7 +70,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Configure AWS credentials via static keys
-        if: ${{ env.ROLE_ARN == '' }}
+        if: ${{ steps.auth-config.outputs.auth_mode == 'static' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_STAGING }}
@@ -70,13 +78,16 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
+        if: ${{ steps.auth-config.outputs.auth_mode != 'none' }}
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set image tag
+        if: ${{ steps.auth-config.outputs.auth_mode != 'none' }}
         run: echo "IMAGE_TAG=${GITHUB_SHA::12}" >> $GITHUB_ENV
 
       - name: Build and push web image
+        if: ${{ steps.auth-config.outputs.auth_mode != 'none' }}
         env:
           WEB_REPOSITORY_URI: ${{ secrets.ECR_WEB_REPOSITORY_URI_STAGING }}
         run: |
@@ -84,6 +95,7 @@ jobs:
           docker push "$WEB_REPOSITORY_URI:$IMAGE_TAG"
 
       - name: Build and push api image
+        if: ${{ steps.auth-config.outputs.auth_mode != 'none' }}
         env:
           API_REPOSITORY_URI: ${{ secrets.ECR_API_REPOSITORY_URI_STAGING }}
         run: |
@@ -91,13 +103,16 @@ jobs:
           docker push "$API_REPOSITORY_URI:$IMAGE_TAG"
 
       - name: Setup Terraform
+        if: ${{ steps.auth-config.outputs.auth_mode != 'none' }}
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform init (draft backend)
+        if: ${{ steps.auth-config.outputs.auth_mode != 'none' }}
         working-directory: ${{ env.TF_WORKDIR }}
         run: terraform init -backend=false
 
       - name: Terraform plan
+        if: ${{ steps.auth-config.outputs.auth_mode != 'none' }}
         working-directory: ${{ env.TF_WORKDIR }}
         env:
           TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD_STAGING }}
@@ -108,7 +123,7 @@ jobs:
             -out tfplan
 
       - name: Terraform apply
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.apply == 'true' }}
+        if: ${{ steps.auth-config.outputs.auth_mode != 'none' && github.event_name == 'workflow_dispatch' && github.event.inputs.apply == 'true' }}
         working-directory: ${{ env.TF_WORKDIR }}
         env:
           TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD_STAGING }}

@@ -269,16 +269,15 @@ export function AppShell({ brand = "MindSight", headerAction, navItems, children
             <div className="ms-app-shell__header-tools">
               <button
                 onClick={toggleTheme}
+                className="ms-theme-toggle"
                 aria-label="테마 전환"
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  fontSize: "1.2rem",
-                  padding: "4px 8px",
-                }}
               >
-                {theme === "dark" ? "☀️" : "🌙"}
+                <span className="ms-theme-toggle__icon">
+                  {theme === "dark" ? "🌙" : "☀️"}
+                </span>
+                <span className="ms-theme-toggle__label">
+                  {theme === "dark" ? "Dark Mode" : "Light Mode"}
+                </span>
               </button>
               {headerAction}
               {phase === "signed_in" ? (

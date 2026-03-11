@@ -255,6 +255,129 @@ select.ms-select {
     rgb(11, 16, 32) !important;
 }
 
+/* 챌린지 진행 카드 */
+[data-theme="dark"] .cp-stat-card,
+[data-theme="dark"] .cp-ctrl-card,
+[data-theme="dark"] .cp-card,
+[data-theme="dark"] .cp-mini-card {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .cp-card *,
+[data-theme="dark"] .cp-stat-card * {
+  color: var(--text-primary);
+}
+
+/* 진행 트랙 바 */
+[data-theme="dark"] .progress-track {
+  background: var(--bg-surface) !important;
+}
+
+/* map 버튼 (대인관계 지도 등) */
+[data-theme="dark"] .map-btn {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .map-btn.active {
+  background: rgba(139, 92, 246, 0.25) !important;
+  border-color: rgba(139, 92, 246, 0.4) !important;
+  color: rgb(196, 181, 253) !important;
+}
+
+/* 데이터 없음 안내 (연회색) */
+[data-theme="dark"] .ms-state {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* 기록 부족 경고 (베이지) */
+[data-theme="dark"] [class*="ms-caution"],
+[data-theme="dark"] [class*="ms-warn"],
+[data-theme="dark"] [class*="caution-box"],
+[data-theme="dark"] [class*="warn-box"] {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-color: rgba(245, 158, 11, 0.25) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 대시보드 안내 박스 직접 타겟 */
+[data-theme="dark"] .ms-dashboard-notice,
+[data-theme="dark"] .ms-insight-notice {
+  background: rgba(99, 102, 241, 0.10) !important;
+  border-color: rgba(99, 102, 241, 0.20) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* 위험 안내 (베이지/주황) */
+[data-theme="dark"] [class*="risk"],
+[data-theme="dark"] [class*="danger-notice"],
+[data-theme="dark"] [class*="alert-notice"] {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-color: rgba(245, 158, 11, 0.25) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 시작 안내 (연초록) */
+[data-theme="dark"] [class*="quiz-start"],
+[data-theme="dark"] [class*="assess-notice"],
+[data-theme="dark"] [class*="start-notice"] {
+  background: rgba(16, 185, 129, 0.10) !important;
+  border-color: rgba(16, 185, 129, 0.20) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 남은 문항 안내 (베이지 하단) */
+[data-theme="dark"] [class*="remain"],
+[data-theme="dark"] [class*="remaining"] {
+  background: rgba(245, 158, 11, 0.10) !important;
+  border-color: rgba(245, 158, 11, 0.20) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* 챌린지 상세 이미지 박스 */
+[data-theme="dark"] [class*="challenge-image"],
+[data-theme="dark"] [class*="activity-preview"],
+[data-theme="dark"] [class*="challenge-detail"] > div {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+}
+
+.ms-theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.ms-theme-toggle:hover {
+  background: var(--bg-surface);
+  border-color: var(--border-focus);
+}
+
+.ms-theme-toggle__icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.ms-theme-toggle__label {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
 [data-theme="dark"] .ms-app-shell__surface {
   background: transparent !important;
 }

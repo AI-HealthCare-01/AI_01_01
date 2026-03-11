@@ -47,8 +47,6 @@ const EXTERNAL_EXECUTION_IDS = new Set(["CH_SLEEP_001", "CH_ACT_001", "CH_ACT_00
 const TIMER_EXECUTION_IDS = new Set<string>([]);
 const TEXT_EXECUTION_IDS = new Set(["CH_SOC_001", "CH_WELL_001", "CH_REG_002", "water-intake"]);
 const NEW_UI_IDS = new Set(["CH_ACT_001", "CH_SLEEP_001", "CH_ACT_002", "CH_ACT_003", "CH_ACT_005", "CH_SOC_001", "CH_WELL_001", "CH_REG_002", "water-intake"]);
-const CHECKLIST_CHALLENGE_IDS = new Set(["CH_ACT_001", "CH_SLEEP_001"]);
-const SUMMARY_REQUIRED_CHALLENGE_IDS = new Set(["CH_ACT_002", "CH_ACT_003", "CH_SOC_001", "CH_WELL_001", "CH_REG_002", "water-intake"]);
 
 function todayString(): string {
   const now = new Date();
@@ -130,13 +128,11 @@ export default function ChallengeProgressPage() {
   const [executionChecks, setExecutionChecks] = useState<boolean[]>([]);
   const [activityNotes, setActivityNotes] = useState<string[]>([]);
   const [executionText, setExecutionText] = useState("");
-  const [activityCompleted, setActivityCompleted] = useState(false);
   const [timerSecondsTotal, setTimerSecondsTotal] = useState(180);
   const [timerSecondsRemaining, setTimerSecondsRemaining] = useState(180);
   const [timerRunning, setTimerRunning] = useState(false);
   const [timerCompleted, setTimerCompleted] = useState(false);
   const [activeTab, setActiveTab] = useState<"setup" | "activity" | "save">("activity");
-  const widgetStorageKey = `challenge:${enrollmentId}`;
 
   const load = useCallback(async () => {
     if (!firebaseUser || !enrollmentId) {
@@ -200,7 +196,6 @@ export default function ChallengeProgressPage() {
     setExecutionChecks(new Array(detail.template_steps.length).fill(false));
     setActivityNotes(new Array(Math.max(1, detail.template_steps.length)).fill(""));
     setExecutionText("");
-    setActivityCompleted(Boolean(todayProgress?.completed_flag || todayProgress?.day_status === "done" || todayProgress?.day_status === "late"));
 
     const timerDefault = defaultTimerSeconds(detail.challenge.challenge_id);
     setTimerSecondsTotal(timerDefault);
@@ -353,49 +348,22 @@ export default function ChallengeProgressPage() {
     }
   };
 
-  const challengeId = detail?.challenge.challenge_id ?? "";
-
-  const markActivityCompleted = useCallback(
-    (summary?: string) => {
-      if (summary) {
-        setExecutionText(summary);
-      }
-      setActivityCompleted(true);
-      setErrorMessage(null);
-      setNotice("활동을 완료했어요. 수행저장 탭에서 오늘 기록을 저장해 주세요.");
-      setActiveTab("save");
-    },
-    []
-  );
-
-  const onSaveDailyRun = async (options?: { executionTextOverride?: string; activityCompletedOverride?: boolean }) => {
+  const onSaveDailyRun = async () => {
     if (!firebaseUser || !detail || savingDailyRun || detail.enrollment.status !== "active") {
       return;
     }
 
-    const executionSummary = (options?.executionTextOverride ?? executionText).trim();
-    const activityReady = options?.activityCompletedOverride ?? activityCompleted;
-
-    if (NEW_UI_IDS.has(challengeId)) {
-      if (!todayCompleted && !activityReady) {
-        setErrorMessage("활동 탭에서 오늘 챌린지를 먼저 완료해 주세요.");
-        return;
-      }
-      if (SUMMARY_REQUIRED_CHALLENGE_IDS.has(challengeId) && !todayCompleted && !executionSummary) {
-        setErrorMessage("챌린지 실행 내용이 아직 정리되지 않았습니다. 활동을 마친 뒤 다시 저장해 주세요.");
-        return;
-      }
-    } else if (executionMode === "external") {
+    if (executionMode === "external") {
       if (executionChecks.length > 0 && executionChecks.some((checked) => !checked)) {
         setErrorMessage("챌린지 실행 단계의 체크 항목을 모두 완료해 주세요.");
         return;
       }
     }
-    if (!NEW_UI_IDS.has(challengeId) && executionMode === "timer" && !timerCompleted) {
+    if (executionMode === "timer" && !timerCompleted) {
       setErrorMessage("타이머를 완료한 뒤 저장해 주세요.");
       return;
     }
-    if (!NEW_UI_IDS.has(challengeId) && executionMode === "text" && !executionSummary) {
+    if (executionMode === "text" && !executionText.trim()) {
       setErrorMessage("챌린지 실행 내용을 입력해 주세요.");
       return;
     }
@@ -413,18 +381,12 @@ export default function ChallengeProgressPage() {
       });
 
       const notes: string[] = [];
-      if (CHECKLIST_CHALLENGE_IDS.has(challengeId) && detail.template_steps.length > 0) {
-        notes.push(`실행체크: ${detail.template_steps.join(", ")}`);
-      } else if (challengeId === "CH_ACT_005") {
-        notes.push(executionSummary || "실행기록: 5분 명상 완료");
-      } else if (executionSummary) {
-        notes.push(`실행기록: ${executionSummary}`);
-      } else if (executionMode === "external" && detail.template_steps.length > 0) {
+      if (executionMode === "external" && detail.template_steps.length > 0) {
         notes.push(`실행체크: ${detail.template_steps.join(", ")}`);
       } else if (executionMode === "timer") {
         notes.push(`타이머 완료: ${Math.round(timerSecondsTotal / 60)}분`);
-      } else if (executionMode === "text" && executionSummary) {
-        notes.push(`실행기록: ${executionSummary}`);
+      } else if (executionMode === "text" && executionText.trim()) {
+        notes.push(`실행기록: ${executionText.trim()}`);
       }
 
       const detailNotes = activityNotes
@@ -624,38 +586,14 @@ export default function ChallengeProgressPage() {
                             </p>
                           ) : (
                             <>
-                              {detail.challenge.challenge_id === "CH_ACT_001" && (
-                                <ChallengeChecklist
-                                  type="morning"
-                                  onComplete={() => {
-                                    setExecutionChecks(new Array(detail.template_steps.length).fill(true));
-                                    markActivityCompleted(`실행체크: ${detail.template_steps.join(", ")}`);
-                                  }}
-                                />
-                              )}
-                              {detail.challenge.challenge_id === "CH_SLEEP_001" && (
-                                <ChallengeChecklist
-                                  type="sleep"
-                                  onComplete={() => {
-                                    setExecutionChecks(new Array(detail.template_steps.length).fill(true));
-                                    markActivityCompleted(`실행체크: ${detail.template_steps.join(", ")}`);
-                                  }}
-                                />
-                              )}
+                              {detail.challenge.challenge_id === "CH_ACT_001" && <ChallengeChecklist type="morning" />}
+                              {detail.challenge.challenge_id === "CH_SLEEP_001" && <ChallengeChecklist type="sleep" />}
                               {detail.challenge.challenge_id === "CH_ACT_003" && (
                                 <div className="cw-two-col">
                                   <WeatherWidget />
                                   <div className="cw-walk-done">
                                     <p className="cp-card-desc">오늘 산책을 완료했나요?</p>
-                                    <button
-                                      className="ct-btn-primary"
-                                      onClick={() =>
-                                        void onSaveDailyRun({
-                                          executionTextOverride: "실외 산책 10분 완료",
-                                          activityCompletedOverride: true,
-                                        })
-                                      }
-                                    >
+                                    <button className="ct-btn-primary" onClick={() => void onSaveDailyRun()}>
                                       ✅ 오늘 산책 완료
                                     </button>
                                   </div>
@@ -665,11 +603,7 @@ export default function ChallengeProgressPage() {
                                 <div className="cw-two-col cp-meditation-layout">
                                   <div className="cp-card cp-mini-card">
                                     <p className="cp-card-title">● 5분 명상 타이머</p>
-                                    <ChallengeTimer
-                                      totalSeconds={300}
-                                      label="호흡에 집중하는 시간"
-                                      onComplete={() => markActivityCompleted("실행기록: 5분 명상 완료")}
-                                    />
+                                    <ChallengeTimer totalSeconds={300} label="호흡에 집중하는 시간" />
                                   </div>
                                   <div className="cp-card cp-mini-card">
                                     <p className="cp-card-title">● 배경 사운드</p>
@@ -680,48 +614,36 @@ export default function ChallengeProgressPage() {
                               {detail.challenge.challenge_id === "CH_ACT_002" && (
                                 <SunlightWidget
                                   onChange={setExecutionText}
-                                  onComplete={() => {
-                                    markActivityCompleted();
-                                  }}
+                                  onComplete={() => void onSaveDailyRun()}
                                   redirectPath={`/challenge/session/${enrollmentId}/progress`}
                                 />
                               )}
                               {detail.challenge.challenge_id === "CH_SOC_001" && (
                                 <InterpersonalMapWidget
                                   onChange={setExecutionText}
-                                  onComplete={() => {
-                                    markActivityCompleted();
-                                  }}
+                                  onComplete={() => void onSaveDailyRun()}
                                   redirectPath={`/challenge/session/${enrollmentId}/progress`}
-                                  storageKey={`${widgetStorageKey}:relationship-map`}
                                 />
                               )}
                               {detail.challenge.challenge_id === "CH_WELL_001" && (
                                 <ConfidenceListWidget
                                   onChange={setExecutionText}
-                                  onComplete={() => {
-                                    markActivityCompleted();
-                                  }}
+                                  onComplete={() => void onSaveDailyRun()}
                                   redirectPath={`/challenge/session/${enrollmentId}/progress`}
                                 />
                               )}
                               {detail.challenge.challenge_id === "CH_REG_002" && (
                                 <SensoryGroundingWidget
                                   onChange={setExecutionText}
-                                  onComplete={() => {
-                                    markActivityCompleted();
-                                  }}
+                                  onComplete={() => void onSaveDailyRun()}
                                   redirectPath={`/challenge/session/${enrollmentId}/progress`}
                                 />
                               )}
                               {detail.challenge.challenge_id === "water-intake" && (
                                 <WaterIntakeWidget
                                   onChange={setExecutionText}
-                                  onComplete={() => {
-                                    markActivityCompleted();
-                                  }}
+                                  onComplete={() => void onSaveDailyRun()}
                                   redirectPath={`/challenge/session/${enrollmentId}/progress`}
-                                  storageKey={`${widgetStorageKey}:water-intake`}
                                 />
                               )}
                             </>
@@ -795,9 +717,7 @@ export default function ChallengeProgressPage() {
                                   </div>
                                 ))}
                               </div>
-                              {detail.challenge.challenge_id === "CH_SOC_001" ? (
-                                <RelationshipMapComparison storageKey={`${widgetStorageKey}:relationship-map`} />
-                              ) : null}
+                              {detail.challenge.challenge_id === "CH_SOC_001" ? <RelationshipMapComparison /> : null}
                             </>
                           )}
                         </div>

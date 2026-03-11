@@ -1,1 +1,815 @@
 @import "../src/styles/theme.css";
+
+:root {
+  /* ── 배경 레이어 ── */
+  --bg-page: #ffffff;
+  --bg-surface: #f8f9fc;
+  --bg-elevated: #ffffff;
+  --bg-overlay: rgba(0, 0, 0, 0.4);
+
+  /* ── 텍스트 ── */
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --text-inverse: #ffffff;
+
+  /* ── 테두리 ── */
+  --border-default: #e5e7eb;
+  --border-strong: #d1d5db;
+  --border-focus: #8b5cf6;
+
+  /* ── 입력창 ── */
+  --input-bg: #ffffff;
+  --input-text: #111827;
+  --input-placeholder: #9ca3af;
+  --input-border: #e5e7eb;
+
+  /* ── 버튼 ── */
+  --btn-primary-bg: linear-gradient(135deg, #8b5cf6, #6366f1);
+  --btn-primary-text: #ffffff;
+  --btn-secondary-bg: #f3f4f6;
+  --btn-secondary-text: #374151;
+  --btn-disabled-bg: #e5e7eb;
+  --btn-disabled-text: #9ca3af;
+
+  /* ── 그림자 ── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.1);
+
+  /* ── 심각도 (라이트/다크 공통) ── */
+  --severity-normal: #10b981;
+  --severity-mild: #fbbf24;
+  --severity-moderate: #f97316;
+  --severity-severe: #ef4444;
+  --severity-critical: #7c3aed;
+
+  /* ── 챌린지 위젯 ── */
+  --sunlight-primary: #f6ad55;
+  --sunlight-bg: #fffbeb;
+  --sunlight-accent: #ed8936;
+  --walk-primary: #68d391;
+  --walk-bg: #f0fff4;
+  --walk-accent: #38a169;
+  --confidence-primary: #b794f4;
+  --confidence-bg: #faf5ff;
+  --confidence-accent: #805ad5;
+  --water-primary: #3b82f6;
+  --water-bg: #eff6ff;
+  --water-accent: #1d4ed8;
+  --water-light: #bfdbfe;
+  --sensory-primary: #f97316;
+  --sensory-bg: #fff7ed;
+  --sensory-accent: #ea580c;
+
+  /* ── 어항(WaterIntake) ── */
+  --tank-bg: #f0f9ff;
+  --tank-border: #bfdbfe;
+  --tank-water-low: #bfdbfe;
+  --tank-water-mid: #60a5fa;
+  --tank-water-full: #3b82f6;
+  --tank-sand: #f59e0b;
+
+  /* ── 리포트 차트 ── */
+  --chart-axis-text: #6b7280;
+  --chart-grid: #f3f4f6;
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-text: #111827;
+  --chart-line-phq9: #8b5cf6;
+  --chart-line-gad7: #6366f1;
+  --chart-line-isi: #3b82f6;
+}
+
+[data-theme="dark"] {
+  /* ── 배경 레이어 ── */
+  --bg-page: #0b1020;
+  --bg-surface: #121a2c;
+  --bg-elevated: #1a2238;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+
+  /* ── 텍스트 ── */
+  --text-primary: #f3f4f6;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --text-inverse: #111827;
+
+  /* ── 테두리 ── */
+  --border-default: #2a344a;
+  --border-strong: #374151;
+  --border-focus: #a78bfa;
+
+  /* ── 입력창 ── */
+  --input-bg: #121a2c;
+  --input-text: #f3f4f6;
+  --input-placeholder: #71717a;
+  --input-border: #2a344a;
+
+  /* ── 버튼 ── */
+  --btn-primary-bg: linear-gradient(135deg, #7c3aed, #4f46e5);
+  --btn-primary-text: #ffffff;
+  --btn-secondary-bg: #1a2238;
+  --btn-secondary-text: #d1d5db;
+  --btn-disabled-bg: #1f2937;
+  --btn-disabled-text: #4b5563;
+
+  /* ── 그림자 ── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  /* ── 심각도 (라이트/다크 공통 유지) ── */
+  --severity-normal: #10b981;
+  --severity-mild: #fbbf24;
+  --severity-moderate: #f97316;
+  --severity-severe: #ef4444;
+  --severity-critical: #7c3aed;
+
+  /* ── 챌린지 위젯 다크 ── */
+  --sunlight-primary: #f6ad55;
+  --sunlight-bg: #1c1507;
+  --sunlight-accent: #d97706;
+  --walk-primary: #68d391;
+  --walk-bg: #071a0e;
+  --walk-accent: #276749;
+  --confidence-primary: #b794f4;
+  --confidence-bg: #120a1f;
+  --confidence-accent: #6d28d9;
+  --water-primary: #60a5fa;
+  --water-bg: #071020;
+  --water-accent: #1d4ed8;
+  --water-light: #1e3a5f;
+  --sensory-primary: #fb923c;
+  --sensory-bg: #1c0e03;
+  --sensory-accent: #c2410c;
+
+  /* ── 어항(WaterIntake) 다크 ── */
+  --tank-bg: #0c1a2e;
+  --tank-border: #1e3a5f;
+  --tank-water-low: #1e3a5f;
+  --tank-water-mid: #1d4ed8;
+  --tank-water-full: #1e40af;
+  --tank-sand: #92400e;
+
+  /* ── 리포트 차트 다크 ── */
+  --chart-axis-text: #a1a1aa;
+  --chart-grid: #1f2937;
+  --chart-tooltip-bg: #1a2238;
+  --chart-tooltip-text: #f3f4f6;
+  --chart-line-phq9: #a78bfa;
+  --chart-line-gad7: #818cf8;
+  --chart-line-isi: #60a5fa;
+
+  /* 시맨틱 warning */
+  --color-semantic-warning-bg: rgba(245, 158, 11, 0.12);
+  --color-semantic-warning-text: rgb(252, 211, 77);
+  --color-semantic-border-default: var(--border-default);
+  --color-semantic-surface-bg: var(--bg-surface);
+
+  /* 시맨틱 success/info */
+  --color-semantic-success-bg: rgba(16, 185, 129, 0.12);
+  --color-semantic-success-text: rgb(110, 231, 183);
+  --color-semantic-info-bg: rgba(99, 102, 241, 0.12);
+  --color-semantic-info-text: rgb(165, 180, 252);
+
+  /* 시맨틱 danger */
+  --color-semantic-danger-bg: rgba(239, 68, 68, 0.12);
+  --color-semantic-danger-text: rgb(252, 165, 165);
+}
+
+/* ── 입력창 공통 기본 스타일 ── */
+input,
+textarea,
+select {
+  background: var(--input-bg);
+  color: var(--input-text);
+  border: 1px solid var(--input-border);
+  transition: border-color 0.2s;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--input-placeholder);
+}
+
+/* autofill 노란 배경 방지 */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px var(--input-bg) inset;
+  -webkit-text-fill-color: var(--input-text);
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15);
+}
+
+body {
+  background: var(--bg-page);
+  color: var(--text-primary);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+/* ms-* 컴포넌트 다크모드 강제 적용 */
+.ms-input,
+.ms-select,
+input.ms-input,
+select.ms-select {
+  background: var(--input-bg) !important;
+  color: var(--input-text) !important;
+  border-color: var(--input-border) !important;
+}
+
+.ms-input::placeholder {
+  color: var(--input-placeholder) !important;
+}
+
+.ms-input:-webkit-autofill,
+.ms-input:-webkit-autofill:hover,
+.ms-input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px var(--input-bg) inset !important;
+  -webkit-text-fill-color: var(--input-text) !important;
+}
+
+/* 앱 셸 래퍼 다크모드 강제 적용 */
+.ms-board-ops-inline,
+.ms-board-cafe-list {
+  background: var(--bg-page) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ms-* 공통 카드/패널 */
+[class^="ms-"] {
+  border-color: var(--border-default);
+}
+
+.ms-home-checkin-box,
+[class^="ms-home-"] {
+  background: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-default) !important;
+}
+
+/* 앱 배경 그라데이션 다크모드 */
+[data-theme="dark"] .ms-app-shell__background {
+  background:
+    radial-gradient(
+      640px 280px at 50% 0%,
+      rgba(139, 92, 246, 0.18) 0%,
+      rgba(99, 102, 241, 0.09) 40%,
+      transparent 70%
+    ),
+    radial-gradient(
+      400px 300px at 100% 100%,
+      rgba(79, 70, 229, 0.12) 0%,
+      transparent 60%
+    ),
+    rgb(11, 16, 32) !important;
+}
+
+[data-theme="dark"] .ms-banner--warning,
+[data-theme="dark"] .ms-pill--warning {
+  background: rgba(245, 158, 11, 0.12) !important;
+  color: rgb(252, 211, 77) !important;
+  border-color: rgba(245, 158, 11, 0.25) !important;
+}
+
+[data-theme="dark"] .ms-banner--info,
+[data-theme="dark"] .ms-pill--info {
+  background: rgba(99, 102, 241, 0.12) !important;
+  color: rgb(165, 180, 252) !important;
+  border-color: rgba(99, 102, 241, 0.25) !important;
+}
+
+[data-theme="dark"] .ms-banner--success,
+[data-theme="dark"] .ms-pill--success {
+  background: rgba(16, 185, 129, 0.12) !important;
+  color: rgb(110, 231, 183) !important;
+  border-color: rgba(16, 185, 129, 0.25) !important;
+}
+
+[data-theme="dark"] .ms-banner--danger,
+[data-theme="dark"] .ms-pill--danger {
+  background: rgba(239, 68, 68, 0.12) !important;
+  color: rgb(252, 165, 165) !important;
+  border-color: rgba(239, 68, 68, 0.25) !important;
+}
+
+/* ms-banner 기본 */
+[data-theme="dark"] .ms-banner {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* 챌린지 진행 카드 */
+[data-theme="dark"] .cp-stat-card,
+[data-theme="dark"] .cp-ctrl-card,
+[data-theme="dark"] .cp-card,
+[data-theme="dark"] .cp-mini-card {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .cp-card *,
+[data-theme="dark"] .cp-stat-card * {
+  color: var(--text-primary);
+}
+
+/* 진행 트랙 바 */
+[data-theme="dark"] .progress-track {
+  background: var(--bg-surface) !important;
+}
+
+/* map 버튼 (대인관계 지도 등) */
+[data-theme="dark"] .map-btn {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .map-btn.active {
+  background: rgba(139, 92, 246, 0.25) !important;
+  border-color: rgba(139, 92, 246, 0.4) !important;
+  color: rgb(196, 181, 253) !important;
+}
+
+/* 데이터 없음 안내 (연회색) */
+[data-theme="dark"] .ms-state {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* 기록 부족 경고 (베이지) */
+[data-theme="dark"] [class*="ms-caution"],
+[data-theme="dark"] [class*="ms-warn"],
+[data-theme="dark"] [class*="caution-box"],
+[data-theme="dark"] [class*="warn-box"] {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-color: rgba(245, 158, 11, 0.25) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 대시보드 안내 박스 직접 타겟 */
+[data-theme="dark"] .ms-dashboard-notice,
+[data-theme="dark"] .ms-insight-notice {
+  background: rgba(99, 102, 241, 0.10) !important;
+  border-color: rgba(99, 102, 241, 0.20) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* 위험 안내 (베이지/주황) */
+[data-theme="dark"] [class*="risk"],
+[data-theme="dark"] [class*="danger-notice"],
+[data-theme="dark"] [class*="alert-notice"] {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-color: rgba(245, 158, 11, 0.25) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 시작 안내 (연초록) */
+[data-theme="dark"] [class*="quiz-start"],
+[data-theme="dark"] [class*="assess-notice"],
+[data-theme="dark"] [class*="start-notice"] {
+  background: rgba(16, 185, 129, 0.10) !important;
+  border-color: rgba(16, 185, 129, 0.20) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 남은 문항 안내 (베이지 하단) */
+[data-theme="dark"] [class*="remain"],
+[data-theme="dark"] [class*="remaining"] {
+  background: rgba(245, 158, 11, 0.10) !important;
+  border-color: rgba(245, 158, 11, 0.20) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* 챌린지 상세 이미지 박스 */
+[data-theme="dark"] [class*="challenge-image"],
+[data-theme="dark"] [class*="activity-preview"],
+[data-theme="dark"] [class*="challenge-detail"] > div {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+}
+
+.ms-theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.ms-theme-toggle:hover {
+  background: var(--bg-surface);
+  border-color: var(--border-focus);
+}
+
+.ms-theme-toggle__icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.ms-theme-toggle__label {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .ms-app-shell__surface {
+  background: transparent !important;
+}
+
+[data-theme="dark"] .ms-section {
+  background: var(--bg-surface) !important;
+}
+
+/* ms-home-checkin-box 내부 카드 */
+[data-theme="dark"] .ms-home-checkin-box {
+  background: var(--bg-surface) !important;
+}
+
+/* 헤더 다크모드 */
+[data-theme="dark"] .ms-header,
+[data-theme="dark"] .ms-nav,
+[data-theme="dark"] .ms-app-bar,
+[data-theme="dark"] .ms-top-bar,
+[data-theme="dark"] .ms-navbar,
+[data-theme="dark"] .ms-app-shell__header,
+[data-theme="dark"] .ms-app-shell__nav,
+[data-theme="dark"] .ms-app-shell__subnav,
+[data-theme="dark"] header {
+  background: var(--bg-elevated) !important;
+  border-bottom: 1px solid var(--border-default) !important;
+}
+
+/* 네비 탭 */
+[data-theme="dark"] .ms-nav-tab,
+[data-theme="dark"] .ms-tab-item,
+[data-theme="dark"] .ms-app-shell__nav-link,
+[data-theme="dark"] .ms-app-shell__subnav-link {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .ms-nav-tab--active,
+[data-theme="dark"] .ms-tab-item--active,
+[data-theme="dark"] .ms-app-shell__nav-link--active,
+[data-theme="dark"] .ms-app-shell__subnav-link--active {
+  color: var(--text-primary) !important;
+}
+
+/* 화면별 카드/섹션 다크 오버라이드 */
+[data-theme="dark"] [class*="ms-challenge"],
+[data-theme="dark"] [class*="ms-progress"],
+[data-theme="dark"] [class*="ms-activity"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] [class*="ms-diary"],
+[data-theme="dark"] [class*="ms-journal"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+}
+
+[data-theme="dark"] [class*="ms-community"],
+[data-theme="dark"] [class*="ms-post"],
+[data-theme="dark"] [class*="ms-feed"],
+[data-theme="dark"] [class*="ms-board"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] [class*="ms-report"],
+[data-theme="dark"] [class*="ms-summary"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+}
+
+[data-theme="dark"] [class*="ms-assessment"],
+[data-theme="dark"] [class*="ms-quiz"],
+[data-theme="dark"] [class*="ms-psychological"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+}
+
+/* 다크모드 전체 카드/섹션 배경 */
+[data-theme="dark"] [class^="ms-"][class*="card"],
+[data-theme="dark"] [class^="ms-"][class*="box"],
+[data-theme="dark"] [class^="ms-"][class*="panel"],
+[data-theme="dark"] [class^="ms-"][class*="section"],
+[data-theme="dark"] [class^="ms-"][class*="item"],
+[data-theme="dark"] [class^="ms-"][class*="list"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 텍스트 공통 */
+[data-theme="dark"] [class^="ms-"] {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] [class^="ms-"] [class*="subtitle"],
+[data-theme="dark"] [class^="ms-"] [class*="desc"],
+[data-theme="dark"] [class^="ms-"] [class*="sub"] {
+  color: var(--text-secondary) !important;
+}
+
+/* 네비 탭 링크 */
+[data-theme="dark"] .ms-app-shell__nav-link {
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .ms-app-shell__nav-link--active {
+  background: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .ms-app-shell__nav-link:hover {
+  background: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 챌린지 진행 탭 바 */
+[data-theme="dark"] .progress-tab-bar {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+}
+
+[data-theme="dark"] .ptb-tab {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .ptb-tab.active {
+  background: var(--border-focus) !important;
+  color: #ffffff !important;
+}
+
+/* CBT 대화창 */
+[data-theme="dark"] [class*="cbt"],
+[data-theme="dark"] [class*="chat-area"],
+[data-theme="dark"] [class*="conversation"],
+[data-theme="dark"] [class*="ms-cbt"] {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 챌린지 진행 카드들 */
+[data-theme="dark"] [class*="progress-card"],
+[data-theme="dark"] [class*="session-card"],
+[data-theme="dark"] [class*="activity-card"],
+[data-theme="dark"] [class*="challenge-card"],
+[data-theme="dark"] [class*="challenge-progress"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 오늘의 활동 체크리스트 */
+[data-theme="dark"] [class*="today-activity"],
+[data-theme="dark"] [class*="checklist"],
+[data-theme="dark"] [class*="task-item"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .ms-user-menu-trigger {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 현재 페이지명 레이블 */
+[data-theme="dark"] [class*="ms-current-page"],
+[data-theme="dark"] [class*="ms-page-label"],
+[data-theme="dark"] [class*="ms-breadcrumb"] {
+  background: var(--bg-elevated) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] [class*="ms-home"][class*="hero"],
+[data-theme="dark"] [class*="ms-greeting"],
+[data-theme="dark"] [class*="ms-home-header"] {
+  border-bottom: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+/* CBT 진행단계 사이드바 */
+[data-theme="dark"] [class*="cbt-stage"],
+[data-theme="dark"] [class*="cbt-step"],
+[data-theme="dark"] [class*="cbt-panel"],
+[data-theme="dark"] [class*="cbt-session"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+/* CBT 메인 대화 영역 */
+[data-theme="dark"] [class*="chat-window"],
+[data-theme="dark"] [class*="cbt-chat"],
+[data-theme="dark"] [class*="cbt-main"] {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+}
+
+/* CBT 세션 체크포인트 우측 패널 */
+[data-theme="dark"] [class*="checkpoint"],
+[data-theme="dark"] [class*="cbt-sidebar"],
+[data-theme="dark"] [class*="session-info"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 대시보드 점수 카드 */
+[data-theme="dark"] [class*="score-card"],
+[data-theme="dark"] [class*="dashboard-card"],
+[data-theme="dark"] [class*="ms-insight"],
+[data-theme="dark"] [class*="ms-trend"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 데이터 부족 안내 박스 (연보라/연베이지) */
+[data-theme="dark"] [class*="ms-empty"],
+[data-theme="dark"] [class*="ms-notice"],
+[data-theme="dark"] [class*="ms-warning"],
+[data-theme="dark"] [class*="ms-alert-soft"] {
+  background: rgba(99, 102, 241, 0.12) !important;
+  border-color: rgba(99, 102, 241, 0.25) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* 리포트 빈 상태 박스 */
+[data-theme="dark"] [class*="report-empty"],
+[data-theme="dark"] [class*="ms-report"][class*="card"],
+[data-theme="dark"] [class*="ms-report"][class*="box"] {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* 기간 선택 영역 */
+[data-theme="dark"] [class*="period-select"],
+[data-theme="dark"] [class*="date-range"] {
+  background: var(--bg-elevated) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 커뮤니티 공지/태그 배지 */
+[data-theme="dark"] [class*="ms-tag"],
+[data-theme="dark"] [class*="ms-badge"],
+[data-theme="dark"] [class*="notice-tag"],
+[data-theme="dark"] [class*="post-tag"] {
+  background: rgba(99, 102, 241, 0.2) !important;
+  color: var(--text-primary) !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* 한줄일기 일기목록 빈 상태 */
+[data-theme="dark"] [class*="diary-list"],
+[data-theme="dark"] [class*="diary-empty"],
+[data-theme="dark"] [class*="journal-list"] {
+  background: var(--bg-surface) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-default) !important;
+}
+
+/* 심리검사 위험안내 박스 (베이지) */
+[data-theme="dark"] [class*="risk-alert"],
+[data-theme="dark"] [class*="ms-risk"],
+[data-theme="dark"] [class*="warning-box"] {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-color: rgba(245, 158, 11, 0.25) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 심리검사 안내 (연초록) */
+[data-theme="dark"] [class*="quiz-notice"],
+[data-theme="dark"] [class*="assessment-notice"],
+[data-theme="dark"] [class*="ms-notice--info"] {
+  background: rgba(16, 185, 129, 0.10) !important;
+  border-color: rgba(16, 185, 129, 0.20) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ===== Dark Mode Final Overrides (Exact Classes) ===== */
+/* ── pill ── */
+[data-theme="dark"] .ms-pill--brand {
+  background: rgba(139, 92, 246, 0.2) !important;
+  color: rgb(196, 181, 253) !important;
+  border-color: rgba(139, 92, 246, 0.3) !important;
+}
+
+[data-theme="dark"] .ms-pill--neutral {
+  background: var(--bg-elevated) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-default) !important;
+}
+
+[data-theme="dark"] .ms-pill--info {
+  background: rgba(99, 102, 241, 0.2) !important;
+  color: rgb(165, 180, 252) !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* ── segmented control ── */
+[data-theme="dark"] .ms-segmented {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+}
+
+[data-theme="dark"] .ms-segmented__option {
+  color: var(--text-secondary) !important;
+  background: transparent !important;
+}
+
+[data-theme="dark"] .ms-segmented__option--selected {
+  background: var(--bg-elevated) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* ── chip (한줄일기 카테고리) ── */
+[data-theme="dark"] .ms-chip {
+  background: var(--bg-elevated) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-default) !important;
+}
+
+[data-theme="dark"] .ms-chip--selected,
+[data-theme="dark"] .ms-chip.selected,
+[data-theme="dark"] .ms-chip.active {
+  background: rgba(139, 92, 246, 0.25) !important;
+  color: rgb(196, 181, 253) !important;
+  border-color: rgba(139, 92, 246, 0.4) !important;
+}
+
+/* ── state 박스 ── */
+[data-theme="dark"] .ms-state {
+  background: var(--bg-surface) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-default) !important;
+}
+
+/* ── social intro meta ── */
+[data-theme="dark"] .ms-social-intro__meta {
+  background: var(--bg-elevated) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-default) !important;
+}
+
+/* 헤더 탭명 + 계정 박스 */
+[data-theme="dark"] .ms-app-shell__header,
+[data-theme="dark"] .ms-app-shell__top {
+  background: var(--bg-elevated) !important;
+}
+
+[data-theme="dark"] .ms-user-menu-trigger {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .ms-user-menu-trigger__dot,
+[data-theme="dark"] .ms-user-menu-trigger span {
+  color: var(--text-primary) !important;
+}
+
+/* 배경 그라데이션 강도 증가 */
+[data-theme="dark"] .ms-app-shell__background {
+  background:
+    radial-gradient(
+      800px 400px at 50% 0%,
+      rgba(139, 92, 246, 0.35) 0%,
+      rgba(99, 102, 241, 0.18) 45%,
+      transparent 75%
+    ),
+    radial-gradient(
+      500px 400px at 100% 80%,
+      rgba(79, 70, 229, 0.22) 0%,
+      transparent 65%
+    ),
+    rgb(11, 16, 32) !important;
+}

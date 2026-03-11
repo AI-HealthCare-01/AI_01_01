@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AppShell,
@@ -190,6 +190,7 @@ export default function AssessmentsPage() {
   const [working, setWorking] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const runnerTopRef = useRef<HTMLDivElement | null>(null);
 
   const totalAnswered = useMemo(() => Object.keys(answers).length, [answers]);
   const remainingCount = TOTAL_ASSESSMENT_QUESTION_COUNT - totalAnswered;
@@ -241,6 +242,19 @@ export default function AssessmentsPage() {
     }
     return null;
   }, [currentSection.questions.length, questionIndex, sectionIndex]);
+
+  const firstUnansweredPointerInfo = useMemo(() => {
+    for (let s = 0; s < ASSESSMENT_SECTIONS.length; s += 1) {
+      const section = ASSESSMENT_SECTIONS[s];
+      for (let q = 0; q < section.questions.length; q += 1) {
+        const question = section.questions[q];
+        if (answers[question.code] === undefined) {
+          return resolvePointerInfo({ sectionIndex: s, questionIndex: q });
+        }
+      }
+    }
+    return null;
+  }, [answers]);
 
   const completedDateSet = useMemo(() => {
     const dates = new Set<string>();
@@ -318,7 +332,7 @@ export default function AssessmentsPage() {
     }
   };
 
-  const moveToPointer = (pointer: QuestionPointer | null) => {
+  const moveToPointer = (pointer: QuestionPointer | null, options?: { skipIntro?: boolean }) => {
     if (!pointer) {
       return;
     }
@@ -326,7 +340,23 @@ export default function AssessmentsPage() {
     setQuestionIndex(pointer.questionIndex);
     setSelectedOptionKey(null);
     setShowCompletionCard(false);
+    if (options?.skipIntro) {
+      setSectionIntroVisible(false);
+      return;
+    }
     setSectionIntroVisible(pointer.questionIndex === 0 && !sectionIntroDone[pointer.sectionIndex]);
+  };
+
+  const focusUnanswered = (pointer: PointerInfo) => {
+    setSectionIntroDone((previous) => ({
+      ...previous,
+      [pointer.sectionIndex]: true,
+    }));
+    moveToPointer(pointer, { skipIntro: true });
+    setErrorMessage("응답하지 않은 문항이 있어 해당 문항으로 이동했습니다.");
+    window.setTimeout(() => {
+      runnerTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   };
 
   const enterCurrentSection = () => {
@@ -357,7 +387,12 @@ export default function AssessmentsPage() {
   };
 
   const onComplete = async () => {
-    if (!firebaseUser || !currentAssessmentId || working || !canComplete) {
+    if (!firebaseUser || !currentAssessmentId || working) {
+      return;
+    }
+
+    if (firstUnansweredPointerInfo) {
+      focusUnanswered(firstUnansweredPointerInfo);
       return;
     }
 
@@ -403,6 +438,10 @@ export default function AssessmentsPage() {
           : "검사가 완료되었습니다."
       );
     } catch (error) {
+      if (error instanceof CoreApiError && error.message === "assessment_items_incomplete" && firstUnansweredPointerInfo) {
+        focusUnanswered(firstUnansweredPointerInfo);
+        return;
+      }
       setErrorMessage(parseError(error));
     } finally {
       setWorking(false);
@@ -567,6 +606,7 @@ export default function AssessmentsPage() {
               </div>
             ) : (
               <Card className="ms-assessment-runner" title="심리검사 진행">
+                <div ref={runnerTopRef} />
                 {currentQuestion ? (
                   <div className="ms-stack">
                     <div className="ms-assessment-runner__head">
@@ -642,7 +682,6 @@ export default function AssessmentsPage() {
                             className="ms-assessment-runner__intro-button ms-assessment-runner__intro-button--complete"
                             onClick={() => void onComplete()}
                             loading={working}
-                            disabled={!canComplete}
                           >
                             검사 완료
                           </Button>

@@ -15,6 +15,7 @@ import type {
 
 import { useAuthContext } from "../../features/auth";
 import { AdminApiError, getAdminMe } from "../../features/admin-console/api-client";
+import { useTheme } from "../../hooks/useTheme";
 import {
   ShadBadge,
   ShadButton,
@@ -136,6 +137,7 @@ function isNavActive(pathname: string | null, href: string): boolean {
 
 export function AppShell({ brand = "MindSight", headerAction, navItems, children }: AppShellProps) {
   const { phase, firebaseUser, session, logout } = useAuthContext();
+  const { theme, toggleTheme } = useTheme();
   const pathname = usePathname();
   const [canSeeAdminEntry, setCanSeeAdminEntry] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -264,6 +266,18 @@ export function AppShell({ brand = "MindSight", headerAction, navItems, children
               {brand}
             </Link>
             <div className="ms-app-shell__header-tools">
+              <button
+                onClick={toggleTheme}
+                className="ms-theme-toggle"
+                aria-label="테마 전환"
+              >
+                <span className="ms-theme-toggle__icon">
+                  {theme === "dark" ? "🌙" : "☀️"}
+                </span>
+                <span className="ms-theme-toggle__label">
+                  {theme === "dark" ? "Dark Mode" : "Light Mode"}
+                </span>
+              </button>
               {headerAction}
               {phase === "signed_in" ? (
                 <div className="ms-user-menu-wrap" ref={userMenuRef}>

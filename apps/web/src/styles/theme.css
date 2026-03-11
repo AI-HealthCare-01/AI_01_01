@@ -883,15 +883,20 @@ a {
 .ms-textarea,
 .ms-select {
   width: 100%;
-  border: 1px solid var(--color-semantic-border-default);
-  background: var(--color-semantic-surface-bg);
-  color: var(--color-semantic-text-primary);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--input-text);
   border-radius: var(--radius-md);
   font-family: inherit;
   font-size: var(--font-body-md-size);
   line-height: var(--font-body-md-line);
   font-weight: var(--font-body-md-weight);
   padding: 0 var(--space-3);
+}
+
+.ms-input::placeholder,
+.ms-textarea::placeholder {
+  color: var(--input-placeholder);
 }
 
 .ms-input,
@@ -930,6 +935,20 @@ a {
 .ms-field--error .ms-textarea,
 .ms-field--error .ms-select {
   border-color: color-mix(in oklab, var(--color-status-danger) 74%, white);
+}
+
+.ms-input:focus,
+.ms-select:focus,
+.ms-textarea:focus {
+  border-color: var(--border-focus);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15);
+}
+
+.ms-input:-webkit-autofill,
+.ms-input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--input-bg) inset;
+  -webkit-text-fill-color: var(--input-text);
 }
 
 .ms-segmented {
@@ -2926,8 +2945,9 @@ a {
 .ms-landing-login-card .ms-select,
 .ms-landing-login-card .ms-textarea {
   border-radius: calc(var(--radius-md) + 2px);
-  border-color: color-mix(in oklab, white 62%, #dbe0f2);
-  background: color-mix(in oklab, white 90%, #f5f7ff);
+  border-color: var(--input-border);
+  background: var(--input-bg);
+  color: var(--input-text);
 }
 
 .ms-landing-login-card .ms-btn--primary {

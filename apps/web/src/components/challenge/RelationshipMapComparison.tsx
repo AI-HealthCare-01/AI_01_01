@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
 import { BubbleChart, computeBubbleLayout } from './InterpersonalMapWidget'
 
@@ -18,7 +18,7 @@ interface StoredData {
   history: HistoryEntry[]
 }
 
-const STORAGE_KEY = 'interpersonal_map_v4'
+const DEFAULT_STORAGE_KEY = 'interpersonal_map_v4'
 
 function parseStoredData(raw: string | null): StoredData | null {
   if (!raw) return { history: [] }
@@ -75,18 +75,14 @@ function buildComparisonLines(previous: HistoryEntry, current: HistoryEntry): st
   return lines
 }
 
-export function RelationshipMapComparison() {
-  const [history, setHistory] = useState<HistoryEntry[] | null>(null)
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const parsed = parseStoredData(window.localStorage.getItem(STORAGE_KEY))
-    if (!parsed) {
-      setHistory(null)
-      return
+export function RelationshipMapComparison({ storageKey = DEFAULT_STORAGE_KEY }: { storageKey?: string }) {
+  const history = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return null
     }
-    setHistory(parsed.history)
-  }, [])
+    const parsed = parseStoredData(window.localStorage.getItem(storageKey))
+    return parsed?.history ?? null
+  }, [storageKey])
 
   const safeHistory = history ?? []
   const current = safeHistory[0]

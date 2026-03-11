@@ -51,9 +51,10 @@ interface Props {
   onChange?: (summary: string) => void
   onComplete?: (state: InterpersonalMapState) => Promise<void> | void
   redirectPath?: string
+  storageKey?: string
 }
 
-const STORAGE_KEY = 'interpersonal_map_v4'
+const DEFAULT_STORAGE_KEY = 'interpersonal_map_v4'
 const WIDTH = 340
 const HEIGHT = 300
 
@@ -273,7 +274,12 @@ export function BubbleChart({ nodes, showLegend = false, readOnly = false, width
   )
 }
 
-export function InterpersonalMapWidget({ onChange, onComplete, redirectPath = '/challenge' }: Props) {
+export function InterpersonalMapWidget({
+  onChange,
+  onComplete,
+  redirectPath = '/challenge',
+  storageKey = DEFAULT_STORAGE_KEY,
+}: Props) {
   const router = useRouter()
 
   const [stage, setStage] = useState<'start' | 'active' | 'done'>('start')
@@ -298,12 +304,12 @@ export function InterpersonalMapWidget({ onChange, onComplete, redirectPath = '/
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const stored = parseStoredData(window.localStorage.getItem(STORAGE_KEY))
+    const stored = parseStoredData(window.localStorage.getItem(storageKey))
     setHistory(stored.history)
     setPreviousPeople(stored.lastPeople)
     setPreviousPlacements(stored.lastPlacements)
     setPreviousCloseness(stored.lastCloseness)
-  }, [])
+  }, [storageKey])
 
   useEffect(() => {
     if (step !== 1 || !mood || stage !== 'active') return
@@ -394,7 +400,7 @@ export function InterpersonalMapWidget({ onChange, onComplete, redirectPath = '/
       lastCloseness: closeness,
     }
 
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+    window.localStorage.setItem(storageKey, JSON.stringify(payload))
     setHistory(nextHistory)
     setPreviousPeople(people)
     setPreviousPlacements(placements)
@@ -484,7 +490,7 @@ export function InterpersonalMapWidget({ onChange, onComplete, redirectPath = '/
 
   const clearSavedData = () => {
     if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(STORAGE_KEY)
+      window.localStorage.removeItem(storageKey)
     }
     setHistory([])
     setPreviousPeople([])

@@ -23,8 +23,22 @@ export function WeatherWidget() {
   const [weather, setWeather] = useState<{temp:number;code:number;wind:number}|null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
+  const [requested, setRequested] = useState(false)
 
   useEffect(() => {
+    setLoading(false)
+  }, [])
+
+  const requestWeather = () => {
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+      setError('이 환경에서는 위치 기반 날씨를 사용할 수 없습니다.')
+      return
+    }
+
+    setRequested(true)
+    setLoading(true)
+    setError(null)
+
     navigator.geolocation.getCurrentPosition(
       async pos => {
         try {
@@ -35,12 +49,27 @@ export function WeatherWidget() {
         } catch { setError('날씨를 불러오지 못했습니다.') }
         finally { setLoading(false) }
       },
-      () => { setError('위치 권한을 허용해주세요.'); setLoading(false) }
+      () => { setError('위치 권한을 허용하면 현재 위치 기준 날씨를 볼 수 있습니다.'); setLoading(false) }
     )
-  }, [])
+  }
 
   if (loading) return <div className="ww-wrap"><p className="ww-loading">날씨 불러오는 중...</p></div>
-  if (error || !weather) return <div className="ww-wrap"><p className="ww-error">{error}</p></div>
+  if (!requested && !weather) {
+    return (
+      <div className="ww-wrap">
+        <p className="ww-desc">필요할 때만 현재 위치 기준 날씨를 불러옵니다.</p>
+        <button className="ct-btn-secondary" onClick={requestWeather}>현재 위치 날씨 보기</button>
+      </div>
+    )
+  }
+  if (error || !weather) {
+    return (
+      <div className="ww-wrap">
+        <p className="ww-error">{error}</p>
+        <button className="ct-btn-secondary" onClick={requestWeather}>다시 시도</button>
+      </div>
+    )
+  }
 
   const {desc,icon} = WMO[weather.code] ?? {desc:'날씨 확인 중',icon:'🌈'}
 

@@ -21,12 +21,13 @@ interface Props {
   onChange?: (summary: string) => void
   onComplete?: () => Promise<void> | void
   redirectPath?: string
+  storageKey?: string
 }
 
 type Stage = 'intro' | 'active' | 'day_done' | 'final_done'
 type Step = 1 | 2 | 3
 
-const STORAGE_KEY = 'water_intake_data'
+const DEFAULT_STORAGE_KEY = 'water_intake_data'
 
 const GOALS = [6, 8, 10]
 const CUP_SIZES = [200, 250, 350]
@@ -81,21 +82,25 @@ function waterColor(ratio: number): string {
   return '#1D4ED8'
 }
 
-function parseStorage(): WaterData {
-  const raw = typeof window !== 'undefined' ? window.localStorage.getItem(STORAGE_KEY) : null
+function createDefaultWaterData(): WaterData {
+  const startDate = todayStr()
+  return {
+    goal: DEFAULT_GOAL,
+    mlPerGlass: DEFAULT_CUP,
+    days: Array.from({ length: 7 }, (_, i) => ({
+      date: addDays(startDate, i),
+      glasses: 0,
+      achieved: false,
+    })),
+    fishSize: 1,
+    startDate,
+  }
+}
+
+function parseStorage(storageKey: string): WaterData {
+  const raw = typeof window !== 'undefined' ? window.localStorage.getItem(storageKey) : null
   if (!raw) {
-    const startDate = todayStr()
-    return {
-      goal: DEFAULT_GOAL,
-      mlPerGlass: DEFAULT_CUP,
-      days: Array.from({ length: 7 }, (_, i) => ({
-        date: addDays(startDate, i),
-        glasses: 0,
-        achieved: false,
-      })),
-      fishSize: 1,
-      startDate,
-    }
+    return createDefaultWaterData()
   }
   try {
     const parsed = JSON.parse(raw) as WaterData
@@ -108,24 +113,13 @@ function parseStorage(): WaterData {
       startDate: parsed.startDate,
     }
   } catch {
-    const startDate = todayStr()
-    return {
-      goal: DEFAULT_GOAL,
-      mlPerGlass: DEFAULT_CUP,
-      days: Array.from({ length: 7 }, (_, i) => ({
-        date: addDays(startDate, i),
-        glasses: 0,
-        achieved: false,
-      })),
-      fishSize: 1,
-      startDate,
-    }
+    return createDefaultWaterData()
   }
 }
 
-function saveStorage(data: WaterData) {
+function saveStorage(storageKey: string, data: WaterData) {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+  window.localStorage.setItem(storageKey, JSON.stringify(data))
 }
 
 function FishTank({
@@ -185,7 +179,12 @@ function FishTank({
   )
 }
 
-export function WaterIntakeWidget({ onChange, onComplete, redirectPath = '/challenge' }: Props) {
+export function WaterIntakeWidget({
+  onChange,
+  onComplete,
+  redirectPath = '/challenge',
+  storageKey = DEFAULT_STORAGE_KEY,
+}: Props) {
   const router = useRouter()
 
   const [stage, setStage] = useState<Stage>('intro')
@@ -198,9 +197,9 @@ export function WaterIntakeWidget({ onChange, onComplete, redirectPath = '/chall
   const [working, setWorking] = useState(false)
 
   useEffect(() => {
-    const next = parseStorage()
+    const next = parseStorage(storageKey)
     setData(next)
-  }, [])
+  }, [storageKey])
 
   const idx = useMemo(() => (data ? dayIndex(data.startDate) : 0), [data])
   const today = data?.days[idx]
@@ -228,7 +227,7 @@ export function WaterIntakeWidget({ onChange, onComplete, redirectPath = '/chall
     setData((prev) => {
       if (!prev) return prev
       const next = updater(prev)
-      saveStorage(next)
+      saveStorage(storageKey, next)
       return next
     })
   }

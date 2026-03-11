@@ -539,3 +539,103 @@ select.ms-select {
   border-color: rgba(16, 185, 129, 0.20) !important;
   color: var(--text-primary) !important;
 }
+
+/* ===== Dark Mode Final Overrides (Exact Classes) ===== */
+/* ── pill ── */
+[data-theme="dark"] .ms-pill--brand {
+  background: rgba(139, 92, 246, 0.2) !important;
+  color: rgb(196, 181, 253) !important;
+  border-color: rgba(139, 92, 246, 0.3) !important;
+}
+
+[data-theme="dark"] .ms-pill--neutral {
+  background: var(--bg-elevated) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-default) !important;
+}
+
+[data-theme="dark"] .ms-pill--info {
+  background: rgba(99, 102, 241, 0.2) !important;
+  color: rgb(165, 180, 252) !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* ── segmented control ── */
+[data-theme="dark"] .ms-segmented {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+}
+
+[data-theme="dark"] .ms-segmented__option {
+  color: var(--text-secondary) !important;
+  background: transparent !important;
+}
+
+[data-theme="dark"] .ms-segmented__option--selected {
+  background: var(--bg-elevated) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* ── chip (한줄일기 카테고리) ── */
+[data-theme="dark"] .ms-chip {
+  background: var(--bg-elevated) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-default) !important;
+}
+
+[data-theme="dark"] .ms-chip--selected,
+[data-theme="dark"] .ms-chip.selected,
+[data-theme="dark"] .ms-chip.active {
+  background: rgba(139, 92, 246, 0.25) !important;
+  color: rgb(196, 181, 253) !important;
+  border-color: rgba(139, 92, 246, 0.4) !important;
+}
+
+/* ── state 박스 ── */
+[data-theme="dark"] .ms-state {
+  background: var(--bg-surface) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-default) !important;
+}
+
+/* ── social intro meta ── */
+[data-theme="dark"] .ms-social-intro__meta {
+  background: var(--bg-elevated) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-default) !important;
+}
+
+/* 헤더 탭명 + 계정 박스 */
+[data-theme="dark"] .ms-app-shell__header,
+[data-theme="dark"] .ms-app-shell__top {
+  background: var(--bg-elevated) !important;
+}
+
+[data-theme="dark"] .ms-user-menu-trigger {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .ms-user-menu-trigger__dot,
+[data-theme="dark"] .ms-user-menu-trigger span {
+  color: var(--text-primary) !important;
+}
+
+/* 배경 그라데이션 강도 증가 */
+[data-theme="dark"] .ms-app-shell__background {
+  background:
+    radial-gradient(
+      800px 400px at 50% 0%,
+      rgba(139, 92, 246, 0.35) 0%,
+      rgba(99, 102, 241, 0.18) 45%,
+      transparent 75%
+    ),
+    radial-gradient(
+      500px 400px at 100% 80%,
+      rgba(79, 70, 229, 0.22) 0%,
+      transparent 65%
+    ),
+    rgb(11, 16, 32) !important;
+}

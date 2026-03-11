@@ -218,3 +218,16 @@ select.ms-select {
   -webkit-box-shadow: 0 0 0px 1000px var(--input-bg) inset !important;
   -webkit-text-fill-color: var(--input-text) !important;
 }
+
+/* 앱 셸 래퍼 다크모드 강제 적용 */
+.ms-app-shell__surface,
+.ms-board-ops-inline,
+.ms-board-cafe-list {
+  background: var(--bg-page) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ms-* 공통 카드/패널 */
+[class^="ms-"] {
+  border-color: var(--border-default);
+}

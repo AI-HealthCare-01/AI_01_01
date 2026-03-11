@@ -472,9 +472,7 @@ a {
   margin: 0 auto;
   border-radius: var(--radius-app-surface);
   border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 82%, white);
-  background:
-    var(--gradient-glass-streak),
-    color-mix(in oklab, var(--color-semantic-surface-glass) 90%, white);
+  background: var(--bg-page);
   box-shadow: var(--shadow-app-surface);
   padding: var(--space-4);
 }
@@ -4403,7 +4401,7 @@ a {
 .ms-board-ops-inline {
   border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 84%, white);
   border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--color-brand-primary-soft) 48%, white);
+  background: var(--bg-surface);
   color: var(--color-semantic-text-primary);
   font-size: var(--font-body-sm-size);
   line-height: var(--font-body-sm-line);
@@ -4447,7 +4445,7 @@ a {
 .ms-board-cafe-list {
   border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 84%, white);
   border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--color-semantic-surface-base) 96%, white);
+  background: var(--bg-surface);
   max-height: 640px;
   overflow: auto;
 }

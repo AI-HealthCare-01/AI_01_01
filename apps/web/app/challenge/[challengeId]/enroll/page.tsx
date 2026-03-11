@@ -52,6 +52,24 @@ function todayString(): string {
   return `${year}-${month}-${day}`;
 }
 
+const SOCIAL_MAP_CHALLENGE_ID = "CH_SOC_001";
+const SUNLIGHT_CHALLENGE_ID = "CH_ACT_002";
+const CONFIDENCE_CHALLENGE_ID = "CH_WELL_001";
+
+function socialMapDurationHint(days: number): string {
+  if (days === 2) {
+    return "핵심 관계 중심으로 빠르게 정리해요";
+  }
+  if (days === 3) {
+    return "여유 있게 관계를 탐색할 수 있어요";
+  }
+  return "깊이 있는 관계 기록까지 완성해보세요";
+}
+
+function sunlightDurationHint(days: number): string {
+  return days === 2 ? "집중적으로 햇빛 효과를 경험해보세요" : "하루씩 천천히 햇빛 습관을 만들어요";
+}
+
 export default function ChallengeEnrollSetupPage() {
   const { firebaseUser } = useAuthContext();
   const router = useRouter();
@@ -103,7 +121,14 @@ export default function ChallengeEnrollSetupPage() {
       const enrollment = await createChallengeEnrollment(firebaseUser, {
         challenge_id: detail.challenge.challenge_id,
         start_date: startDate,
-        target_days: targetDays,
+        target_days:
+          detail.challenge.challenge_id === SOCIAL_MAP_CHALLENGE_ID
+            ? Math.max(2, Math.min(4, targetDays))
+            : detail.challenge.challenge_id === SUNLIGHT_CHALLENGE_ID
+              ? Math.max(2, Math.min(3, targetDays))
+              : detail.challenge.challenge_id === CONFIDENCE_CHALLENGE_ID
+                ? 2
+            : targetDays,
         reminder_time_local: reminderTime,
         motivation_note: motivation.trim() || undefined,
       });
@@ -164,40 +189,84 @@ export default function ChallengeEnrollSetupPage() {
                 </Card>
 
                 <Card title="프로그램 설정">
-                  <div className="ms-grid ms-grid--two">
-                    <Input label="시작일" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
-                    <Input
-                      label="목표 일수"
-                      type="number"
-                      min={1}
-                      max={28}
-                      value={targetDays}
-                      onChange={(event) => setTargetDays(Math.max(1, Math.min(28, Number(event.target.value) || 1)))}
-                    />
-                    <Input
-                      label="리마인드 시간"
-                      type="time"
-                      value={reminderTime}
-                      onChange={(event) => setReminderTime(event.target.value)}
-                    />
-                    <Textarea
-                      label="시작 이유(선택)"
-                      value={motivation}
-                      onChange={(event) => setMotivation(event.target.value)}
-                      placeholder="이번 챌린지를 시작하려는 이유를 간단히 적어보세요."
-                    />
-                  </div>
+                  {detail.challenge.challenge_id === SOCIAL_MAP_CHALLENGE_ID ? (
+                    <div className="ms-social-setup">
+                      <p className="ms-card__desc">활동을 며칠 동안 진행할까요?</p>
+                      <div className="ms-social-setup__days">
+                        {[2, 3, 4].map((day) => (
+                          <button
+                            key={day}
+                            type="button"
+                            className={`ms-social-setup__day-btn ${targetDays === day ? "active" : ""}`}
+                            onClick={() => setTargetDays(day)}
+                          >
+                            {day}일
+                          </button>
+                        ))}
+                      </div>
+                      <p className="ms-social-setup__hint">{socialMapDurationHint(targetDays)}</p>
+                    </div>
+                  ) : detail.challenge.challenge_id === SUNLIGHT_CHALLENGE_ID ? (
+                    <div className="ms-social-setup">
+                      <p className="ms-card__desc">활동을 며칠 동안 진행할까요?</p>
+                      <div className="ms-social-setup__days">
+                        {[2, 3].map((day) => (
+                          <button
+                            key={day}
+                            type="button"
+                            className={`ms-social-setup__day-btn ${targetDays === day ? "active" : ""}`}
+                            onClick={() => setTargetDays(day)}
+                          >
+                            {day}일
+                          </button>
+                        ))}
+                      </div>
+                      <p className="ms-social-setup__hint">{sunlightDurationHint(targetDays)}</p>
+                    </div>
+                  ) : detail.challenge.challenge_id === CONFIDENCE_CHALLENGE_ID ? (
+                    <div className="ms-social-setup">
+                      <p className="ms-card__desc">2일 고정 프로그램</p>
+                      <p className="ms-social-setup__hint">Day1: 성취 탐색 (사전 체크 + 성취 입력 + 태그)</p>
+                      <p className="ms-social-setup__hint">Day2: 강점 정리 (핵심 선택 + 문장 + 계획 + 사후 체크)</p>
+                    </div>
+                  ) : (
+                    <div className="ms-grid ms-grid--two">
+                      <Input label="시작일" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+                      <Input
+                        label="목표 일수"
+                        type="number"
+                        min={1}
+                        max={28}
+                        value={targetDays}
+                        onChange={(event) => setTargetDays(Math.max(1, Math.min(28, Number(event.target.value) || 1)))}
+                      />
+                      <Input
+                        label="리마인드 시간"
+                        type="time"
+                        value={reminderTime}
+                        onChange={(event) => setReminderTime(event.target.value)}
+                      />
+                      <Textarea
+                        label="시작 이유(선택)"
+                        value={motivation}
+                        onChange={(event) => setMotivation(event.target.value)}
+                        placeholder="이번 챌린지를 시작하려는 이유를 간단히 적어보세요."
+                      />
+                    </div>
+                  )}
                 </Card>
 
-                <Card title="실행 단계">
-                  <div className="ms-stack">
-                    {detail.template_steps.map((step, index) => (
-                      <p key={`${step}-${index}`} className="ms-card__desc">
-                        {index + 1}. {step}
-                      </p>
-                    ))}
-                  </div>
-                </Card>
+                {detail.challenge.challenge_id === SOCIAL_MAP_CHALLENGE_ID ? null : (
+                  <Card title="실행 단계">
+                    <div className="ms-stack">
+                      {detail.template_steps.map((step, index) => (
+                        <p key={`${step}-${index}`} className="ms-card__desc">
+                          {index + 1}. {step}
+                        </p>
+                      ))}
+                    </div>
+                  </Card>
+                )}
 
                 <div className="ms-row">
                   {detail.active_enrollment ? (

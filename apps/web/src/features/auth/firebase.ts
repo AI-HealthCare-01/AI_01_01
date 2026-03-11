@@ -11,14 +11,36 @@ interface FirebaseRuntimeConfig {
 
 let emulatorConnected = false;
 
+function isTrue(value: string | undefined): boolean {
+  const normalized = (value ?? "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "y" || normalized === "on";
+}
+
+function shouldUseAuthEmulator(): boolean {
+  return isTrue(process.env.NEXT_PUBLIC_USE_FIREBASE_AUTH_EMULATOR);
+}
+
 function getFirebaseConfig(): FirebaseRuntimeConfig | null {
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "";
   const authDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ?? "";
   const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "";
   const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID ?? "";
   const messagingSenderId = process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? "";
+  const emulatorHost = (process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ?? "").trim();
+  const useAuthEmulator = shouldUseAuthEmulator();
 
   if (!apiKey || !authDomain || !projectId || !appId || !messagingSenderId) {
+    // Allow local auth emulator usage even when explicit Firebase web config is missing.
+    if (useAuthEmulator && emulatorHost) {
+      const fallbackProjectId = projectId || "demo-mindsight";
+      return {
+        apiKey: apiKey || "demo-api-key",
+        authDomain: authDomain || `${fallbackProjectId}.firebaseapp.com`,
+        projectId: fallbackProjectId,
+        appId: appId || "1:000000000000:web:0000000000000000000000",
+        messagingSenderId: messagingSenderId || "000000000000"
+      };
+    }
     return null;
   }
 
@@ -56,7 +78,9 @@ export function getFirebaseAuthClient(): Auth {
     auth.languageCode = languageCode;
   }
 
-  const emulatorHost = process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ?? "";
+  const emulatorHost = shouldUseAuthEmulator()
+    ? (process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ?? "").trim()
+    : "";
   if (emulatorHost && !emulatorConnected) {
     connectAuthEmulator(auth, `http://${emulatorHost}`, { disableWarnings: true });
     emulatorConnected = true;
@@ -66,5 +90,5 @@ export function getFirebaseAuthClient(): Auth {
 }
 
 export function isAuthEmulatorEnabled(): boolean {
-  return Boolean(process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST);
+  return shouldUseAuthEmulator() && Boolean((process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ?? "").trim());
 }

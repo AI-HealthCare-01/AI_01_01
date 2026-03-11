@@ -55,6 +55,7 @@ Docker로 한번에 실행(권장):
 - Auth Emulator: `make auth-emulator`
 - 웹: `make web-dev-emulator`
 - API: `make api-dev-emulator`
+- 빠른 실행(웹만): `npm run dev` (기본값은 실 Firebase, 에뮬레이터는 `npm run dev:web:emulator`)
 
 현재 API 저장소 기본값:
 - `AUTH_DATABASE_PATH` 기반 SQLite 파일 저장(`apps/api/.data/auth_account.db`)

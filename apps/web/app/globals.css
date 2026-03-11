@@ -238,3 +238,29 @@ select.ms-select {
   color: var(--text-primary) !important;
   border-color: var(--border-default) !important;
 }
+
+/* 앱 배경 그라데이션 다크모드 */
+[data-theme="dark"] .ms-app-shell__background {
+  background:
+    radial-gradient(
+      640px 280px at 50% 0%,
+      rgba(139, 92, 246, 0.15) 0%,
+      rgba(99, 102, 241, 0.08) 40%,
+      transparent 70%
+    ),
+    radial-gradient(
+      400px 300px at 100% 100%,
+      rgba(79, 70, 229, 0.10) 0%,
+      transparent 60%
+    ),
+    var(--bg-page) !important;
+}
+
+[data-theme="dark"] .ms-section {
+  background: var(--bg-surface) !important;
+}
+
+/* ms-home-checkin-box 내부 카드 */
+[data-theme="dark"] .ms-home-checkin-box {
+  background: var(--bg-surface) !important;
+}

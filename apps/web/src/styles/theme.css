@@ -2015,7 +2015,7 @@ a {
   width: 0;
   height: 100%;
   border-radius: var(--radius-pill);
-  background: var(--ms-challenge-slot-fill, color-mix(in oklab, white 14%, var(--color-brand-primary)));
+  background: var(--ms-challenge-slot-fill, var(--color-brand-primary));
   transition: width 0.2s ease;
 }
 
@@ -3356,7 +3356,7 @@ a {
   width: 100%;
   height: 9px;
   border-radius: var(--radius-pill);
-  background: var(--ms-challenge-track-color, color-mix(in oklab, white 60%, var(--color-semantic-border-default)));
+  background: var(--ms-challenge-track-color, var(--bg-surface));
   overflow: hidden;
 }
 
@@ -3364,7 +3364,7 @@ a {
   display: block;
   height: 100%;
   border-radius: var(--radius-pill);
-  background: color-mix(in oklab, white 14%, var(--color-brand-primary));
+  background: var(--color-brand-primary);
   transition: width 0.2s ease;
 }
 

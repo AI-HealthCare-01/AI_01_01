@@ -197,3 +197,24 @@ body {
   color: var(--text-primary);
   transition: background 0.2s ease, color 0.2s ease;
 }
+
+/* ms-* 컴포넌트 다크모드 강제 적용 */
+.ms-input,
+.ms-select,
+input.ms-input,
+select.ms-select {
+  background: var(--input-bg) !important;
+  color: var(--input-text) !important;
+  border-color: var(--input-border) !important;
+}
+
+.ms-input::placeholder {
+  color: var(--input-placeholder) !important;
+}
+
+.ms-input:-webkit-autofill,
+.ms-input:-webkit-autofill:hover,
+.ms-input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px var(--input-bg) inset !important;
+  -webkit-text-fill-color: var(--input-text) !important;
+}

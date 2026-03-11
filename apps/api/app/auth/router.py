@@ -16,6 +16,8 @@ from .models import (
     ChangeEmailAvailabilityResponse,
     DeleteAccountResponse,
     FirebaseIdentity,
+    NicknameAvailabilityRequest,
+    NicknameAvailabilityResponse,
     OnboardingProfileRequest,
     SessionBootstrapRequest,
     SessionContract,
@@ -105,6 +107,11 @@ def signup(
             coach_name=payload.coach_name,
         )
     except sqlite3.IntegrityError as exc:
+        if "nickname_already_exists" in str(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="nickname_already_exists",
+            ) from exc
         # Firebase 계정은 새로 생성되었지만 로컬 계정 쉘이 이전 UID로 남아있는 경우,
         # 이메일 기준으로 UID를 재연결해 가입 플로우를 복구한다.
         relinked = store.relink_firebase_uid_by_email(
@@ -122,6 +129,15 @@ def signup(
             status_code=status.HTTP_409_CONFLICT,
             detail="email_or_uid_already_exists",
         ) from exc
+
+
+@router.post("/auth/nickname/availability", response_model=NicknameAvailabilityResponse)
+def nickname_availability(
+    payload: NicknameAvailabilityRequest,
+    store: AuthStore = Depends(get_auth_store),
+) -> NicknameAvailabilityResponse:
+    duplicate = store.is_nickname_in_use(payload.nickname)
+    return NicknameAvailabilityResponse(is_available=not duplicate)
 
 
 @router.post("/auth/session/bootstrap", response_model=SessionContract)

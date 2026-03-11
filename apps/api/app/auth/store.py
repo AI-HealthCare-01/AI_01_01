@@ -185,6 +185,13 @@ class AuthStore:
                 (firebase_uid,),
             ).fetchone()
 
+            if self._is_nickname_in_use_conn(
+                conn,
+                nickname,
+                exclude_user_id=str(existing["user_id"]) if existing else None,
+            ):
+                raise sqlite3.IntegrityError("nickname_already_exists")
+
             if existing:
                 user_id = str(existing["user_id"])
                 conn.execute(
@@ -295,6 +302,44 @@ class AuthStore:
             )
             conn.commit()
             return self.get_session_contract_by_user_id(conn, user_id)
+
+    @staticmethod
+    def _normalize_nickname(value: str) -> str:
+        return " ".join(value.strip().split()).lower()
+
+    def _is_nickname_in_use_conn(
+        self,
+        conn: sqlite3.Connection,
+        nickname: str,
+        *,
+        exclude_user_id: str | None = None,
+    ) -> bool:
+        normalized = self._normalize_nickname(nickname)
+        if not normalized:
+            return False
+        params: list[object] = [normalized]
+        query = """
+            SELECT 1
+            FROM account_user
+            WHERE lower(trim(nickname)) = ?
+              AND account_status != ?
+        """
+        params.append(AccountStatus.deleted.value)
+        if exclude_user_id:
+            query += " AND user_id != ?"
+            params.append(exclude_user_id)
+        query += " LIMIT 1"
+        row = conn.execute(query, tuple(params)).fetchone()
+        return row is not None
+
+    def is_nickname_in_use(
+        self,
+        nickname: str,
+        *,
+        exclude_user_id: str | None = None,
+    ) -> bool:
+        with self._connect() as conn:
+            return self._is_nickname_in_use_conn(conn, nickname, exclude_user_id=exclude_user_id)
 
     def _store_signup_consents(
         self,

@@ -248,6 +248,61 @@ def test_session_bootstrap_relinks_same_email_new_uid(tmp_path) -> None:
     assert data["account"]["email"] == email
 
 
+def test_nickname_availability_and_signup_duplicate_guard(tmp_path) -> None:
+    db_path = tmp_path / "auth-nickname.sqlite3"
+
+    os.environ["AUTH_DATABASE_PATH"] = str(db_path)
+    os.environ["FIREBASE_AUTH_EMULATOR_HOST"] = "127.0.0.1:9099"
+    os.environ["AUTH_ALLOW_EMULATOR_UID_FALLBACK"] = "true"
+
+    get_auth_settings.cache_clear()
+    get_auth_store.cache_clear()
+    get_core_input_store.cache_clear()
+
+    client = TestClient(app)
+
+    available = client.post(
+        "/v1/auth/nickname/availability",
+        json={"nickname": "mind-user"},
+    )
+    assert available.status_code == 200
+    assert available.json()["is_available"] is True
+
+    signup = client.post(
+        "/v1/auth/signup",
+        json={
+            "firebase_uid": "nickname-firebase-uid-0001",
+            "email": "nickname-user@example.com",
+            "nickname": "mind-user",
+            "terms_required": True,
+            "privacy_required": True,
+            "age_required": True,
+        },
+    )
+    assert signup.status_code == 200
+
+    duplicate = client.post(
+        "/v1/auth/nickname/availability",
+        json={"nickname": "mind-user"},
+    )
+    assert duplicate.status_code == 200
+    assert duplicate.json()["is_available"] is False
+
+    duplicate_signup = client.post(
+        "/v1/auth/signup",
+        json={
+            "firebase_uid": "nickname-firebase-uid-0002",
+            "email": "nickname-user-2@example.com",
+            "nickname": "mind-user",
+            "terms_required": True,
+            "privacy_required": True,
+            "age_required": True,
+        },
+    )
+    assert duplicate_signup.status_code == 409
+    assert duplicate_signup.json()["detail"] == "nickname_already_exists"
+
+
 def test_baseline_requires_onboarding_assessment_source(tmp_path) -> None:
     db_path = tmp_path / "auth-baseline-source.sqlite3"
 

@@ -117,6 +117,14 @@ class ChangeEmailAvailabilityResponse(BaseModel):
     is_available: bool
 
 
+class NicknameAvailabilityRequest(BaseModel):
+    nickname: str = Field(min_length=2, max_length=40)
+
+
+class NicknameAvailabilityResponse(BaseModel):
+    is_available: bool
+
+
 class DeleteAccountResponse(BaseModel):
     result: str
 

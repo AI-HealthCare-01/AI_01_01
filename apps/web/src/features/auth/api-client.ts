@@ -87,6 +87,14 @@ export async function signupBootstrap(request: SignupBootstrapRequest): Promise<
   });
 }
 
+export async function checkNicknameAvailability(nickname: string): Promise<boolean> {
+  const response = await requestJson<{ is_available: boolean }>("/v1/auth/nickname/availability", {
+    method: "POST",
+    body: JSON.stringify({ nickname })
+  });
+  return Boolean(response.is_available);
+}
+
 export async function bootstrapSession(firebaseUser: User): Promise<SessionContract> {
   return requestJson<SessionContract>(
     "/v1/auth/session/bootstrap",

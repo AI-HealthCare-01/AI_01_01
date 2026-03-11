@@ -359,9 +359,9 @@ a {
   right: 0;
   min-width: 164px;
   border-radius: var(--radius-lg);
-  border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 76%, white);
-  background: color-mix(in oklab, var(--color-semantic-surface-base) 94%, white);
-  box-shadow: var(--shadow-card);
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
   padding: var(--space-1);
   display: flex;
   flex-direction: column;
@@ -382,7 +382,7 @@ a {
 }
 
 .ms-user-menu__item:hover {
-  background: color-mix(in oklab, var(--color-brand-primary-soft) 54%, white);
+  background: var(--bg-surface);
 }
 
 .ms-user-menu__item--danger {
@@ -546,10 +546,10 @@ a {
 }
 
 .ms-card {
-  border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 84%, white);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-card-shell);
-  background: color-mix(in oklab, var(--color-semantic-surface-bg) 95%, white);
-  box-shadow: var(--shadow-soft);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-md);
   padding: var(--space-4);
   display: flex;
   flex-direction: column;
@@ -679,13 +679,13 @@ a {
 }
 
 .ms-btn--secondary {
-  background: color-mix(in oklab, var(--color-semantic-surface-bg) 92%, white);
-  color: var(--color-semantic-text-primary);
-  border-color: color-mix(in oklab, var(--color-brand-primary) 26%, white);
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+  border-color: var(--border-default);
 }
 
 .ms-btn--secondary:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--color-brand-primary-soft) 62%, white);
+  filter: brightness(1.1);
 }
 
 .ms-btn--soft {
@@ -728,7 +728,7 @@ a {
 .ms-tabs__tab:focus-visible,
 .ms-chip:focus-visible,
 .ms-user-menu-trigger:focus-visible {
-  outline: var(--fx-focus-ring-width) solid color-mix(in oklab, var(--color-brand-primary) 85%, white);
+  outline: var(--fx-focus-ring-width) solid var(--border-focus);
   outline-offset: var(--fx-focus-ring-offset);
 }
 
@@ -742,8 +742,13 @@ a {
 .ms-input:disabled,
 .ms-textarea:disabled,
 .ms-select:disabled {
-  opacity: 0.56;
+  opacity: 0.6;
   cursor: not-allowed;
+}
+
+.ms-btn:disabled {
+  background: var(--btn-disabled-bg);
+  color: var(--btn-disabled-text);
 }
 
 .ms-icon-btn {
@@ -832,8 +837,8 @@ a {
   max-width: 280px;
   padding: 8px 10px;
   border-radius: 10px;
-  border: 1px solid var(--color-semantic-border-default);
-  background: var(--color-semantic-surface-bg);
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
   color: var(--color-semantic-text-secondary);
   font-size: var(--font-caption-size);
   line-height: var(--font-caption-line);
@@ -959,12 +964,14 @@ a {
   gap: var(--space-2);
   overflow-x: auto;
   padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-page);
 }
 
 .ms-tabs__tab {
-  border: 1px solid var(--color-semantic-border-default);
-  background: var(--color-semantic-surface-bg);
-  color: var(--color-semantic-text-secondary);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
   border-radius: var(--radius-pill);
   min-height: var(--control-height-tab);
   padding: 0 var(--space-3);
@@ -973,10 +980,15 @@ a {
   transition: all 0.16s ease;
 }
 
+.ms-tabs__tab:hover {
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+}
+
 .ms-tabs__tab--active {
-  color: var(--color-brand-primary);
-  background: var(--color-brand-primary-soft);
-  border-color: transparent;
+  color: var(--border-focus);
+  background: var(--bg-surface);
+  border-bottom: 2px solid var(--border-focus);
 }
 
 .ms-pill {
@@ -1051,10 +1063,10 @@ a {
 
 .ms-modal {
   width: min(100%, var(--layout-modal-max));
-  background: var(--color-semantic-surface-bg);
+  background: var(--bg-elevated);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-modal);
-  border: 1px solid var(--color-semantic-border-default);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-default);
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - var(--space-8));
@@ -1067,7 +1079,7 @@ a {
 }
 
 .ms-modal__header {
-  border-bottom: 1px solid var(--color-semantic-border-default);
+  border-bottom: 1px solid var(--border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1079,7 +1091,7 @@ a {
 }
 
 .ms-modal__footer {
-  border-top: 1px solid var(--color-semantic-border-default);
+  border-top: 1px solid var(--border-default);
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
@@ -1137,9 +1149,10 @@ a {
 
 .ms-toast {
   border-radius: var(--radius-lg);
-  border: 1px solid var(--color-semantic-border-default);
-  background: var(--color-semantic-surface-bg);
-  box-shadow: var(--shadow-modal);
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
   padding: var(--space-3) var(--space-4);
   display: flex;
   align-items: flex-start;
@@ -1159,15 +1172,15 @@ a {
 }
 
 .ms-toast--success {
-  border-color: color-mix(in oklab, var(--color-status-success) 44%, white);
+  border-left: 3px solid var(--severity-normal);
 }
 
 .ms-toast--warning {
-  border-color: color-mix(in oklab, var(--color-status-warning) 50%, white);
+  border-left: 3px solid var(--severity-mild);
 }
 
 .ms-toast--danger {
-  border-color: color-mix(in oklab, var(--color-status-danger) 50%, white);
+  border-left: 3px solid var(--severity-severe);
 }
 
 .ms-toast--info {

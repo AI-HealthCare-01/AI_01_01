@@ -264,3 +264,92 @@ select.ms-select {
 [data-theme="dark"] .ms-home-checkin-box {
   background: var(--bg-surface) !important;
 }
+
+/* 헤더 다크모드 */
+[data-theme="dark"] .ms-header,
+[data-theme="dark"] .ms-nav,
+[data-theme="dark"] .ms-app-bar,
+[data-theme="dark"] .ms-top-bar,
+[data-theme="dark"] .ms-navbar,
+[data-theme="dark"] .ms-app-shell__header,
+[data-theme="dark"] .ms-app-shell__nav,
+[data-theme="dark"] .ms-app-shell__subnav,
+[data-theme="dark"] header {
+  background: var(--bg-elevated) !important;
+  border-bottom: 1px solid var(--border-default) !important;
+}
+
+/* 네비 탭 */
+[data-theme="dark"] .ms-nav-tab,
+[data-theme="dark"] .ms-tab-item,
+[data-theme="dark"] .ms-app-shell__nav-link,
+[data-theme="dark"] .ms-app-shell__subnav-link {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .ms-nav-tab--active,
+[data-theme="dark"] .ms-tab-item--active,
+[data-theme="dark"] .ms-app-shell__nav-link--active,
+[data-theme="dark"] .ms-app-shell__subnav-link--active {
+  color: var(--text-primary) !important;
+}
+
+/* 화면별 카드/섹션 다크 오버라이드 */
+[data-theme="dark"] [class*="ms-challenge"],
+[data-theme="dark"] [class*="ms-progress"],
+[data-theme="dark"] [class*="ms-activity"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] [class*="ms-diary"],
+[data-theme="dark"] [class*="ms-journal"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+}
+
+[data-theme="dark"] [class*="ms-community"],
+[data-theme="dark"] [class*="ms-post"],
+[data-theme="dark"] [class*="ms-feed"],
+[data-theme="dark"] [class*="ms-board"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] [class*="ms-report"],
+[data-theme="dark"] [class*="ms-summary"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+}
+
+[data-theme="dark"] [class*="ms-assessment"],
+[data-theme="dark"] [class*="ms-quiz"],
+[data-theme="dark"] [class*="ms-psychological"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+}
+
+/* 다크모드 전체 카드/섹션 배경 */
+[data-theme="dark"] [class^="ms-"][class*="card"],
+[data-theme="dark"] [class^="ms-"][class*="box"],
+[data-theme="dark"] [class^="ms-"][class*="panel"],
+[data-theme="dark"] [class^="ms-"][class*="section"],
+[data-theme="dark"] [class^="ms-"][class*="item"],
+[data-theme="dark"] [class^="ms-"][class*="list"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 텍스트 공통 */
+[data-theme="dark"] [class^="ms-"] {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] [class^="ms-"] [class*="subtitle"],
+[data-theme="dark"] [class^="ms-"] [class*="desc"],
+[data-theme="dark"] [class^="ms-"] [class*="sub"] {
+  color: var(--text-secondary) !important;
+}

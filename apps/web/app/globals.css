@@ -353,3 +353,64 @@ select.ms-select {
 [data-theme="dark"] [class^="ms-"] [class*="sub"] {
   color: var(--text-secondary) !important;
 }
+
+/* 네비 탭 링크 */
+[data-theme="dark"] .ms-app-shell__nav-link {
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .ms-app-shell__nav-link--active {
+  background: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .ms-app-shell__nav-link:hover {
+  background: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 챌린지 진행 탭 바 */
+[data-theme="dark"] .progress-tab-bar {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+}
+
+[data-theme="dark"] .ptb-tab {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .ptb-tab.active {
+  background: var(--border-focus) !important;
+  color: #ffffff !important;
+}
+
+/* CBT 대화창 */
+[data-theme="dark"] [class*="cbt"],
+[data-theme="dark"] [class*="chat-area"],
+[data-theme="dark"] [class*="conversation"],
+[data-theme="dark"] [class*="ms-cbt"] {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 챌린지 진행 카드들 */
+[data-theme="dark"] [class*="progress-card"],
+[data-theme="dark"] [class*="session-card"],
+[data-theme="dark"] [class*="activity-card"],
+[data-theme="dark"] [class*="challenge-card"],
+[data-theme="dark"] [class*="challenge-progress"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 오늘의 활동 체크리스트 */
+[data-theme="dark"] [class*="today-activity"],
+[data-theme="dark"] [class*="checklist"],
+[data-theme="dark"] [class*="task-item"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}

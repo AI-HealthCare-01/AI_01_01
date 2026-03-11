@@ -76,7 +76,12 @@ function QuestionBlock({ question, selectedScore, onSelect }: QuestionBlockProps
     question.options.length >= 5 ? "ms-assessment-options ms-assessment-options--5" : "ms-assessment-options";
 
   return (
-    <div className="ms-assessment-question" role="radiogroup" aria-labelledby={labelId}>
+    <div
+      id={`question-${question.code}`}
+      className="ms-assessment-question"
+      role="radiogroup"
+      aria-labelledby={labelId}
+    >
       <p id={labelId} className="ms-assessment-question__text">
         {question.text}
       </p>
@@ -104,7 +109,7 @@ function QuestionBlock({ question, selectedScore, onSelect }: QuestionBlockProps
 
 export default function OnboardingAssessmentPage() {
   const router = useRouter();
-  const { firebaseUser, session, completeBaselineAssessment } = useAuthContext();
+  const { firebaseUser, session, completeBaselineAssessment, refreshSession } = useAuthContext();
 
   const [assessmentId, setAssessmentId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, number>>({});
@@ -157,8 +162,29 @@ export default function OnboardingAssessmentPage() {
     setAnswers((previous) => ({ ...previous, [itemCode]: score }));
   };
 
+  const findFirstUnansweredCode = (): string | null => {
+    for (const section of ASSESSMENT_SECTIONS) {
+      for (const question of section.questions) {
+        if (answers[question.code] === undefined) {
+          return question.code;
+        }
+      }
+    }
+    return null;
+  };
+
   const handleCompleteAssessment = async () => {
-    if (!firebaseUser || !assessmentId || !canComplete || isSubmitting) {
+    if (!firebaseUser || !assessmentId || isSubmitting) {
+      return;
+    }
+
+    const firstUnansweredCode = findFirstUnansweredCode();
+    if (firstUnansweredCode) {
+      setErrorMessage("응답하지 않은 문항이 있어 해당 문항으로 이동했습니다.");
+      window.setTimeout(() => {
+        const target = document.getElementById(`question-${firstUnansweredCode}`);
+        target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 0);
       return;
     }
 
@@ -189,9 +215,51 @@ export default function OnboardingAssessmentPage() {
       }
 
       const completed = await completeAssessment(firebaseUser, assessmentId);
-      await completeBaselineAssessment({ assessment_id: completed.assessment_id });
+      let baselineDone = false;
+      let lastError: unknown = null;
+      let baselineSession: Awaited<ReturnType<typeof completeBaselineAssessment>> | null = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          baselineSession = await completeBaselineAssessment({ assessment_id: completed.assessment_id });
+          baselineDone = true;
+          break;
+        } catch (error) {
+          lastError = error;
+          const code = error instanceof Error ? error.message : "";
+          if (code.includes("baseline_assessment_already_completed")) {
+            baselineDone = true;
+            break;
+          }
+          if (!code.includes("assessment_not_completed")) {
+            throw error;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+        }
+      }
 
-      router.replace("/");
+      if (!baselineDone && lastError) {
+        throw lastError;
+      }
+
+      const goHome = () => {
+        router.replace("/");
+        window.setTimeout(() => {
+          if (typeof window !== "undefined" && window.location.pathname !== "/") {
+            window.location.href = "/";
+          }
+        }, 120);
+      };
+
+      // baseline complete API가 성공(또는 이미 완료)했으면 온보딩 완료로 간주하고 즉시 홈으로 이동한다.
+      // 세션 재동기화 지연으로 onboarding에 남는 현상을 방지한다.
+      if (baselineDone || baselineSession?.account.account_status === "active") {
+        goHome();
+        return;
+      }
+
+      // 정상적으로는 여기 도달하지 않지만, 방어적으로 한 번 재조회 후 홈 이동 시도
+      await refreshSession();
+      goHome();
     } catch (error) {
       setErrorMessage(parseError(error));
     } finally {
@@ -261,7 +329,7 @@ export default function OnboardingAssessmentPage() {
                   </Card>
                 ))}
 
-                <Button type="button" onClick={handleCompleteAssessment} loading={isSubmitting} disabled={!canComplete}>
+                <Button type="button" onClick={handleCompleteAssessment} loading={isSubmitting}>
                   검사 완료하고 온보딩 마치기
                 </Button>
               </div>

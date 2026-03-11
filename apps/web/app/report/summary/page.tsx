@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AppShell,
@@ -15,6 +15,7 @@ import {
   SectionContainer,
   SegmentedControl,
 } from "../../../src/components/ui";
+import { MindLabReport } from "../../../src/components/Report/MindLabReport";
 import { AuthRouteGuard, useAuthContext } from "../../../src/features/auth";
 import {
   CommunityApiError,
@@ -24,11 +25,11 @@ import {
 } from "../../../src/features/community";
 import {
   CoreApiError,
-  exportReportSummary,
   getReportSummary,
   saveReportSummary,
   type ReportSummaryResponse,
 } from "../../../src/features/core-inputs";
+import type { ChallengeItem, MindLabReportData } from "../../../src/types/report";
 
 type PeriodPreset = "week" | "month" | "custom";
 type ExportFormat = "pdf" | "png";
@@ -135,8 +136,86 @@ function riskTypeLabel(type: string): string {
   return "기능 저하";
 }
 
+function normalizeChallengeDomain(challengeId: string): ChallengeItem["domain"] {
+  if (["sunlight-10min", "walk-10min", "water-intake"].includes(challengeId)) {
+    return "신체건강";
+  }
+  if (["confidence-list", "sensory-grounding"].includes(challengeId)) {
+    return "정서";
+  }
+  if (["interpersonal-map", "CH_SOC_001"].includes(challengeId)) {
+    return "사회";
+  }
+  return "습관";
+}
+
+function toMindLabReportData(report: ReportSummaryResponse): MindLabReportData {
+  const history = report.computed.assessments.history.map((item) => ({
+    date: item.completed_at.slice(0, 10),
+    phq9: item.phq9_total,
+    gad7: item.gad7_total,
+    isi: item.isi_total,
+  }));
+
+  const challengeList: ChallengeItem[] = [
+    ...report.computed.challenge_summary.completed_items.map((item) => ({
+      id: item.challenge_id,
+      name: item.challenge_name,
+      domain: normalizeChallengeDomain(item.challenge_id),
+      status: "completed" as const,
+    })),
+    ...report.computed.challenge_summary.dropped_items.map((item) => ({
+      id: item.challenge_id,
+      name: item.challenge_name,
+      domain: normalizeChallengeDomain(item.challenge_id),
+      status: "abandoned" as const,
+    })),
+  ];
+
+  const knownActive = challengeList.filter((item) => item.status === "active").length;
+  const placeholderActiveCount = Math.max(0, report.computed.challenge_summary.active_count - knownActive);
+  for (let i = 0; i < placeholderActiveCount; i += 1) {
+    challengeList.push({
+      id: `active-${i + 1}`,
+      name: `진행 중 챌린지 ${i + 1}`,
+      domain: "습관",
+      status: "active",
+    });
+  }
+
+  const risk = Math.max(0, Math.min(3, report.computed.risk_summary.suicide_risk_max_level)) as 0 | 1 | 2 | 3;
+
+  return {
+    period: {
+      start: report.period.start_date,
+      end: report.period.end_date,
+    },
+    latestAssessment: {
+      phq9: report.computed.assessments.latest.phq9_total,
+      gad7: report.computed.assessments.latest.gad7_total,
+      isi: report.computed.assessments.latest.isi_total,
+      daysSince: report.computed.assessments.latest.days_since ?? 999,
+    },
+    assessmentHistory: history,
+    activity: {
+      checkinDays: report.source_density.checkin_days,
+      checkinGoal: report.source_density.days_in_period,
+      cbtSessions: report.computed.cbt_summary.sessions_count,
+      cbtReflectionsPending: report.computed.cbt_summary.pending_reflection_count,
+      cbtReflectionsCompleted: report.computed.cbt_summary.completed_reflection_count,
+    },
+    challenges: {
+      activeCount: report.computed.challenge_summary.active_count,
+      completedCount: report.computed.challenge_summary.completed_items.length,
+      list: challengeList,
+    },
+    riskLevel: risk,
+  };
+}
+
 export default function ReportSummaryPage() {
   const { firebaseUser } = useAuthContext();
+  const hiddenExportRef = useRef<HTMLDivElement | null>(null);
 
   const [preset, setPreset] = useState<PeriodPreset>("month");
   const [draftRange, setDraftRange] = useState<ReportRange>(defaultRangeForPreset("month"));
@@ -206,6 +285,13 @@ export default function ReportSummaryPage() {
     );
   }, [report]);
 
+  const reportDataForExport = useMemo(() => {
+    if (!report) {
+      return null;
+    }
+    return toMindLabReportData(report);
+  }, [report]);
+
   const loadReport = useCallback(async (nextRange: ReportRange, sensitive: boolean) => {
     if (!firebaseUser) {
       return;
@@ -268,36 +354,22 @@ export default function ReportSummaryPage() {
   };
 
   const onExport = async (format: ExportFormat) => {
-    if (!firebaseUser) {
-      return;
-    }
-
-    const targetRange = activeRange;
-    if (!targetRange) {
+    if (!reportDataForExport || !hiddenExportRef.current) {
       return;
     }
 
     try {
       setDownloadKey(`current-${format}`);
       setErrorMessage(null);
-
-      const result = await exportReportSummary(firebaseUser, {
-        start_date: targetRange.start,
-        end_date: targetRange.end,
-        format,
-        include_sensitive: includeSensitive,
-        save_to_vault: activeReportSource !== "history",
-      });
-
-      const url = URL.createObjectURL(result.blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = result.filename;
-      document.body.append(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
-      await loadHistory();
+      const targetText = format === "pdf" ? "PDF 다운로드" : "PNG 다운로드";
+      const targetButton = Array.from(hiddenExportRef.current.querySelectorAll("button")).find((button) =>
+        (button.textContent || "").includes(targetText)
+      ) as HTMLButtonElement | undefined;
+      if (!targetButton) {
+        throw new Error("export_button_not_found");
+      }
+      targetButton.click();
+      await new Promise((resolve) => setTimeout(resolve, 1200));
     } catch (error) {
       setErrorMessage(parseError(error));
     } finally {
@@ -615,6 +687,12 @@ export default function ReportSummaryPage() {
                 </div>
               )}
             </Card>
+
+            {reportDataForExport ? (
+              <div className="ms-report-hidden-export" ref={hiddenExportRef} aria-hidden>
+                <MindLabReport data={reportDataForExport} />
+              </div>
+            ) : null}
 
             <Card className="ms-report-history-card" title="지난 리포트 보기">
               {historyLoading ? (

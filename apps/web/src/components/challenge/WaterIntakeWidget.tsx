@@ -60,10 +60,10 @@ function dayIndex(startDate: string): number {
 }
 
 function fishSizeByDay(dayNo: number): number {
-  if (dayNo <= 2) return 8
-  if (dayNo <= 4) return 12
-  if (dayNo <= 6) return 16
-  return 20
+  if (dayNo <= 2) return 10
+  if (dayNo <= 4) return 14
+  if (dayNo <= 6) return 18
+  return 22
 }
 
 function fishState(glasses: number, goal: number): 'need' | 'slow' | 'good' | 'great' | 'done' {

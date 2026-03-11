@@ -414,3 +414,125 @@ select.ms-select {
   border-color: var(--border-default) !important;
   color: var(--text-primary) !important;
 }
+
+[data-theme="dark"] .ms-user-menu-trigger {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 현재 페이지명 레이블 */
+[data-theme="dark"] [class*="ms-current-page"],
+[data-theme="dark"] [class*="ms-page-label"],
+[data-theme="dark"] [class*="ms-breadcrumb"] {
+  background: var(--bg-elevated) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] [class*="ms-home"][class*="hero"],
+[data-theme="dark"] [class*="ms-greeting"],
+[data-theme="dark"] [class*="ms-home-header"] {
+  border-bottom: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+/* CBT 진행단계 사이드바 */
+[data-theme="dark"] [class*="cbt-stage"],
+[data-theme="dark"] [class*="cbt-step"],
+[data-theme="dark"] [class*="cbt-panel"],
+[data-theme="dark"] [class*="cbt-session"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+/* CBT 메인 대화 영역 */
+[data-theme="dark"] [class*="chat-window"],
+[data-theme="dark"] [class*="cbt-chat"],
+[data-theme="dark"] [class*="cbt-main"] {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+}
+
+/* CBT 세션 체크포인트 우측 패널 */
+[data-theme="dark"] [class*="checkpoint"],
+[data-theme="dark"] [class*="cbt-sidebar"],
+[data-theme="dark"] [class*="session-info"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 대시보드 점수 카드 */
+[data-theme="dark"] [class*="score-card"],
+[data-theme="dark"] [class*="dashboard-card"],
+[data-theme="dark"] [class*="ms-insight"],
+[data-theme="dark"] [class*="ms-trend"] {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 데이터 부족 안내 박스 (연보라/연베이지) */
+[data-theme="dark"] [class*="ms-empty"],
+[data-theme="dark"] [class*="ms-notice"],
+[data-theme="dark"] [class*="ms-warning"],
+[data-theme="dark"] [class*="ms-alert-soft"] {
+  background: rgba(99, 102, 241, 0.12) !important;
+  border-color: rgba(99, 102, 241, 0.25) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* 리포트 빈 상태 박스 */
+[data-theme="dark"] [class*="report-empty"],
+[data-theme="dark"] [class*="ms-report"][class*="card"],
+[data-theme="dark"] [class*="ms-report"][class*="box"] {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* 기간 선택 영역 */
+[data-theme="dark"] [class*="period-select"],
+[data-theme="dark"] [class*="date-range"] {
+  background: var(--bg-elevated) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 커뮤니티 공지/태그 배지 */
+[data-theme="dark"] [class*="ms-tag"],
+[data-theme="dark"] [class*="ms-badge"],
+[data-theme="dark"] [class*="notice-tag"],
+[data-theme="dark"] [class*="post-tag"] {
+  background: rgba(99, 102, 241, 0.2) !important;
+  color: var(--text-primary) !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* 한줄일기 일기목록 빈 상태 */
+[data-theme="dark"] [class*="diary-list"],
+[data-theme="dark"] [class*="diary-empty"],
+[data-theme="dark"] [class*="journal-list"] {
+  background: var(--bg-surface) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-default) !important;
+}
+
+/* 심리검사 위험안내 박스 (베이지) */
+[data-theme="dark"] [class*="risk-alert"],
+[data-theme="dark"] [class*="ms-risk"],
+[data-theme="dark"] [class*="warning-box"] {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-color: rgba(245, 158, 11, 0.25) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 심리검사 안내 (연초록) */
+[data-theme="dark"] [class*="quiz-notice"],
+[data-theme="dark"] [class*="assessment-notice"],
+[data-theme="dark"] [class*="ms-notice--info"] {
+  background: rgba(16, 185, 129, 0.10) !important;
+  border-color: rgba(16, 185, 129, 0.20) !important;
+  color: var(--text-primary) !important;
+}

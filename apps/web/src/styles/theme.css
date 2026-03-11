@@ -31,11 +31,11 @@
   --color-status-danger: #eb7282;
   --color-status-info: #7eaef7;
 
-  --color-chart-depression: #7c6cf6;
-  --color-chart-anxiety: #f39ac1;
-  --color-chart-insomnia: #6ec7c1;
-  --color-chart-grid: #e9ecf4;
-  --color-chart-axis: #8e97ab;
+  --color-chart-depression: var(--chart-line-phq9);
+  --color-chart-anxiety: var(--chart-line-gad7);
+  --color-chart-insomnia: var(--chart-line-isi);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-axis: var(--chart-axis-text);
 
   --color-semantic-page-bg: var(--color-bg-base);
   --color-semantic-section-bg: var(--color-surface-alt);

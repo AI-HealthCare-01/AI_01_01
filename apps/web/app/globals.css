@@ -158,6 +158,22 @@
   --chart-line-phq9: #a78bfa;
   --chart-line-gad7: #818cf8;
   --chart-line-isi: #60a5fa;
+
+  /* 시맨틱 warning */
+  --color-semantic-warning-bg: rgba(245, 158, 11, 0.12);
+  --color-semantic-warning-text: rgb(252, 211, 77);
+  --color-semantic-border-default: var(--border-default);
+  --color-semantic-surface-bg: var(--bg-surface);
+
+  /* 시맨틱 success/info */
+  --color-semantic-success-bg: rgba(16, 185, 129, 0.12);
+  --color-semantic-success-text: rgb(110, 231, 183);
+  --color-semantic-info-bg: rgba(99, 102, 241, 0.12);
+  --color-semantic-info-text: rgb(165, 180, 252);
+
+  /* 시맨틱 danger */
+  --color-semantic-danger-bg: rgba(239, 68, 68, 0.12);
+  --color-semantic-danger-text: rgb(252, 165, 165);
 }
 
 /* ── 입력창 공통 기본 스타일 ── */
@@ -253,6 +269,41 @@ select.ms-select {
       transparent 60%
     ),
     rgb(11, 16, 32) !important;
+}
+
+[data-theme="dark"] .ms-banner--warning,
+[data-theme="dark"] .ms-pill--warning {
+  background: rgba(245, 158, 11, 0.12) !important;
+  color: rgb(252, 211, 77) !important;
+  border-color: rgba(245, 158, 11, 0.25) !important;
+}
+
+[data-theme="dark"] .ms-banner--info,
+[data-theme="dark"] .ms-pill--info {
+  background: rgba(99, 102, 241, 0.12) !important;
+  color: rgb(165, 180, 252) !important;
+  border-color: rgba(99, 102, 241, 0.25) !important;
+}
+
+[data-theme="dark"] .ms-banner--success,
+[data-theme="dark"] .ms-pill--success {
+  background: rgba(16, 185, 129, 0.12) !important;
+  color: rgb(110, 231, 183) !important;
+  border-color: rgba(16, 185, 129, 0.25) !important;
+}
+
+[data-theme="dark"] .ms-banner--danger,
+[data-theme="dark"] .ms-pill--danger {
+  background: rgba(239, 68, 68, 0.12) !important;
+  color: rgb(252, 165, 165) !important;
+  border-color: rgba(239, 68, 68, 0.25) !important;
+}
+
+/* ms-banner 기본 */
+[data-theme="dark"] .ms-banner {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-secondary) !important;
 }
 
 /* 챌린지 진행 카드 */

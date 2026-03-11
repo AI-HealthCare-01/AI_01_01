@@ -6164,3 +6164,58 @@ a {
 @keyframes wi-wave-move{0%{transform:translateX(0)}100%{transform:translateX(-20px)}}
 @keyframes wi-spark{0%,100%{box-shadow:0 0 0 rgba(59,130,246,0)}50%{box-shadow:0 0 16px rgba(59,130,246,.35)}}
 @keyframes wi-drop-rise{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-16px)}}
+
+/* MindLab Report */
+.mlr-root { display: flex; flex-direction: column; gap: 14px; }
+.mlr-export-row { position: sticky; top: 10px; z-index: 6; display: flex; gap: 8px; justify-content: flex-end; }
+.mlr-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.mlr-logo { font-size: 12px; color: var(--color-primary); font-weight: 700; margin: 0 0 4px; }
+.mlr-title { font-size: 22px; margin: 0 0 6px; color: var(--color-text-primary); }
+.mlr-meta { font-size: 12px; color: var(--color-text-muted); margin: 0; }
+.mlr-grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.mlr-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.mlr-status-card { position: relative; overflow: hidden; }
+.mlr-status-top { position: absolute; left: 0; right: 0; top: 0; height: 4px; }
+.mlr-status-label { font-size: 12px; color: var(--color-text-muted); margin: 8px 0 2px; }
+.mlr-status-score { font-size: 30px; font-weight: 700; margin: 0 0 4px; color: var(--color-text-primary); }
+.mlr-status-desc { font-size: 12px; color: var(--color-text-secondary); margin: 0; }
+.mlr-risk-callout { margin-top: 8px; font-size: 11px; color: #b91c1c; }
+.mlr-stack { display: flex; flex-direction: column; gap: 10px; }
+.mlr-gauge-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px; }
+.mlr-gauge-track { position: relative; height: 12px; border-radius: 999px; background: #e2e8f0; overflow: visible; }
+.mlr-gauge-fill { height: 100%; border-radius: 999px; transition: width .3s ease; }
+.mlr-gauge-marker { position: absolute; top: -16px; transform: translateX(-50%); font-size: 10px; color: var(--color-text-muted); }
+.mlr-gauge-scale { display: grid; grid-template-columns: repeat(4, 1fr); font-size: 10px; color: var(--color-text-muted); margin-top: 4px; }
+.mlr-tab-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.mlr-tab { border: 1px solid var(--color-border); background: var(--color-surface-sub); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; color: var(--color-text-secondary); }
+.mlr-tab.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.mlr-chart { width: 100%; height: auto; background: #fff; border: 1px solid var(--color-border); border-radius: 10px; }
+.mlr-delta { font-size: 13px; font-weight: 600; margin: 4px 0 8px; }
+.mlr-muted { color: var(--color-text-muted); font-size: 12px; margin: 4px 0; }
+.mlr-stat-title { font-size: 12px; color: var(--color-text-muted); margin: 0 0 4px; }
+.mlr-stat-big { font-size: 22px; font-weight: 700; color: var(--color-text-primary); margin: 0 0 6px; }
+.mlr-progress-track { height: 8px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+.mlr-progress-fill { height: 100%; width: 0; background: var(--color-primary); transition: width .3s ease; }
+.mlr-chip-wrap { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.mlr-chip { font-size: 11px; border-radius: 999px; padding: 5px 10px; background: #e2e8f0; color: #334155; }
+.mlr-chip.active { background: #dbeafe; color: #1d4ed8; }
+.mlr-chip.completed { background: #dcfce7; color: #166534; }
+.mlr-chip.abandoned { background: #e5e7eb; color: #6b7280; text-decoration: line-through; }
+.mlr-risk-line { font-size: 13px; color: #b91c1c; margin: 4px 0; }
+.mlr-insights { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 8px; color: var(--color-text-secondary); }
+
+@media (max-width: 900px) {
+  .mlr-grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mlr-grid2 { grid-template-columns: 1fr; }
+}
+.mlr-print-block { border: 1px solid var(--color-border); border-radius: 10px; padding: 12px; background: #fff; }
+.mlr-print-title { font-size: 14px; font-weight: 700; color: var(--color-text-primary); margin: 0 0 4px; }
+.mlr-print-delta { font-size: 12px; font-weight: 600; margin: 0 0 8px; }
+.ms-report-hidden-export {
+  position: fixed;
+  left: -20000px;
+  top: 0;
+  width: 1200px;
+  z-index: -1;
+  pointer-events: none;
+}

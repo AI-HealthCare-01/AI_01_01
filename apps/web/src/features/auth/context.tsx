@@ -327,7 +327,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const normalizedEmail = email.trim();
       try {
         const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
-        return bootstrapForUser(credential.user);
+        await credential.user.reload();
+        return bootstrapForUser(auth.currentUser ?? credential.user);
       } catch (error) {
         const rawCode = mapErrorCode(error);
         const classifiedCode = await classifySignInErrorCode(auth, normalizedEmail, rawCode);

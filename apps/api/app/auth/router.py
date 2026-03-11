@@ -259,12 +259,6 @@ def complete_baseline_assessment(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="profile_birth_year_required",
         )
-    if session.onboarding.baseline_assessment_completed:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="baseline_assessment_already_completed",
-        )
-
     try:
         return store.complete_baseline_assessment(
             user_id=user_id,

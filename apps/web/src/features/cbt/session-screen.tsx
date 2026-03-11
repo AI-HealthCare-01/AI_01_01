@@ -59,6 +59,7 @@ const TODO_NONE_LABEL = "정하지 않음";
 const CBT_HISTORY_WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
 const CBT_TURN_PAYLOAD_LIMIT = 120;
 const CBT_SAVE_PAYLOAD_LIMIT = 180;
+const CBT_COMPLETED_SESSION_PREFIX = "mindlab_cbt_completed_session";
 
 const RISK_LEVEL_META: Record<
   0 | 1 | 2 | 3,
@@ -128,6 +129,32 @@ function getKstYearMonth(value = new Date()): YearMonth {
     year: getPart("year"),
     month: getPart("month"),
   };
+}
+
+function getKstDateString(value = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+
+  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? "0");
+
+  return `${getPart("year")}-${String(getPart("month")).padStart(2, "0")}-${String(getPart("day")).padStart(2, "0")}`;
+}
+
+function isSameKstDate(dateLike: string | Date, targetDate: string): boolean {
+  const value = typeof dateLike === "string" ? new Date(dateLike) : dateLike;
+  if (Number.isNaN(value.getTime())) {
+    return false;
+  }
+  return getKstDateString(value) === targetDate;
+}
+
+function getCompletedSessionStorageKey(uid: string): string {
+  return `${CBT_COMPLETED_SESSION_PREFIX}:${uid}`;
 }
 
 function shiftMonth(cursor: YearMonth, offset: number): YearMonth {
@@ -220,6 +247,7 @@ export default function CbtSessionScreen() {
   const threadRef = useRef<HTMLDivElement | null>(null);
   const isMountedRef = useRef(true);
   const seenAssistantMessageIdsRef = useRef<Set<string>>(new Set());
+  const autoSaveTriggeredRef = useRef(false);
 
   const [activeTab, setActiveTab] = useState<CbtTab>("chat");
   const [messages, setMessages] = useState<CbtConversationMessage[]>([]);
@@ -249,11 +277,13 @@ export default function CbtSessionScreen() {
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [savedSession, setSavedSession] = useState<CbtSessionResponse | null>(null);
   const [conversationClosed, setConversationClosed] = useState(false);
   const [savedSessions, setSavedSessions] = useState<CbtSessionResponse[]>([]);
   const [pendingReflections, setPendingReflections] = useState<CbtSessionResponse[]>([]);
   const [loadingCollections, setLoadingCollections] = useState(false);
+  const [todayKstDate, setTodayKstDate] = useState(() => getKstDateString());
 
   const [selectedReflectionSessionId, setSelectedReflectionSessionId] = useState<string | null>(null);
   const [reflectionPerformed, setReflectionPerformed] = useState<"" | "yes" | "no">("");
@@ -483,6 +513,34 @@ export default function CbtSessionScreen() {
     }
   }, [historyRecentSessions, historySelectedSessionId]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const nextDate = getKstDateString();
+      setTodayKstDate((previous) => (previous === nextDate ? previous : nextDate));
+    }, 60_000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!firebaseUser || typeof window === "undefined") {
+      return;
+    }
+    const storageKey = getCompletedSessionStorageKey(firebaseUser.uid);
+    const raw = window.sessionStorage.getItem(storageKey);
+    if (!raw) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as { date?: string; session?: CbtSessionResponse | null };
+      if (parsed.date !== todayKstDate) {
+        window.sessionStorage.removeItem(storageKey);
+      }
+    } catch {
+      window.sessionStorage.removeItem(storageKey);
+    }
+  }, [firebaseUser, todayKstDate]);
+
   const streamAssistantResponse = async (fullText: string) => {
     const normalized = fullText.trim();
     if (!normalized) {
@@ -510,7 +568,7 @@ export default function CbtSessionScreen() {
 
   const loadCollections = async () => {
     if (!firebaseUser) {
-      return;
+      return { sessions: [], pending: [] };
     }
     try {
       setLoadingCollections(true);
@@ -520,8 +578,10 @@ export default function CbtSessionScreen() {
       ]);
       setSavedSessions(sessions);
       setPendingReflections(pending);
+      return { sessions, pending };
     } catch (error) {
       setErrorMessage(parseError(error));
+      return { sessions: [], pending: [] };
     } finally {
       setLoadingCollections(false);
     }
@@ -531,9 +591,77 @@ export default function CbtSessionScreen() {
     if (!firebaseUser) {
       return;
     }
-    void loadCollections();
     void (async () => {
       try {
+        const storageKey = getCompletedSessionStorageKey(firebaseUser.uid);
+        const cachedCompletedSessionRaw =
+          typeof window !== "undefined" ? window.sessionStorage.getItem(storageKey) : null;
+        if (cachedCompletedSessionRaw) {
+          try {
+            const cached = JSON.parse(cachedCompletedSessionRaw) as {
+              date?: string;
+              session?: CbtSessionResponse | null;
+            };
+            if (cached.date === todayKstDate && cached.session) {
+              seenAssistantMessageIdsRef.current.clear();
+              setMessages([]);
+              setMessageInput("");
+              setDraftState({});
+              setPlannerAction(null);
+              setCurrentStage("summary");
+              setCurrentSubphase("locked");
+              setCurrentPhaseIndex(CBT_STEPS.length - 1);
+              setQuickReplies([]);
+              setActionLinks([]);
+              setRequiresTodayRecord(false);
+              setTodayRecordRoute(null);
+              setSavedSession(cached.session);
+              setConversationClosed(true);
+              setRiskLevel(cached.session.risk_level);
+              setSafetyMessage(cached.session.safety_message);
+              setInfoMessage("오늘 CBT 세션은 이미 저장되었습니다. 자정 이후 다시 시작할 수 있습니다.");
+              setNoticeMessage(null);
+              return;
+            }
+          } catch {
+            if (typeof window !== "undefined") {
+              window.sessionStorage.removeItem(storageKey);
+            }
+          }
+        }
+
+        const collections = await loadCollections();
+        if (!isMountedRef.current) {
+          return;
+        }
+        const latestTodaySession =
+          collections.sessions.find(
+            (session) => session.date === todayKstDate || isSameKstDate(session.started_at, todayKstDate),
+          ) ?? null;
+
+        if (latestTodaySession) {
+          seenAssistantMessageIdsRef.current.clear();
+          autoSaveTriggeredRef.current = true;
+          setMessages([]);
+          setMessageInput("");
+          setDraftState({});
+          setPlannerAction(null);
+          setCurrentStage("summary");
+          setCurrentSubphase("locked");
+          setCurrentPhaseIndex(CBT_STEPS.length - 1);
+          setQuickReplies([]);
+          setActionLinks([]);
+          setRequiresTodayRecord(false);
+          setTodayRecordRoute(null);
+          setSavedSession(latestTodaySession);
+          setConversationClosed(true);
+          setRiskLevel(latestTodaySession.risk_level);
+          setSafetyMessage(latestTodaySession.safety_message);
+          setInfoMessage("오늘 CBT 세션은 이미 저장되었습니다. 자정 이후 다시 시작할 수 있습니다.");
+          setNoticeMessage(null);
+          return;
+        }
+
         const bootstrap = await getCbtConversationBootstrap(firebaseUser);
         if (!isMountedRef.current) {
           return;
@@ -568,8 +696,10 @@ export default function CbtSessionScreen() {
             message_id: item.message_id || createLocalMessageId("asst"),
           })),
         );
+        autoSaveTriggeredRef.current = false;
         setConversationClosed(false);
         setSavedSession(null);
+        setInfoMessage(null);
         setNoticeMessage(null);
       } catch (error) {
         if (isMountedRef.current) {
@@ -578,7 +708,7 @@ export default function CbtSessionScreen() {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firebaseUser]);
+  }, [firebaseUser, todayKstDate]);
 
   const applyTurnState = (
     turn: Pick<
@@ -675,6 +805,7 @@ export default function CbtSessionScreen() {
     setMessages(nextMessages);
     setMessageInput("");
     setErrorMessage(null);
+    setInfoMessage(null);
     setNoticeMessage(null);
 
     try {
@@ -769,12 +900,13 @@ export default function CbtSessionScreen() {
     try {
       setSaving(true);
       setErrorMessage(null);
+      setInfoMessage(null);
       setNoticeMessage(null);
 
       const selectedAction = resolveSelectedActionPayload();
       const saveMessages = trimConversationMessages(messages, CBT_SAVE_PAYLOAD_LIMIT);
       const response = await createCbtSession(firebaseUser, {
-        date: isoNow().slice(0, 10),
+        date: todayKstDate,
         conversation: saveMessages,
         state: draftState,
         duration_sec: Math.min(3600, Math.max(420, messages.length * 110)),
@@ -796,11 +928,22 @@ export default function CbtSessionScreen() {
         ...selectedAction,
       });
 
+      autoSaveTriggeredRef.current = true;
       setSavedSession(response);
       setRiskLevel(response.risk_level);
       setSafetyMessage(response.safety_message);
       setConversationClosed(true);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(
+          getCompletedSessionStorageKey(firebaseUser.uid),
+          JSON.stringify({
+            date: todayKstDate,
+            session: response,
+          }),
+        );
+      }
       await loadCollections();
+      setInfoMessage("오늘 CBT 세션은 저장 완료 상태입니다. 자정 이후 다시 시작할 수 있습니다.");
       setNoticeMessage("세션을 저장했고 대화를 마무리했습니다.");
     } catch (error) {
       setErrorMessage(parseError(error));
@@ -808,6 +951,20 @@ export default function CbtSessionScreen() {
       setSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!conversationClosed || savedSession || saving || userMessageCount < 1) {
+      if (!conversationClosed && !saving) {
+        autoSaveTriggeredRef.current = false;
+      }
+      return;
+    }
+    if (autoSaveTriggeredRef.current) {
+      return;
+    }
+    autoSaveTriggeredRef.current = true;
+    void saveSession();
+  }, [conversationClosed, savedSession, saving, userMessageCount]);
 
   const saveReflection = async () => {
     if (!firebaseUser || !selectedReflection || savingReflection) {
@@ -825,6 +982,7 @@ export default function CbtSessionScreen() {
     try {
       setSavingReflection(true);
       setErrorMessage(null);
+      setInfoMessage(null);
       setNoticeMessage(null);
       const updated = await saveCbtSessionReflection(firebaseUser, selectedReflection.session_id, {
         performed: reflectionPerformed === "yes",
@@ -879,6 +1037,7 @@ export default function CbtSessionScreen() {
         <PageContainer size="lg">
           <SectionContainer title="CBT 대화" description="상황 정리부터 균형 생각과 마무리 조언까지 차례대로 진행합니다.">
             {errorMessage ? <Banner variant="danger" title="오류" description={errorMessage} /> : null}
+            {infoMessage ? <Banner variant="info" title="안내" description={infoMessage} /> : null}
             {noticeMessage ? <Banner variant="success" title="저장 완료" description={noticeMessage} /> : null}
             {riskLevel >= 2 ? (
               <Banner
@@ -1127,8 +1286,8 @@ export default function CbtSessionScreen() {
                       </Card>
                     </div>
 
-                    <Button fullWidth onClick={saveSession} loading={saving} disabled={userMessageCount < 1 || conversationClosed}>
-                      {conversationClosed ? "세션 저장 완료" : "세션 저장하기"}
+                    <Button fullWidth onClick={saveSession} loading={saving} disabled={userMessageCount < 1 || conversationClosed || saving}>
+                      {saving ? "세션 저장 중" : conversationClosed ? "세션 저장 완료" : "세션 저장하기"}
                     </Button>
                   </aside>
                 </div>

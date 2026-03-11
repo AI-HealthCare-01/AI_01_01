@@ -27,6 +27,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: staging
+    env:
+      ROLE_ARN: ${{ secrets.AWS_GHA_ROLE_ARN_STAGING }}
 
     steps:
       - name: Checkout
@@ -34,7 +36,6 @@ jobs:
 
       - name: Validate AWS auth configuration
         env:
-          ROLE_ARN: ${{ secrets.AWS_GHA_ROLE_ARN_STAGING }}
           AWS_ACCESS_KEY_ID_STAGING: ${{ secrets.AWS_ACCESS_KEY_ID_STAGING }}
           AWS_SECRET_ACCESS_KEY_STAGING: ${{ secrets.AWS_SECRET_ACCESS_KEY_STAGING }}
         run: |
@@ -53,15 +54,15 @@ jobs:
           exit 1
 
       - name: Configure AWS credentials via OIDC
-        if: ${{ secrets.AWS_GHA_ROLE_ARN_STAGING != '' }}
+        if: ${{ env.ROLE_ARN != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_GHA_ROLE_ARN_STAGING }}
+          role-to-assume: ${{ env.ROLE_ARN }}
           role-session-name: github-actions-staging-deploy
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Configure AWS credentials via static keys
-        if: ${{ secrets.AWS_GHA_ROLE_ARN_STAGING == '' }}
+        if: ${{ env.ROLE_ARN == '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_STAGING }}

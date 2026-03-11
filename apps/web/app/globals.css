@@ -220,7 +220,6 @@ select.ms-select {
 }
 
 /* 앱 셸 래퍼 다크모드 강제 적용 */
-.ms-app-shell__surface,
 .ms-board-ops-inline,
 .ms-board-cafe-list {
   background: var(--bg-page) !important;
@@ -244,16 +243,20 @@ select.ms-select {
   background:
     radial-gradient(
       640px 280px at 50% 0%,
-      rgba(139, 92, 246, 0.15) 0%,
-      rgba(99, 102, 241, 0.08) 40%,
+      rgba(139, 92, 246, 0.18) 0%,
+      rgba(99, 102, 241, 0.09) 40%,
       transparent 70%
     ),
     radial-gradient(
       400px 300px at 100% 100%,
-      rgba(79, 70, 229, 0.10) 0%,
+      rgba(79, 70, 229, 0.12) 0%,
       transparent 60%
     ),
-    var(--bg-page) !important;
+    rgb(11, 16, 32) !important;
+}
+
+[data-theme="dark"] .ms-app-shell__surface {
+  background: transparent !important;
 }
 
 [data-theme="dark"] .ms-section {

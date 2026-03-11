@@ -1,1 +1,199 @@
 @import "../src/styles/theme.css";
+
+:root {
+  /* ── 배경 레이어 ── */
+  --bg-page: #ffffff;
+  --bg-surface: #f8f9fc;
+  --bg-elevated: #ffffff;
+  --bg-overlay: rgba(0, 0, 0, 0.4);
+
+  /* ── 텍스트 ── */
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --text-inverse: #ffffff;
+
+  /* ── 테두리 ── */
+  --border-default: #e5e7eb;
+  --border-strong: #d1d5db;
+  --border-focus: #8b5cf6;
+
+  /* ── 입력창 ── */
+  --input-bg: #ffffff;
+  --input-text: #111827;
+  --input-placeholder: #9ca3af;
+  --input-border: #e5e7eb;
+
+  /* ── 버튼 ── */
+  --btn-primary-bg: linear-gradient(135deg, #8b5cf6, #6366f1);
+  --btn-primary-text: #ffffff;
+  --btn-secondary-bg: #f3f4f6;
+  --btn-secondary-text: #374151;
+  --btn-disabled-bg: #e5e7eb;
+  --btn-disabled-text: #9ca3af;
+
+  /* ── 그림자 ── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.1);
+
+  /* ── 심각도 (라이트/다크 공통) ── */
+  --severity-normal: #10b981;
+  --severity-mild: #fbbf24;
+  --severity-moderate: #f97316;
+  --severity-severe: #ef4444;
+  --severity-critical: #7c3aed;
+
+  /* ── 챌린지 위젯 ── */
+  --sunlight-primary: #f6ad55;
+  --sunlight-bg: #fffbeb;
+  --sunlight-accent: #ed8936;
+  --walk-primary: #68d391;
+  --walk-bg: #f0fff4;
+  --walk-accent: #38a169;
+  --confidence-primary: #b794f4;
+  --confidence-bg: #faf5ff;
+  --confidence-accent: #805ad5;
+  --water-primary: #3b82f6;
+  --water-bg: #eff6ff;
+  --water-accent: #1d4ed8;
+  --water-light: #bfdbfe;
+  --sensory-primary: #f97316;
+  --sensory-bg: #fff7ed;
+  --sensory-accent: #ea580c;
+
+  /* ── 어항(WaterIntake) ── */
+  --tank-bg: #f0f9ff;
+  --tank-border: #bfdbfe;
+  --tank-water-low: #bfdbfe;
+  --tank-water-mid: #60a5fa;
+  --tank-water-full: #3b82f6;
+  --tank-sand: #f59e0b;
+
+  /* ── 리포트 차트 ── */
+  --chart-axis-text: #6b7280;
+  --chart-grid: #f3f4f6;
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-text: #111827;
+  --chart-line-phq9: #8b5cf6;
+  --chart-line-gad7: #6366f1;
+  --chart-line-isi: #3b82f6;
+}
+
+[data-theme="dark"] {
+  /* ── 배경 레이어 ── */
+  --bg-page: #0b1020;
+  --bg-surface: #121a2c;
+  --bg-elevated: #1a2238;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+
+  /* ── 텍스트 ── */
+  --text-primary: #f3f4f6;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --text-inverse: #111827;
+
+  /* ── 테두리 ── */
+  --border-default: #2a344a;
+  --border-strong: #374151;
+  --border-focus: #a78bfa;
+
+  /* ── 입력창 ── */
+  --input-bg: #121a2c;
+  --input-text: #f3f4f6;
+  --input-placeholder: #71717a;
+  --input-border: #2a344a;
+
+  /* ── 버튼 ── */
+  --btn-primary-bg: linear-gradient(135deg, #7c3aed, #4f46e5);
+  --btn-primary-text: #ffffff;
+  --btn-secondary-bg: #1a2238;
+  --btn-secondary-text: #d1d5db;
+  --btn-disabled-bg: #1f2937;
+  --btn-disabled-text: #4b5563;
+
+  /* ── 그림자 ── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  /* ── 심각도 (라이트/다크 공통 유지) ── */
+  --severity-normal: #10b981;
+  --severity-mild: #fbbf24;
+  --severity-moderate: #f97316;
+  --severity-severe: #ef4444;
+  --severity-critical: #7c3aed;
+
+  /* ── 챌린지 위젯 다크 ── */
+  --sunlight-primary: #f6ad55;
+  --sunlight-bg: #1c1507;
+  --sunlight-accent: #d97706;
+  --walk-primary: #68d391;
+  --walk-bg: #071a0e;
+  --walk-accent: #276749;
+  --confidence-primary: #b794f4;
+  --confidence-bg: #120a1f;
+  --confidence-accent: #6d28d9;
+  --water-primary: #60a5fa;
+  --water-bg: #071020;
+  --water-accent: #1d4ed8;
+  --water-light: #1e3a5f;
+  --sensory-primary: #fb923c;
+  --sensory-bg: #1c0e03;
+  --sensory-accent: #c2410c;
+
+  /* ── 어항(WaterIntake) 다크 ── */
+  --tank-bg: #0c1a2e;
+  --tank-border: #1e3a5f;
+  --tank-water-low: #1e3a5f;
+  --tank-water-mid: #1d4ed8;
+  --tank-water-full: #1e40af;
+  --tank-sand: #92400e;
+
+  /* ── 리포트 차트 다크 ── */
+  --chart-axis-text: #a1a1aa;
+  --chart-grid: #1f2937;
+  --chart-tooltip-bg: #1a2238;
+  --chart-tooltip-text: #f3f4f6;
+  --chart-line-phq9: #a78bfa;
+  --chart-line-gad7: #818cf8;
+  --chart-line-isi: #60a5fa;
+}
+
+/* ── 입력창 공통 기본 스타일 ── */
+input,
+textarea,
+select {
+  background: var(--input-bg);
+  color: var(--input-text);
+  border: 1px solid var(--input-border);
+  transition: border-color 0.2s;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--input-placeholder);
+}
+
+/* autofill 노란 배경 방지 */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px var(--input-bg) inset;
+  -webkit-text-fill-color: var(--input-text);
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15);
+}
+
+body {
+  background: var(--bg-page);
+  color: var(--text-primary);
+  transition: background 0.2s ease, color 0.2s ease;
+}

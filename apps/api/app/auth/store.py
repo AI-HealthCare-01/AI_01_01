@@ -655,7 +655,36 @@ class AuthStore:
                 (user_id,),
             ).fetchone()
             if existing_baseline:
-                raise ValueError("baseline_assessment_already_completed")
+                # Idempotent completion: baseline row exists but onboarding/account state may be stale.
+                conn.execute(
+                    """
+                    INSERT INTO account_onboarding (
+                      user_id,
+                      onboarding_status,
+                      baseline_assessment_completed,
+                      dashboard_bootstrapped,
+                      model_bootstrapped,
+                      updated_at
+                    ) VALUES (?, ?, 1, 1, 1, ?)
+                    ON CONFLICT(user_id) DO UPDATE SET
+                      onboarding_status = excluded.onboarding_status,
+                      baseline_assessment_completed = excluded.baseline_assessment_completed,
+                      dashboard_bootstrapped = excluded.dashboard_bootstrapped,
+                      model_bootstrapped = excluded.model_bootstrapped,
+                      updated_at = excluded.updated_at
+                    """,
+                    (user_id, OnboardingStatus.complete.value, self._now_iso()),
+                )
+                conn.execute(
+                    """
+                    UPDATE account_user
+                    SET account_status = ?, updated_at = ?
+                    WHERE user_id = ?
+                    """,
+                    (AccountStatus.active.value, self._now_iso(), user_id),
+                )
+                conn.commit()
+                return self.get_session_contract_by_user_id(conn, user_id)
 
             try:
                 assessment = conn.execute(

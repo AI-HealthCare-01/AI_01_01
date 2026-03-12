@@ -51,10 +51,9 @@ interface Props {
   onChange?: (summary: string) => void
   onComplete?: (state: InterpersonalMapState) => Promise<void> | void
   redirectPath?: string
-  storageKey?: string
 }
 
-const DEFAULT_STORAGE_KEY = 'interpersonal_map_v4'
+const STORAGE_KEY = 'interpersonal_map_v4'
 const WIDTH = 340
 const HEIGHT = 300
 
@@ -219,13 +218,13 @@ export function BubbleChart({ nodes, showLegend = false, readOnly = false, width
         aria-label="관계 버블 지도"
         style={{ width: width ? `${width}px` : undefined, height: height ? `${height}px` : undefined }}
       >
-        <rect x="0" y="0" width="170" height="150" fill="#FFF5F5" />
-        <rect x="170" y="0" width="170" height="150" fill="#EBF8FF" />
-        <rect x="0" y="150" width="170" height="150" fill="#F0FFF4" />
-        <rect x="170" y="150" width="170" height="150" fill="#FAF5FF" />
+        <rect x="0" y="0" width="170" height="150" fill="var(--bg-elevated)" />
+        <rect x="170" y="0" width="170" height="150" fill="var(--bg-elevated)" />
+        <rect x="0" y="150" width="170" height="150" fill="var(--bg-elevated)" />
+        <rect x="170" y="150" width="170" height="150" fill="var(--bg-elevated)" />
 
-        <line x1="170" y1="0" x2="170" y2="300" stroke="#E9D8FD" strokeDasharray="4 4" />
-        <line x1="0" y1="150" x2="340" y2="150" stroke="#E9D8FD" strokeDasharray="4 4" />
+        <line x1="170" y1="0" x2="170" y2="300" stroke="var(--border-default)" strokeDasharray="4 4" />
+        <line x1="0" y1="150" x2="340" y2="150" stroke="var(--border-default)" strokeDasharray="4 4" />
 
         <text x="12" y="22" className="imw-chart-label">가족</text>
         <text x="182" y="22" className="imw-chart-label">친구</text>
@@ -240,13 +239,13 @@ export function BubbleChart({ nodes, showLegend = false, readOnly = false, width
                 cy={node.y}
                 r={node.r + 6}
                 fill="none"
-                stroke="#F6AD55"
+                stroke="var(--sunlight-primary)"
                 strokeWidth="2"
                 strokeDasharray="4 3"
               />
             ) : null}
             {node.isCore ? (
-              <circle cx={node.x} cy={node.y} r={node.r + 3} fill="none" stroke="#FFD166" strokeWidth="3" />
+              <circle cx={node.x} cy={node.y} r={node.r + 3} fill="none" stroke="var(--sunlight-accent)" strokeWidth="3" />
             ) : null}
             <circle cx={node.x} cy={node.y} r={node.r} fill={node.color} opacity="0.92" />
             <text x={node.x} y={node.y + 4} textAnchor="middle" className="imw-chart-node-text">
@@ -274,12 +273,7 @@ export function BubbleChart({ nodes, showLegend = false, readOnly = false, width
   )
 }
 
-export function InterpersonalMapWidget({
-  onChange,
-  onComplete,
-  redirectPath = '/challenge',
-  storageKey = DEFAULT_STORAGE_KEY,
-}: Props) {
+export function InterpersonalMapWidget({ onChange, onComplete, redirectPath = '/challenge' }: Props) {
   const router = useRouter()
 
   const [stage, setStage] = useState<'start' | 'active' | 'done'>('start')
@@ -304,12 +298,12 @@ export function InterpersonalMapWidget({
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const stored = parseStoredData(window.localStorage.getItem(storageKey))
+    const stored = parseStoredData(window.localStorage.getItem(STORAGE_KEY))
     setHistory(stored.history)
     setPreviousPeople(stored.lastPeople)
     setPreviousPlacements(stored.lastPlacements)
     setPreviousCloseness(stored.lastCloseness)
-  }, [storageKey])
+  }, [])
 
   useEffect(() => {
     if (step !== 1 || !mood || stage !== 'active') return
@@ -400,7 +394,7 @@ export function InterpersonalMapWidget({
       lastCloseness: closeness,
     }
 
-    window.localStorage.setItem(storageKey, JSON.stringify(payload))
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
     setHistory(nextHistory)
     setPreviousPeople(people)
     setPreviousPlacements(placements)
@@ -490,7 +484,7 @@ export function InterpersonalMapWidget({
 
   const clearSavedData = () => {
     if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(storageKey)
+      window.localStorage.removeItem(STORAGE_KEY)
     }
     setHistory([])
     setPreviousPeople([])

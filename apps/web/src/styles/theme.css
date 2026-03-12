@@ -31,11 +31,23 @@
   --color-status-danger: #eb7282;
   --color-status-info: #7eaef7;
 
-  --color-chart-depression: #7c6cf6;
-  --color-chart-anxiety: #f39ac1;
-  --color-chart-insomnia: #6ec7c1;
-  --color-chart-grid: #e9ecf4;
-  --color-chart-axis: #8e97ab;
+  --color-chart-depression: var(--chart-line-phq9);
+  --color-chart-anxiety: var(--chart-line-gad7);
+  --color-chart-insomnia: var(--chart-line-isi);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-axis: var(--chart-axis-text);
+
+  /* Backward-compatible aliases for challenge progress widgets */
+  --color-bg: var(--color-semantic-page-bg);
+  --color-surface: var(--color-semantic-surface-bg);
+  --color-surface-sub: var(--color-semantic-surface-muted);
+  --color-border: var(--color-semantic-border-default);
+  --color-primary: var(--color-brand-primary);
+  --color-primary-light: var(--color-brand-primary-soft);
+  --color-sage: color-mix(in oklab, var(--color-status-success) 76%, black);
+  --color-sage-light: color-mix(in oklab, var(--color-status-success) 18%, white);
+  --color-text-muted: var(--color-text-tertiary);
+  --color-shadow: 0 2px 8px rgba(44, 44, 58, 0.06);
 
   /* Backward-compatible aliases for challenge progress widgets */
   --color-bg: var(--color-semantic-page-bg);
@@ -371,9 +383,9 @@ a {
   right: 0;
   min-width: 164px;
   border-radius: var(--radius-lg);
-  border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 76%, white);
-  background: color-mix(in oklab, var(--color-semantic-surface-base) 94%, white);
-  box-shadow: var(--shadow-card);
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
   padding: var(--space-1);
   display: flex;
   flex-direction: column;
@@ -394,7 +406,7 @@ a {
 }
 
 .ms-user-menu__item:hover {
-  background: color-mix(in oklab, var(--color-brand-primary-soft) 54%, white);
+  background: var(--bg-surface);
 }
 
 .ms-user-menu__item--danger {
@@ -472,9 +484,7 @@ a {
   margin: 0 auto;
   border-radius: var(--radius-app-surface);
   border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 82%, white);
-  background:
-    var(--gradient-glass-streak),
-    color-mix(in oklab, var(--color-semantic-surface-glass) 90%, white);
+  background: var(--bg-page);
   box-shadow: var(--shadow-app-surface);
   padding: var(--space-4);
 }
@@ -558,10 +568,10 @@ a {
 }
 
 .ms-card {
-  border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 84%, white);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-card-shell);
-  background: color-mix(in oklab, var(--color-semantic-surface-bg) 95%, white);
-  box-shadow: var(--shadow-soft);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-md);
   padding: var(--space-4);
   display: flex;
   flex-direction: column;
@@ -691,13 +701,13 @@ a {
 }
 
 .ms-btn--secondary {
-  background: color-mix(in oklab, var(--color-semantic-surface-bg) 92%, white);
-  color: var(--color-semantic-text-primary);
-  border-color: color-mix(in oklab, var(--color-brand-primary) 26%, white);
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+  border-color: var(--border-default);
 }
 
 .ms-btn--secondary:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--color-brand-primary-soft) 62%, white);
+  filter: brightness(1.1);
 }
 
 .ms-btn--soft {
@@ -740,7 +750,7 @@ a {
 .ms-tabs__tab:focus-visible,
 .ms-chip:focus-visible,
 .ms-user-menu-trigger:focus-visible {
-  outline: var(--fx-focus-ring-width) solid color-mix(in oklab, var(--color-brand-primary) 85%, white);
+  outline: var(--fx-focus-ring-width) solid var(--border-focus);
   outline-offset: var(--fx-focus-ring-offset);
 }
 
@@ -754,8 +764,13 @@ a {
 .ms-input:disabled,
 .ms-textarea:disabled,
 .ms-select:disabled {
-  opacity: 0.56;
+  opacity: 0.6;
   cursor: not-allowed;
+}
+
+.ms-btn:disabled {
+  background: var(--btn-disabled-bg);
+  color: var(--btn-disabled-text);
 }
 
 .ms-icon-btn {
@@ -844,8 +859,8 @@ a {
   max-width: 280px;
   padding: 8px 10px;
   border-radius: 10px;
-  border: 1px solid var(--color-semantic-border-default);
-  background: var(--color-semantic-surface-bg);
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
   color: var(--color-semantic-text-secondary);
   font-size: var(--font-caption-size);
   line-height: var(--font-caption-line);
@@ -878,15 +893,20 @@ a {
 .ms-textarea,
 .ms-select {
   width: 100%;
-  border: 1px solid var(--color-semantic-border-default);
-  background: var(--color-semantic-surface-bg);
-  color: var(--color-semantic-text-primary);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--input-text);
   border-radius: var(--radius-md);
   font-family: inherit;
   font-size: var(--font-body-md-size);
   line-height: var(--font-body-md-line);
   font-weight: var(--font-body-md-weight);
   padding: 0 var(--space-3);
+}
+
+.ms-input::placeholder,
+.ms-textarea::placeholder {
+  color: var(--input-placeholder);
 }
 
 .ms-input,
@@ -925,6 +945,20 @@ a {
 .ms-field--error .ms-textarea,
 .ms-field--error .ms-select {
   border-color: color-mix(in oklab, var(--color-status-danger) 74%, white);
+}
+
+.ms-input:focus,
+.ms-select:focus,
+.ms-textarea:focus {
+  border-color: var(--border-focus);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15);
+}
+
+.ms-input:-webkit-autofill,
+.ms-input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--input-bg) inset;
+  -webkit-text-fill-color: var(--input-text);
 }
 
 .ms-segmented {
@@ -971,12 +1005,14 @@ a {
   gap: var(--space-2);
   overflow-x: auto;
   padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-page);
 }
 
 .ms-tabs__tab {
-  border: 1px solid var(--color-semantic-border-default);
-  background: var(--color-semantic-surface-bg);
-  color: var(--color-semantic-text-secondary);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
   border-radius: var(--radius-pill);
   min-height: var(--control-height-tab);
   padding: 0 var(--space-3);
@@ -985,10 +1021,15 @@ a {
   transition: all 0.16s ease;
 }
 
+.ms-tabs__tab:hover {
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+}
+
 .ms-tabs__tab--active {
-  color: var(--color-brand-primary);
-  background: var(--color-brand-primary-soft);
-  border-color: transparent;
+  color: var(--border-focus);
+  background: var(--bg-surface);
+  border-bottom: 2px solid var(--border-focus);
 }
 
 .ms-pill {
@@ -1063,10 +1104,10 @@ a {
 
 .ms-modal {
   width: min(100%, var(--layout-modal-max));
-  background: var(--color-semantic-surface-bg);
+  background: var(--bg-elevated);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-modal);
-  border: 1px solid var(--color-semantic-border-default);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-default);
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - var(--space-8));
@@ -1079,7 +1120,7 @@ a {
 }
 
 .ms-modal__header {
-  border-bottom: 1px solid var(--color-semantic-border-default);
+  border-bottom: 1px solid var(--border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1091,7 +1132,7 @@ a {
 }
 
 .ms-modal__footer {
-  border-top: 1px solid var(--color-semantic-border-default);
+  border-top: 1px solid var(--border-default);
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
@@ -1149,9 +1190,10 @@ a {
 
 .ms-toast {
   border-radius: var(--radius-lg);
-  border: 1px solid var(--color-semantic-border-default);
-  background: var(--color-semantic-surface-bg);
-  box-shadow: var(--shadow-modal);
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
   padding: var(--space-3) var(--space-4);
   display: flex;
   align-items: flex-start;
@@ -1171,15 +1213,15 @@ a {
 }
 
 .ms-toast--success {
-  border-color: color-mix(in oklab, var(--color-status-success) 44%, white);
+  border-left: 3px solid var(--severity-normal);
 }
 
 .ms-toast--warning {
-  border-color: color-mix(in oklab, var(--color-status-warning) 50%, white);
+  border-left: 3px solid var(--severity-mild);
 }
 
 .ms-toast--danger {
-  border-color: color-mix(in oklab, var(--color-status-danger) 50%, white);
+  border-left: 3px solid var(--severity-severe);
 }
 
 .ms-toast--info {
@@ -1985,7 +2027,7 @@ a {
   width: 0;
   height: 100%;
   border-radius: var(--radius-pill);
-  background: var(--ms-challenge-slot-fill, color-mix(in oklab, white 14%, var(--color-brand-primary)));
+  background: var(--ms-challenge-slot-fill, var(--color-brand-primary));
   transition: width 0.2s ease;
 }
 
@@ -2913,8 +2955,9 @@ a {
 .ms-landing-login-card .ms-select,
 .ms-landing-login-card .ms-textarea {
   border-radius: calc(var(--radius-md) + 2px);
-  border-color: color-mix(in oklab, white 62%, #dbe0f2);
-  background: color-mix(in oklab, white 90%, #f5f7ff);
+  border-color: var(--input-border);
+  background: var(--input-bg);
+  color: var(--input-text);
 }
 
 .ms-landing-login-card .ms-btn--primary {
@@ -2977,11 +3020,7 @@ a {
 
 .ms-home-v3__card {
   min-height: 220px;
-  background: linear-gradient(
-    145deg,
-    color-mix(in oklab, var(--color-semantic-surface-base) 90%, white) 0%,
-    color-mix(in oklab, var(--color-brand-primary-soft) 22%, white) 100%
-  );
+  background: var(--bg-elevated);
 }
 
 .ms-home-checkin-box {
@@ -2993,7 +3032,7 @@ a {
   min-height: 248px;
   border: 1px dashed color-mix(in oklab, var(--color-semantic-border-default) 88%, white);
   border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--color-semantic-surface-muted) 80%, white);
+  background: var(--bg-surface);
   padding: var(--space-4);
 }
 
@@ -3193,7 +3232,7 @@ a {
   align-items: center;
   justify-content: center;
   font-size: var(--font-caption-size);
-  background: color-mix(in oklab, var(--color-semantic-surface-base) 88%, white);
+  background: var(--bg-elevated);
   color: var(--color-semantic-text-secondary);
 }
 
@@ -3329,7 +3368,7 @@ a {
   width: 100%;
   height: 9px;
   border-radius: var(--radius-pill);
-  background: var(--ms-challenge-track-color, color-mix(in oklab, white 60%, var(--color-semantic-border-default)));
+  background: var(--ms-challenge-track-color, var(--bg-surface));
   overflow: hidden;
 }
 
@@ -3337,7 +3376,7 @@ a {
   display: block;
   height: 100%;
   border-radius: var(--radius-pill);
-  background: color-mix(in oklab, white 14%, var(--color-brand-primary));
+  background: var(--color-brand-primary);
   transition: width 0.2s ease;
 }
 
@@ -3389,7 +3428,7 @@ a {
   appearance: none;
   border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 84%, white);
   border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--color-semantic-surface-base) 90%, white);
+  background: var(--bg-elevated);
   padding: var(--space-2) var(--space-3);
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) auto;
@@ -3421,12 +3460,7 @@ a {
 .ms-home-hero-v2 {
   border: 1px solid var(--color-semantic-border-default);
   border-radius: var(--radius-xl);
-  background: linear-gradient(
-      122deg,
-      color-mix(in oklab, var(--color-accent-lavender) 26%, white) 0%,
-      color-mix(in oklab, var(--color-accent-sky) 18%, white) 42%,
-      color-mix(in oklab, var(--color-accent-pink) 24%, white) 100%
-    );
+  background: var(--bg-surface);
   padding: var(--space-5);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -3463,7 +3497,7 @@ a {
 .ms-home-mini-link {
   border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 90%, white);
   border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--color-semantic-surface-base) 86%, white);
+  background: var(--bg-elevated);
   box-shadow: var(--shadow-soft);
   padding: var(--space-3);
   display: flex;
@@ -4370,7 +4404,7 @@ a {
 .ms-board-ops-inline {
   border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 84%, white);
   border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--color-brand-primary-soft) 48%, white);
+  background: var(--bg-surface);
   color: var(--color-semantic-text-primary);
   font-size: var(--font-body-sm-size);
   line-height: var(--font-body-sm-line);
@@ -4414,7 +4448,7 @@ a {
 .ms-board-cafe-list {
   border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 84%, white);
   border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--color-semantic-surface-base) 96%, white);
+  background: var(--bg-surface);
   max-height: 640px;
   overflow: auto;
 }

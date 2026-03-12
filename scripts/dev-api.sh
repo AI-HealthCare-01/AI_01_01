@@ -4,12 +4,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_DIR="${ROOT_DIR}/apps/api"
 
-if [ -f "${ROOT_DIR}/.env" ]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "${ROOT_DIR}/.env"
-  set +a
-fi
+# Load root env files to keep API mode aligned with web mode.
+for env_file in "${ROOT_DIR}/.env" "${ROOT_DIR}/.env.local"; do
+  if [[ -f "${env_file}" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "${env_file}"
+    set +a
+  fi
+done
 
 USE_FIREBASE_AUTH_EMULATOR="${USE_FIREBASE_AUTH_EMULATOR:-false}"
 use_emulator="$(printf "%s" "${USE_FIREBASE_AUTH_EMULATOR}" | tr "[:upper:]" "[:lower:]")"

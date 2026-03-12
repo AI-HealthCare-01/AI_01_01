@@ -13,6 +13,38 @@ const MAX_GAIN = 0.12
 const FADE_IN_SEC = 1.2
 const FADE_OUT_SEC = 0.8
 
+function createBrownNoiseBuffer(ctx: AudioContext, duration = 3) {
+  const sampleRate = ctx.sampleRate
+  const length = sampleRate * duration
+  const buffer = ctx.createBuffer(1, length, sampleRate)
+  const data = buffer.getChannelData(0)
+
+  let lastOut = 0
+  for (let i = 0; i < length; i++) {
+    const white = Math.random() * 2 - 1
+    lastOut = (lastOut + 0.02 * white) / 1.02
+    data[i] = lastOut * 3.2
+  }
+
+  return buffer
+}
+
+function createSoftWhiteNoiseBuffer(ctx: AudioContext, duration = 3) {
+  const sampleRate = ctx.sampleRate
+  const length = sampleRate * duration
+  const buffer = ctx.createBuffer(1, length, sampleRate)
+  const data = buffer.getChannelData(0)
+
+  let prev = 0
+  for (let i = 0; i < length; i++) {
+    const white = Math.random() * 2 - 1
+    prev = prev * 0.85 + white * 0.15
+    data[i] = prev * 0.9
+  }
+
+  return buffer
+}
+
 export function MeditationAudioPlayer() {
   const [selected, setSelected] = useState<SoundType>('forest')
   const [volume, setVolume] = useState(40)
@@ -27,38 +59,6 @@ export function MeditationAudioPlayer() {
 
   const baseSafe = (value: number) => Math.max(0.0001, value)
   const getTargetGain = (vol: number) => (vol / 100) * MAX_GAIN
-
-  const createBrownNoiseBuffer = (ctx: AudioContext, duration = 3) => {
-    const sampleRate = ctx.sampleRate
-    const length = sampleRate * duration
-    const buffer = ctx.createBuffer(1, length, sampleRate)
-    const data = buffer.getChannelData(0)
-
-    let lastOut = 0
-    for (let i = 0; i < length; i++) {
-      const white = Math.random() * 2 - 1
-      lastOut = (lastOut + 0.02 * white) / 1.02
-      data[i] = lastOut * 3.2
-    }
-
-    return buffer
-  }
-
-  const createSoftWhiteNoiseBuffer = (ctx: AudioContext, duration = 3) => {
-    const sampleRate = ctx.sampleRate
-    const length = sampleRate * duration
-    const buffer = ctx.createBuffer(1, length, sampleRate)
-    const data = buffer.getChannelData(0)
-
-    let prev = 0
-    for (let i = 0; i < length; i++) {
-      const white = Math.random() * 2 - 1
-      prev = prev * 0.85 + white * 0.15
-      data[i] = prev * 0.9
-    }
-
-    return buffer
-  }
 
   const createSource = (ctx: AudioContext, buffer: AudioBuffer) => {
     const src = ctx.createBufferSource()

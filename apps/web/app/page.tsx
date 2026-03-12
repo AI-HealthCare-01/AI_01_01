@@ -19,6 +19,7 @@ import {
 } from "../src/components/ui";
 import { useAuthContext } from "../src/features/auth";
 import { mapLoginErrorMessage } from "../src/features/auth/login-error";
+import { ANALYTICS_EVENTS, trackEvent } from "../src/features/monitoring";
 import { isOnboardingComplete, shouldGoOnboarding } from "../src/features/auth/status";
 import {
   CoreApiError,
@@ -852,6 +853,13 @@ export default function HomePage() {
 
       setCheckinRecord(nextRecord);
       setCheckinPayload(nextRecord.payload ?? payload);
+      trackEvent(ANALYTICS_EVENTS.checkinSubmitted, {
+        source: "home",
+        is_edit: Boolean(checkinRecord && checkinRecord.current_version_no > 0),
+        mood_1_5: payload.mood_1_5,
+        anxiety_1_5: payload.anxiety_1_5,
+        energy_1_5: payload.energy_1_5
+      });
       setCheckinNotice("오늘 체크인이 저장되었습니다.");
       triggerCheckinSwitchMotion();
       await load();
@@ -912,6 +920,7 @@ export default function HomePage() {
                   비밀번호 찾기
                 </Link>
               </div>
+
             </Card>
           </div>
         </div>

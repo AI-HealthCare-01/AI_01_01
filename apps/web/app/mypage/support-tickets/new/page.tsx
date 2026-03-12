@@ -18,6 +18,7 @@ import {
   Textarea,
 } from "../../../../src/components/ui";
 import { AuthRouteGuard, useAuthContext } from "../../../../src/features/auth";
+import { ANALYTICS_EVENTS, trackEvent } from "../../../../src/features/monitoring";
 import {
   CommunityApiError,
   createSupportTicket,
@@ -92,6 +93,12 @@ export default function SupportTicketCreatePage() {
         related_feature: relatedFeature.trim() || undefined,
         body: body.trim(),
         reply_requested: ticketType === "inquiry" ? true : replyRequested,
+      });
+
+      trackEvent(ANALYTICS_EVENTS.supportTicketCreated, {
+        ticket_type: ticketType,
+        category,
+        reply_requested: ticketType === "inquiry" ? true : replyRequested
       });
 
       router.push(`/mypage/support-tickets/${created.ticket.ticket_id}`);

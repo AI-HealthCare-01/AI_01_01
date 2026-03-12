@@ -17,6 +17,7 @@ import {
 } from "../../../src/components/ui";
 import { ApiError, checkNicknameAvailability } from "../../../src/features/auth/api-client";
 import { useAuthContext, AuthRouteGuard } from "../../../src/features/auth";
+import { ANALYTICS_EVENTS, trackEvent } from "../../../src/features/monitoring";
 
 const COOLDOWN_MS = 800;
 
@@ -169,6 +170,10 @@ export default function SignupPage() {
         terms_required: termsRequired,
         privacy_required: privacyRequired,
         age_required: ageRequired
+      });
+
+      trackEvent(ANALYTICS_EVENTS.signupCompleted, {
+        has_coach_name: Boolean(coachName.trim())
       });
 
       setTimeout(() => {

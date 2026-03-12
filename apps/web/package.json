@@ -13,6 +13,8 @@
   "dependencies": {
     "@mindsight/domain": "file:../../packages/domain",
     "@mindsight/shared": "file:../../packages/shared",
+    "@next/third-parties": "^16.1.6",
+    "@sentry/nextjs": "^10.43.0",
     "firebase": "11.1.0",
     "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",

@@ -15,6 +15,7 @@ import {
   StatCard,
 } from "../../src/components/ui";
 import { AuthRouteGuard, useAuthContext } from "../../src/features/auth";
+import { ANALYTICS_EVENTS, trackEvent } from "../../src/features/monitoring";
 import {
   CoreApiError,
   getCheckinFeaturesToday,
@@ -196,6 +197,13 @@ export default function CheckinPage() {
       const nextFeatures = await getCheckinFeaturesToday(firebaseUser, payload.date);
       setRecord(nextRecord);
       setFeatureBundle(nextFeatures);
+      trackEvent(ANALYTICS_EVENTS.checkinSubmitted, {
+        source: "checkin_page",
+        is_edit: record?.status === "submitted",
+        mood_1_5: payload.mood_1_5,
+        anxiety_1_5: payload.anxiety_1_5,
+        energy_1_5: payload.energy_1_5
+      });
       setNotice(record?.status === "submitted" ? "오늘 체크인을 수정했습니다." : "오늘 체크인을 저장했습니다.");
     } catch (error) {
       setErrorMessage(parseError(error));

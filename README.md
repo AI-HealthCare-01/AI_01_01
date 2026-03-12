@@ -147,6 +147,20 @@ Docker로 한번에 실행(권장):
   - `MODEL_BACKEND=baseline` (기본)
   - `MODEL_ARTIFACT_PATH` (artifact 모드에서만)
 
+## 모니터링 설정
+
+- `NEXT_PUBLIC_GA_MEASUREMENT_ID`
+  - 값이 있으면 웹 전역에 Google Analytics 4 페이지 추적을 활성화한다.
+- `NEXT_PUBLIC_SENTRY_DSN`
+  - 브라우저 런타임 오류 추적용 DSN이다.
+- `SENTRY_DSN`
+  - 서버/엣지 런타임 오류 추적용 DSN이다.
+- `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE`, `SENTRY_TRACES_SAMPLE_RATE`
+  - 성능 트레이스 샘플링 비율이다. 기본값은 `0.1`.
+- `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`, `SENTRY_RELEASE`
+  - 배포 파이프라인에서 릴리즈 식별자와 소스맵 업로드를 붙일 때 사용할 값이다.
+- 개인정보/민감정보 보호를 위해 기본 설정에서 이메일/IP/cookie/request body/session replay는 수집하지 않는다.
+
 실 Firebase 실행 예시:
 - 로컬 프로세스: `make web-dev-real` + `make api-dev-real`
 - Docker: `make docker-up-real`

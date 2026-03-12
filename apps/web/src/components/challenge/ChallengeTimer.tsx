@@ -11,6 +11,7 @@ export function ChallengeTimer({ totalSeconds, label, onComplete }: Props) {
   const [secondsLeft, setSecondsLeft] = useState(totalSeconds)
   const [status, setStatus] = useState<'idle'|'running'|'paused'|'done'>('idle')
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const onCompleteRef = useRef<Props['onComplete']>(onComplete)
 
   const radius = 60
   const circumference = 2 * Math.PI * radius
@@ -20,13 +21,17 @@ export function ChallengeTimer({ totalSeconds, label, onComplete }: Props) {
   const ss = String(secondsLeft % 60).padStart(2, '0')
 
   useEffect(() => {
+    onCompleteRef.current = onComplete
+  }, [onComplete])
+
+  useEffect(() => {
     if (status === 'running') {
       intervalRef.current = setInterval(() => {
         setSecondsLeft(prev => {
           if (prev <= 1) {
             clearInterval(intervalRef.current!)
             setStatus('done')
-            onComplete?.()
+            onCompleteRef.current?.()
             return 0
           }
           return prev - 1

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -566,7 +566,7 @@ export default function CbtSessionScreen() {
     }
   };
 
-  const loadCollections = async () => {
+  const loadCollections = useCallback(async () => {
     if (!firebaseUser) {
       return { sessions: [], pending: [] };
     }
@@ -585,7 +585,7 @@ export default function CbtSessionScreen() {
     } finally {
       setLoadingCollections(false);
     }
-  };
+  }, [firebaseUser]);
 
   useEffect(() => {
     if (!firebaseUser) {
@@ -857,7 +857,7 @@ export default function CbtSessionScreen() {
     }
   };
 
-  const resolveSelectedActionPayload = () => {
+  const resolveSelectedActionPayload = useCallback(() => {
     const commitmentTextRaw = draftState.commitment_text;
     const commitmentTypeRaw = draftState.commitment_type;
     const commitmentText =
@@ -890,9 +890,9 @@ export default function CbtSessionScreen() {
       selected_action_description: description,
       selected_action_route: challengeLike ? "/challenge" : null,
     };
-  };
+  }, [draftCommitmentType, draftState.commitment_text, draftState.commitment_type]);
 
-  const saveSession = async () => {
+  const saveSession = useCallback(async () => {
     if (!firebaseUser || userMessageCount < 1 || saving) {
       return;
     }
@@ -950,7 +950,23 @@ export default function CbtSessionScreen() {
     } finally {
       setSaving(false);
     }
-  };
+  }, [
+    beliefPost,
+    beliefPre,
+    draftState,
+    emotionPost,
+    emotionPre,
+    firebaseUser,
+    helpfulness,
+    homeworkCommitment,
+    loadCollections,
+    messages,
+    plannerAction,
+    resolveSelectedActionPayload,
+    saving,
+    todayKstDate,
+    userMessageCount,
+  ]);
 
   useEffect(() => {
     if (!conversationClosed || savedSession || saving || userMessageCount < 1) {
@@ -964,7 +980,7 @@ export default function CbtSessionScreen() {
     }
     autoSaveTriggeredRef.current = true;
     void saveSession();
-  }, [conversationClosed, savedSession, saving, userMessageCount]);
+  }, [conversationClosed, saveSession, savedSession, saving, userMessageCount]);
 
   const saveReflection = async () => {
     if (!firebaseUser || !selectedReflection || savingReflection) {

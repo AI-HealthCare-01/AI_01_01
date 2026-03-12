@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -19,6 +20,7 @@ import {
 import { AdminApiError, getAdminMe } from "../../../src/features/admin-console";
 import { AuthRouteGuard, useAuthContext } from "../../../src/features/auth";
 import { CommunityApiError, createBoardPost } from "../../../src/features/community";
+import { ANALYTICS_EVENTS, trackEvent } from "../../../src/features/monitoring";
 import { useEffect } from "react";
 
 const MAX_IMAGE_COUNT = 4;
@@ -215,6 +217,13 @@ export default function BoardFeedWritePage() {
         is_notice: canChooseNoticeType && postType === "notice",
         tag_ids: parseCommaList(tagInput, 5),
         image_urls: imageUrls,
+      });
+
+      trackEvent(ANALYTICS_EVENTS.boardPostCreated, {
+        post_type: postType,
+        anonymous,
+        image_count: imageUrls.length,
+        has_title: Boolean(title.trim())
       });
 
       const query = new URLSearchParams({

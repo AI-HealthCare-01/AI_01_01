@@ -2,6 +2,7 @@ const googleAnalyticsId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() ?? "
 const browserSentryDsn = process.env.NEXT_PUBLIC_SENTRY_DSN?.trim() ?? "";
 const serverSentryDsn =
   process.env.SENTRY_DSN?.trim() || process.env.NEXT_PUBLIC_SENTRY_DSN?.trim() || "";
+const sentryRelease = process.env.SENTRY_RELEASE?.trim() ?? "";
 
 function parseSampleRate(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
@@ -27,4 +28,8 @@ export function getSentryTracesSampleRate(runtime: "client" | "server" | "edge")
   }
 
   return parseSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 0.1);
+}
+
+export function getSentryRelease(): string | undefined {
+  return sentryRelease || undefined;
 }

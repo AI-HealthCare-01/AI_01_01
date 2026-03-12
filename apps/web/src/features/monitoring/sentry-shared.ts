@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 import type { Breadcrumb, Event } from "@sentry/nextjs";
 
-import { getSentryDsn, getSentryTracesSampleRate } from "./config";
+import { getSentryDsn, getSentryRelease, getSentryTracesSampleRate } from "./config";
 
 const SENSITIVE_KEY_PATTERN =
   /authorization|cookie|password|passwd|secret|token|session|credential|email|phone|journal|content|prompt|reply|ticket|comment|post|body/i;
@@ -90,6 +90,7 @@ export function buildSentryOptions(runtime: "client" | "server" | "edge") {
     dsn: dsn || undefined,
     enabled: Boolean(dsn),
     environment: process.env.APP_ENV ?? process.env.NODE_ENV ?? "development",
+    release: getSentryRelease(),
     sendDefaultPii: false,
     maxBreadcrumbs: 20,
     normalizeDepth: 3,

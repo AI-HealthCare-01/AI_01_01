@@ -159,6 +159,8 @@ Docker로 한번에 실행(권장):
   - 성능 트레이스 샘플링 비율이다. 기본값은 `0.1`.
 - `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`, `SENTRY_RELEASE`
   - 배포 파이프라인에서 릴리즈 식별자와 소스맵 업로드를 붙일 때 사용할 값이다.
+  - 네 값이 모두 있으면 `apps/web/next.config.mjs`가 `withSentryConfig`를 활성화해 운영 빌드에서 sourcemap 업로드를 시도한다.
+  - `SENTRY_RELEASE`는 보통 git sha를 넣는다.
 - 개인정보/민감정보 보호를 위해 기본 설정에서 이메일/IP/cookie/request body/session replay는 수집하지 않는다.
 
 실 Firebase 실행 예시:

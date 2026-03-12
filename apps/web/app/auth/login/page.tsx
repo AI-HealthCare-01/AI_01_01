@@ -17,6 +17,7 @@ import {
 } from "../../../src/components/ui";
 import { AuthRouteGuard, useAuthContext } from "../../../src/features/auth";
 import { mapLoginErrorMessage } from "../../../src/features/auth/login-error";
+import { ANALYTICS_EVENTS, trackEvent } from "../../../src/features/monitoring";
 import { isOnboardingComplete } from "../../../src/features/auth/status";
 
 export default function LoginPage() {
@@ -79,6 +80,11 @@ export default function LoginPage() {
       if (!nextSession) {
         throw new Error("session_bootstrap_failed");
       }
+
+      trackEvent(ANALYTICS_EVENTS.loginCompleted, {
+        email_verified: nextSession.account.email_verified,
+        onboarding_status: nextSession.onboarding.onboarding_status
+      });
 
       if (!nextSession.account.email_verified) {
         router.replace("/auth/verify-email");

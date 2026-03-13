@@ -104,8 +104,16 @@ fi
 export WEB_PORT
 export API_PORT
 export DB_PORT
-export WEB_API_BASE_URL="http://localhost:${API_PORT}"
-export WEB_BASE_URL="http://localhost:${WEB_PORT}"
+
+APP_ENV_VALUE="$(read_env_fallback APP_ENV)"
+APP_ENV_VALUE="${APP_ENV_VALUE:-local}"
+if [[ "${APP_ENV_VALUE}" != "local" ]]; then
+  export WEB_API_BASE_URL="http://localhost:${API_PORT}"
+  export WEB_BASE_URL="http://localhost:${WEB_PORT}"
+else
+  export WEB_API_BASE_URL="${API_BASE_URL:-$(read_env_fallback API_BASE_URL)}"
+  export WEB_BASE_URL="${APP_URL:-$(read_env_fallback APP_URL)}"
+fi
 
 requested_use_emulator="${USE_FIREBASE_AUTH_EMULATOR}"
 effective_use_emulator="${requested_use_emulator}"

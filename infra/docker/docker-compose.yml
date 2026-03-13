@@ -59,6 +59,8 @@ services:
     volumes:
       - mindsight_api_data:/data
       - ../../model:/app/model:ro
+    networks:
+      - ws
 
   web:
     build:
@@ -89,6 +91,26 @@ services:
       NEXT_PUBLIC_AUTH_CONTINUE_BASE_URL: ${WEB_BASE_URL:-http://localhost:3000}
     ports:
       - "${WEB_PORT:-3000}:3000"
+    networks:
+      - ws
+
+  nginx:
+    image: nginx:latest
+    container_name: mindsight-nginx
+    depends_on:
+      - web
+      - api
+    volumes:
+      - ../../infra/nginx/prod.conf:/etc/nginx/conf.d/default.conf
+    ports:
+      - "80:80"
+    networks:
+      - ws
+
+networks:
+  ws:
+    name: ws
+    driver: bridge
 
 volumes:
   mindsight_postgres_data:

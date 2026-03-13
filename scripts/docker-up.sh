@@ -151,7 +151,7 @@ if is_truthy "${USE_FIREBASE_AUTH_EMULATOR}"; then
   AUTH_EMULATOR_UI_PORT="${AUTH_EMULATOR_UI_PORT:-$(pick_port 4000 4001)}"
 fi
 
-services=(postgres api web)
+services=(postgres api web nginx certbot)
 if is_truthy "${USE_FIREBASE_AUTH_EMULATOR}"; then
   export AUTH_EMULATOR_PORT
   export AUTH_EMULATOR_UI_PORT
@@ -165,7 +165,7 @@ if is_truthy "${USE_FIREBASE_AUTH_EMULATOR}"; then
   export NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:-000000000000}"
   export FIREBASE_PROJECT_ID="${FIREBASE_PROJECT_ID:-${NEXT_PUBLIC_FIREBASE_PROJECT_ID}}"
   export FIREBASE_ADMIN_PROJECT_ID="${FIREBASE_ADMIN_PROJECT_ID:-${FIREBASE_PROJECT_ID}}"
-  services=(postgres auth-emulator api web nginx)
+  services=(postgres auth-emulator api web nginx certbot)
 else
   export WEB_AUTH_EMULATOR_HOST=""
   export FIREBASE_AUTH_EMULATOR_HOST=""

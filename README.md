@@ -52,6 +52,12 @@ Docker로 한번에 실행(권장):
   - 실 Firebase를 강제로 쓰려면 `.env`에 `NEXT_PUBLIC_FIREBASE_*`, `FIREBASE_PROJECT_ID`를 모두 채운 뒤 `make docker-up-real`을 사용한다.
   - 에뮬레이터 모드는 `make docker-up-emulator` 또는 `USE_FIREBASE_AUTH_EMULATOR=true make docker-up` 으로 실행한다.
 
+EC2에서 외부 접속 테스트 시 추가 설정:
+- 루트 `.env`의 `CORS_ALLOW_ORIGINS`에 `http://<EC2_PUBLIC_IPV4>:3000` 추가
+- AWS Security Group Inbound 허용(테스트용)
+  - TCP `3000` from `0.0.0.0/0` (웹)
+  - TCP `8000` from `0.0.0.0/0` (API)
+
 에뮬레이터 로컬 개발:
 - Auth Emulator: `make auth-emulator`
 - 웹: `make web-dev-emulator`

@@ -52,6 +52,9 @@ docker-up-emulator:
 docker-down:
 	./scripts/docker-down.sh
 
+docker-reload:
+	./scripts/docker-reload.sh
+
 lint:
 	./scripts/lint.sh
 

@@ -1240,8 +1240,10 @@ class CommunityStore:
                             if row["updated_at"]
                             else None
                         ),
-            )
-        )
+                    )
+                )
+
+            return items
 
     def _build_moderation_queue_item(self, row: sqlite3.Row) -> ModerationQueueItem:
         target_public_id = (

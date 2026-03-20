@@ -58,6 +58,13 @@ EC2에서 외부 접속 테스트 시 추가 설정:
   - TCP `3000` from `0.0.0.0/0` (웹)
   - TCP `8000` from `0.0.0.0/0` (API)
 
+도메인 분리 배포(`www`, `api`) 시:
+- Route53에서 `www.ozcodlngschool.com`과 `api.ozcodlngschool.com`을 같은 서버/ALB로 연결한다.
+- 웹은 `https://www.ozcodlngschool.com`으로 공개하고, API는 `https://api.ozcodlngschool.com`으로 공개한다.
+- 웹 빌드 env는 `WEB_API_BASE_URL=https://api.ozcodlngschool.com` 또는 `NEXT_PUBLIC_API_BASE_URL=https://api.ozcodlngschool.com`로 맞춘다.
+- API의 `CORS_ALLOW_ORIGINS`에는 `https://www.ozcodlngschool.com`, `https://ozcodlngschool.com`을 포함한다.
+- Nginx 예시는 [infra/nginx/prod.conf](/Users/admin/Desktop/Bootcamp/AI_01_01/infra/nginx/prod.conf) 와 [infra/nginx/prod_https.conf](/Users/admin/Desktop/Bootcamp/AI_01_01/infra/nginx/prod_https.conf)에 있다.
+
 에뮬레이터 로컬 개발:
 - Auth Emulator: `make auth-emulator`
 - 웹: `make web-dev-emulator`

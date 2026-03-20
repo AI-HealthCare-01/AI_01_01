@@ -1,7 +1,7 @@
 "use client";
 
 import type { User } from "firebase/auth";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   Badge,
@@ -181,12 +181,34 @@ export function FeedStream({
     const isOpen = Boolean(expandedCommentMap[postId]);
     setExpandedCommentMap((previous) => ({ ...previous, [postId]: !isOpen }));
 
-    if (isOpen || commentsByPost[postId]) {
+    if (isOpen) {
       return;
     }
 
     await loadComments(postId);
   };
+
+  useEffect(() => {
+    if (!firebaseUser) {
+      return;
+    }
+
+    const openPostIds = Object.entries(expandedCommentMap)
+      .filter(([, isOpen]) => isOpen)
+      .map(([postId]) => postId);
+
+    if (openPostIds.length === 0) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void Promise.all(openPostIds.map((postId) => loadComments(postId)));
+    }, 10000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [expandedCommentMap, firebaseUser]);
 
   const handleSubmitComment = async (postId: string) => {
     if (!firebaseUser) {

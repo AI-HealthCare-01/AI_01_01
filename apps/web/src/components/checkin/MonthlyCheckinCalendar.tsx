@@ -40,7 +40,8 @@ export function MonthlyCheckinCalendar({
             return <span key={`empty-${index}`} className="ms-home-calendar-cell ms-home-calendar-cell--empty" aria-hidden="true" />;
           }
 
-          const isActiveCell = checkedDateSet.has(cell.date);
+          const hasFeatureForDate = featureMap.has(cell.date);
+          const isActiveCell = checkedDateSet.has(cell.date) || hasFeatureForDate;
           const moodTone = isActiveCell ? resolveCalendarMoodTone(featureMap.get(cell.date)) : null;
           const isToday = todayDate === cell.date;
 

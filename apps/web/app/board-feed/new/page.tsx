@@ -37,6 +37,9 @@ function parseError(error: unknown): string {
     if (error.message === "invalid_post_body_bytes") {
       return `본문은 UTF-8 기준 ${MAX_POST_BODY_BYTES.toLocaleString()}bytes 이내로 입력해주세요.`;
     }
+    if (error.status === 413) {
+      return "첨부한 이미지 용량이 너무 큽니다. 이미지 수를 줄이거나 더 작은 이미지로 다시 시도해주세요.";
+    }
     if (error.message === "Failed to fetch") {
       return "서버 연결이 원활하지 않습니다. 잠시 후 다시 시도해 주세요.";
     }

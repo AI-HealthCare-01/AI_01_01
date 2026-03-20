@@ -20,19 +20,26 @@ import {
 } from "../../src/components/ui";
 import { AuthRouteGuard, useAuthContext } from "../../src/features/auth";
 import {
+  listCheckinFeatures,
   CoreApiError,
   createJournalEntry,
   deleteJournalEntry,
   getJournalEntry,
   listJournalCategoryOptions,
   listJournalEntries,
+  type CheckinFeatureBundle,
   type JournalEntry,
   type JournalListItem,
 } from "../../src/features/core-inputs";
-
-type YearMonth = { year: number; month: number };
-
-const JOURNAL_CALENDAR_WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
+import {
+  CALENDAR_TONE_LABEL,
+  CHECKIN_CALENDAR_LEGEND,
+  CHECKIN_CALENDAR_WEEKDAYS,
+  getKstYearMonth,
+  resolveCalendarMoodTone,
+  shiftMonth,
+  type YearMonth,
+} from "../../src/features/core-inputs/checkin-calendar";
 
 function parseError(error: unknown): string {
   if (error instanceof CoreApiError) {
@@ -75,30 +82,6 @@ function sameStringArray(left: string[], right: string[]): boolean {
 function filterTagsByActive(source: string[], activeTags: string[]): string[] {
   const next = source.filter((tag) => activeTags.includes(tag));
   return sameStringArray(source, next) ? source : next;
-}
-
-function getKstYearMonth(value = new Date()): YearMonth {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-  }).formatToParts(value);
-
-  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
-    Number(parts.find((part) => part.type === type)?.value ?? "0");
-
-  return {
-    year: getPart("year"),
-    month: getPart("month"),
-  };
-}
-
-function shiftMonth(cursor: YearMonth, offset: number): YearMonth {
-  const next = new Date(Date.UTC(cursor.year, cursor.month - 1 + offset, 1));
-  return {
-    year: next.getUTCFullYear(),
-    month: next.getUTCMonth() + 1,
-  };
 }
 
 function monthRange(cursor: YearMonth): { start_date: string; end_date: string } {
@@ -147,6 +130,7 @@ export default function JournalWorkbenchPage() {
   const [appliedSearchTags, setAppliedSearchTags] = useState<string[]>([]);
   const [calendarMonth, setCalendarMonth] = useState<YearMonth>(getKstYearMonth());
   const [calendarEntriesByDate, setCalendarEntriesByDate] = useState<Record<string, number>>({});
+  const [monthCheckinFeatures, setMonthCheckinFeatures] = useState<CheckinFeatureBundle[]>([]);
 
   const [composerBody, setComposerBody] = useState("");
   const [composerTags, setComposerTags] = useState<string[]>([]);
@@ -157,6 +141,13 @@ export default function JournalWorkbenchPage() {
 
   const calendarRange = useMemo(() => monthRange(calendarMonth), [calendarMonth]);
   const calendarCells = useMemo(() => buildCalendarCells(calendarMonth), [calendarMonth]);
+  const monthCheckinFeatureMap = useMemo(() => {
+    const map = new Map<string, CheckinFeatureBundle>();
+    for (const feature of monthCheckinFeatures) {
+      map.set(feature.date, feature);
+    }
+    return map;
+  }, [monthCheckinFeatures]);
 
   const queryOptions = useMemo(
     () => ({
@@ -176,10 +167,14 @@ export default function JournalWorkbenchPage() {
       setLoading(true);
       setErrorMessage(null);
 
-      const [rows, categories, calendarRows] = await Promise.all([
+      const [rows, categories, calendarRows, checkinFeatures] = await Promise.all([
         listJournalEntries(firebaseUser, queryOptions),
         listJournalCategoryOptions(firebaseUser),
         listJournalEntries(firebaseUser, {
+          start_date: calendarRange.start_date,
+          end_date: calendarRange.end_date,
+        }),
+        listCheckinFeatures(firebaseUser, {
           start_date: calendarRange.start_date,
           end_date: calendarRange.end_date,
         }),
@@ -200,6 +195,7 @@ export default function JournalWorkbenchPage() {
         }
         return next;
       });
+      setMonthCheckinFeatures(checkinFeatures);
       setSelectedEntry((previous) => {
         if (!previous) {
           return previous;
@@ -213,6 +209,7 @@ export default function JournalWorkbenchPage() {
       setActiveTags([]);
       setInactiveUsedTags([]);
       setCalendarEntriesByDate({});
+      setMonthCheckinFeatures([]);
     } finally {
       setLoading(false);
     }
@@ -402,7 +399,7 @@ export default function JournalWorkbenchPage() {
                     </Button>
                   </div>
                   <div className="ms-home-calendar-weekdays">
-                    {JOURNAL_CALENDAR_WEEKDAYS.map((weekday) => (
+                    {CHECKIN_CALENDAR_WEEKDAYS.map((weekday) => (
                       <span key={weekday}>{weekday}</span>
                     ))}
                   </div>
@@ -415,13 +412,18 @@ export default function JournalWorkbenchPage() {
                       const entryCount = calendarEntriesByDate[cell.date] ?? 0;
                       const isSelected = appliedSearchDate === cell.date;
                       const selectedDate = cell.date;
+                      const tone = resolveCalendarMoodTone(monthCheckinFeatureMap.get(cell.date));
+                      const hasCheckin = Boolean(tone);
 
                       return (
                         <button
                           key={cell.date}
                           type="button"
-                          className={`ms-home-calendar-cell${entryCount > 0 ? " ms-home-calendar-cell--active" : ""}${isSelected ? " ms-home-calendar-cell--selected" : ""}`}
-                          title={`${cell.date} · 한줄일기 ${entryCount}개`}
+                          className={`ms-home-calendar-cell${hasCheckin ? " ms-home-calendar-cell--active" : ""}${
+                            tone ? ` ms-home-calendar-cell--tone-${tone}` : ""
+                          }${isSelected ? " ms-home-calendar-cell--selected" : ""}`}
+                          title={`${cell.date} · 한줄일기 ${entryCount}개${tone ? ` · 체크인 ${CALENDAR_TONE_LABEL[tone]}` : ""}`}
+                          aria-label={`${cell.date} 한줄일기 ${entryCount}개${tone ? `, 체크인 ${CALENDAR_TONE_LABEL[tone]}` : ""}`}
                           onClick={() => {
                             setSearchDateInput(selectedDate);
                             setAppliedSearchDate(selectedDate);
@@ -431,6 +433,14 @@ export default function JournalWorkbenchPage() {
                         </button>
                       );
                     })}
+                  </div>
+                  <div className="ms-home-calendar-legend" aria-label="한줄일기 캘린더 색상 설명">
+                    {CHECKIN_CALENDAR_LEGEND.map((item) => (
+                      <div key={item.tone} className="ms-home-calendar-legend__item">
+                        <span className={`ms-home-calendar-legend__dot ms-home-calendar-legend__dot--${item.tone}`} aria-hidden="true" />
+                        <span className="ms-home-calendar-legend__text">{item.copy}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
 

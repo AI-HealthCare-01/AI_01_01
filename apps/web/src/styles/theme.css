@@ -3285,6 +3285,53 @@ a {
   outline-offset: var(--fx-focus-ring-offset);
 }
 
+.ms-home-calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.ms-home-calendar-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-caption-size);
+  color: var(--color-semantic-text-secondary);
+}
+
+.ms-home-calendar-legend__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 72%, white);
+  flex: 0 0 auto;
+}
+
+.ms-home-calendar-legend__dot--happy {
+  background: linear-gradient(145deg, #ffe0ef 0%, #ffd3e8 100%);
+  border-color: color-mix(in oklab, #f5a9cc 64%, white);
+}
+
+.ms-home-calendar-legend__dot--anxious {
+  background: linear-gradient(145deg, #fff4d9 0%, #ffedc5 100%);
+  border-color: color-mix(in oklab, #f0ce86 62%, white);
+}
+
+.ms-home-calendar-legend__dot--depressed {
+  background: linear-gradient(145deg, #deecff 0%, #d3e5ff 100%);
+  border-color: color-mix(in oklab, #9dc2f3 64%, white);
+}
+
+.ms-home-calendar-legend__dot--sleep {
+  background: linear-gradient(145deg, #eadfff 0%, #e2d6fb 100%);
+  border-color: color-mix(in oklab, #b89ce8 62%, white);
+}
+
+.ms-home-calendar-legend__text {
+  line-height: 1.4;
+}
+
 .ms-home-challenge-slots {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

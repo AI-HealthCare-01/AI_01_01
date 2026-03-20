@@ -17,6 +17,7 @@ import {
   Select,
   SectionContainer,
 } from "../src/components/ui";
+import { MonthlyCheckinCalendar } from "../src/components/checkin/MonthlyCheckinCalendar";
 import { useAuthContext } from "../src/features/auth";
 import { mapLoginErrorMessage } from "../src/features/auth/login-error";
 import { ANALYTICS_EVENTS, trackEvent } from "../src/features/monitoring";
@@ -37,6 +38,7 @@ import {
   type CheckinPayload,
   type CheckinRecord,
 } from "../src/features/core-inputs";
+import { type YearMonth } from "../src/features/core-inputs/checkin-calendar";
 import {
   CommunityApiError,
   listBoardFeed,
@@ -112,8 +114,6 @@ const CHECKIN_ENERGY_OPTIONS = [
   { label: "5 · 매우 높음", value: "5" },
 ] as const;
 
-type CalendarMoodTone = "happy" | "anxious" | "depressed" | "sleep";
-
 const SLEEP_TOTAL_MIDPOINT_BY_BUCKET: Record<CheckinPayload["sleep_total_bucket"], number> = {
   lt_4h: 3.5,
   h4_5: 4.5,
@@ -122,20 +122,6 @@ const SLEEP_TOTAL_MIDPOINT_BY_BUCKET: Record<CheckinPayload["sleep_total_bucket"
   h7_8: 7.5,
   ge_8h: 8.5,
 };
-
-const CALENDAR_TONE_LABEL: Record<CalendarMoodTone, string> = {
-  happy: "기분 좋음",
-  anxious: "불안 경향",
-  depressed: "우울 경향",
-  sleep: "수면 부족 경향",
-};
-
-const HOME_CALENDAR_LEGEND: Array<{ tone: CalendarMoodTone; copy: string }> = [
-  { tone: "happy", copy: "마음이 한결 가벼웠던 날" },
-  { tone: "anxious", copy: "긴장이 조금 높았던 날" },
-  { tone: "depressed", copy: "마음이 무겁게 느껴진 날" },
-  { tone: "sleep", copy: "수면 회복이 더 필요한 날" },
-];
 
 function toDateString(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -400,50 +386,6 @@ function makeFeatureBundleFromPayload(record: CheckinRecord): CheckinFeatureBund
   };
 }
 
-function resolveCalendarMoodTone(feature: CheckinFeatureBundle | null | undefined): CalendarMoodTone | null {
-  if (!feature) {
-    return null;
-  }
-
-  const mood = feature.mood_1_5 ?? 3;
-  const anxiety = feature.anxiety_1_5 ?? 3;
-  const energy = feature.energy_1_5 ?? 3;
-  const sleepHours = feature.sleep_total_midpoint_hours ?? 6.5;
-
-  const happyScore =
-    Math.max(0, mood - 3) * 1.35 +
-    Math.max(0, energy - 3) * 0.5 -
-    Math.max(0, anxiety - 3) * 0.35 -
-    Math.max(0, 6.2 - sleepHours) * 0.45;
-  const anxietyScore = Math.max(0, anxiety - 3) * 1.4 + Math.max(0, 3 - mood) * 0.25;
-  const depressedScore = Math.max(0, 3 - mood) * 1.25 + Math.max(0, 3 - energy) * 0.82;
-  const sleepScore = Math.max(0, 6.5 - sleepHours) * 1.28 + (sleepHours <= 5.5 ? 0.6 : 0);
-
-  if (happyScore >= Math.max(anxietyScore, depressedScore, sleepScore) && happyScore > 0.2) {
-    return "happy";
-  }
-  if (sleepScore >= anxietyScore && sleepScore >= depressedScore && sleepScore > 0.3) {
-    return "sleep";
-  }
-  if (anxietyScore >= depressedScore && anxietyScore > 0.2) {
-    return "anxious";
-  }
-  if (depressedScore > 0.2) {
-    return "depressed";
-  }
-
-  if (mood >= 4 && anxiety <= 3 && sleepHours >= 6) {
-    return "happy";
-  }
-  if (anxiety >= 4) {
-    return "anxious";
-  }
-  if (sleepHours < 6) {
-    return "sleep";
-  }
-  return "depressed";
-}
-
 export default function HomePage() {
   const router = useRouter();
   const { firebaseUser, session, phase, signInWithEmail } = useAuthContext();
@@ -482,11 +424,7 @@ export default function HomePage() {
   const dayGreetingMessage = getDayGreetingMessage(kstNow.hour);
   const nickname = session?.account.nickname || "사용자";
 
-  const monthDays = useMemo(() => new Date(kstNow.year, kstNow.month, 0).getDate(), [kstNow.month, kstNow.year]);
-  const monthStartWeekday = useMemo(
-    () => new Date(Date.UTC(kstNow.year, kstNow.month - 1, 1, 12)).getUTCDay(),
-    [kstNow.month, kstNow.year],
-  );
+  const calendarMonth = useMemo<YearMonth>(() => ({ year: kstNow.year, month: kstNow.month }), [kstNow.month, kstNow.year]);
 
   const monthCheckinSet = useMemo(() => {
     const set = new Set<string>();
@@ -1105,62 +1043,13 @@ export default function HomePage() {
                   {loading ? (
                     <LoadingSkeleton lines={5} />
                   ) : (
-                    <>
-                      <div className="ms-home-calendar-weekdays" aria-hidden="true">
-                        <span>일</span>
-                        <span>월</span>
-                        <span>화</span>
-                        <span>수</span>
-                        <span>목</span>
-                        <span>금</span>
-                        <span>토</span>
-                      </div>
-                      <div className="ms-home-calendar-grid" role="grid" aria-label="월간 체크인 캘린더">
-                        {Array.from({ length: monthStartWeekday + monthDays }).map((_, index) => {
-                          if (index < monthStartWeekday) {
-                            return <span key={`empty-${index}`} className="ms-home-calendar-cell ms-home-calendar-cell--empty" aria-hidden="true" />;
-                          }
-
-                          const day = index - monthStartWeekday + 1;
-                          const dateKey = toDateString(kstNow.year, kstNow.month, day);
-                          const isActiveCell = monthCheckinSet.has(dateKey);
-                          const isToday = day === kstNow.day;
-                          const moodTone = isActiveCell
-                            ? resolveCalendarMoodTone(monthCheckinFeatureMap.get(dateKey))
-                            : null;
-
-                          return (
-                            <span
-                              key={dateKey}
-                              className={`ms-home-calendar-cell${isActiveCell ? " ms-home-calendar-cell--active" : ""}${
-                                moodTone ? ` ms-home-calendar-cell--tone-${moodTone}` : ""
-                              }${
-                                isToday ? " ms-home-calendar-cell--today" : ""
-                              }${
-                                isToday && isActiveCell ? " ms-home-calendar-cell--today-active" : ""
-                              }`}
-                              role="gridcell"
-                              aria-label={`${dateKey}${isActiveCell ? " 체크인 완료" : ""}${
-                                moodTone ? ` (${CALENDAR_TONE_LABEL[moodTone]})` : ""
-                              }`}
-                            >
-                              {day}
-                            </span>
-                          );
-                        })}
-                      </div>
-                      <div className="ms-home-calendar-legend" aria-label="월간 출석 캘린더 색상 설명">
-                        {HOME_CALENDAR_LEGEND.map((item) => (
-                          <div key={item.tone} className="ms-home-calendar-legend__item">
-                            <span
-                              className={`ms-home-calendar-legend__dot ms-home-calendar-legend__dot--${item.tone}`}
-                              aria-hidden="true"
-                            />
-                            <span className="ms-home-calendar-legend__text">{item.copy}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </>
+                    <MonthlyCheckinCalendar
+                      month={calendarMonth}
+                      checkedDateSet={monthCheckinSet}
+                      featureMap={monthCheckinFeatureMap}
+                      todayDate={kstNow.date}
+                      ariaLabel="홈 월간 체크인 캘린더"
+                    />
                   )}
                 </Card>
 

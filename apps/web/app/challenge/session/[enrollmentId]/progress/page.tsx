@@ -586,8 +586,22 @@ export default function ChallengeProgressPage() {
                             </p>
                           ) : (
                             <>
-                              {detail.challenge.challenge_id === "CH_ACT_001" && <ChallengeChecklist type="morning" />}
-                              {detail.challenge.challenge_id === "CH_SLEEP_001" && <ChallengeChecklist type="sleep" />}
+                              {detail.challenge.challenge_id === "CH_ACT_001" && (
+                                <ChallengeChecklist
+                                  type="morning"
+                                  onSubmitComplete={() => void onSaveDailyRun()}
+                                  submitting={savingDailyRun}
+                                  completed={todayCompleted}
+                                />
+                              )}
+                              {detail.challenge.challenge_id === "CH_SLEEP_001" && (
+                                <ChallengeChecklist
+                                  type="sleep"
+                                  onSubmitComplete={() => void onSaveDailyRun()}
+                                  submitting={savingDailyRun}
+                                  completed={todayCompleted}
+                                />
+                              )}
                               {detail.challenge.challenge_id === "CH_ACT_003" && (
                                 <div className="cw-two-col">
                                   <WeatherWidget />

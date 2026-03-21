@@ -127,7 +127,12 @@ function previewFallback(title: string): JSX.Element {
 }
 
 export function OnboardingTour() {
-  const [visible, setVisible] = useState(false);
+  const [visible, setVisible] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    return window.localStorage.getItem("hasSeenTour") !== "true";
+  });
   const [step, setStep] = useState<number>(1);
   const [spotlightRect, setSpotlightRect] = useState<Rect | null>(null);
   const [previewLoaded, setPreviewLoaded] = useState<Record<number, boolean>>({});
@@ -146,21 +151,6 @@ export function OnboardingTour() {
 
   const onNext = () => setStep((prev) => Math.min(9, prev + 1));
   const onPrev = () => setStep((prev) => Math.max(1, prev - 1));
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const hasSeen = window.localStorage.getItem("hasSeenTour");
-    if (hasSeen === "true") {
-      return;
-    }
-    if (!document.getElementById("tour-checkin")) {
-      return;
-    }
-    setVisible(true);
-    setStep(1);
-  }, []);
 
   useEffect(() => {
     if (!visible || !spotlightStep) {

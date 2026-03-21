@@ -813,3 +813,34 @@ select.ms-select {
     ),
     rgb(11, 16, 32) !important;
 }
+
+/* Home dashboard inner elements: ensure visible secondary backgrounds in dark mode */
+[data-theme="dark"] .ms-home-checkin-box .ms-select,
+[data-theme="dark"] .ms-home-checkin-box .ms-input {
+  background: var(--color-semantic-surface-muted) !important;
+  border-color: var(--color-semantic-border-default) !important;
+}
+
+[data-theme="dark"] .ms-home-calendar-cell {
+  background: var(--color-semantic-surface-muted) !important;
+  border-color: var(--color-semantic-border-default) !important;
+}
+
+[data-theme="dark"] .ms-home-calendar-cell--today {
+  background: color-mix(in oklab, var(--color-brand-primary-soft) 52%, var(--color-semantic-surface-muted)) !important;
+  border-color: color-mix(in oklab, var(--color-brand-primary) 52%, var(--color-semantic-border-default)) !important;
+}
+
+[data-theme="dark"] .ms-home-calendar-cell--active {
+  background: var(--color-semantic-success-bg) !important;
+  color: var(--color-semantic-success-text) !important;
+  border-color: color-mix(in oklab, var(--color-status-success) 56%, var(--color-semantic-border-default)) !important;
+}
+
+[data-theme="dark"] .ms-home-challenge-slot,
+[data-theme="dark"] .ms-home-challenge-slot--active,
+[data-theme="dark"] .ms-home-challenge-slot--add,
+[data-theme="dark"] .ms-home-challenge-slot--disabled {
+  background: var(--color-semantic-surface-muted) !important;
+  border-color: var(--color-semantic-border-default) !important;
+}

@@ -68,14 +68,15 @@ const PREVIEW_STEPS: PreviewStep[] = [
     step: 8,
     title: "리포트",
     description: "기록이 쌓이면 우울·불안·불면 변화를 PDF로 내보낼 수 있어요.",
-    iframeSrc: "/report",
+    iframeSrc: "/report/summary",
   },
 ];
 
-const PREVIEW_LAYOUT: Record<PreviewStep["step"], PreviewLayout> = {
-  6: { scale: 0.3, width: 900, height: 175, contentHeight: 580 },
-  7: { scale: 0.3, width: 900, height: 150, contentHeight: 500 },
-  8: { scale: 0.3, width: 900, height: 145, contentHeight: 480 },
+const PREVIEW_LAYOUT: PreviewLayout = {
+  scale: 0.31,
+  width: 860,
+  height: 200,
+  contentHeight: 645,
 };
 
 function getSpotlightRect(step: SpotlightStep): Rect | null {
@@ -215,10 +216,34 @@ function previewFallback(step: PreviewStep["step"]): JSX.Element {
         리포트 · 요약
       </div>
       <div style={{ padding: 14 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 12 }}>
-          {["우울", "불안", "불면"].map((label) => (
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          {["일주일", "한 달", "기간 지정"].map((item, index) => (
             <div
-              key={label}
+              key={item}
+              style={{
+                height: 28,
+                padding: "0 10px",
+                borderRadius: 999,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 12,
+                border: "1px solid var(--color-border)",
+                background: index === 0 ? "var(--color-primary-light)" : "var(--color-surface-sub)",
+              }}
+            >
+              {item}
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 12 }}>
+          {[
+            { label: "우울", score: "10/27" },
+            { label: "불안", score: "0/21" },
+            { label: "불면", score: "11/28" },
+          ].map((item) => (
+            <div
+              key={item.label}
               style={{
                 borderRadius: 8,
                 border: "1px solid var(--color-border)",
@@ -226,16 +251,48 @@ function previewFallback(step: PreviewStep["step"]): JSX.Element {
                 padding: 8,
               }}
             >
-              <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6 }}>{label}</div>
-              <div style={{ height: 18, borderRadius: 6, background: "var(--color-primary-light)" }} />
+              <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6 }}>{item.label}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--color-text-primary)" }}>{item.score}</div>
             </div>
           ))}
         </div>
         <div style={{ height: 220, borderRadius: 10, border: "1px solid var(--color-border)", background: "var(--color-surface-sub)", padding: 10 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, alignItems: "end", height: "100%" }}>
             {[24, 44, 30, 58, 36, 49, 42].map((h, idx) => (
-              <div key={`bar-${idx}`} style={{ height: `${h}%`, borderRadius: 6, background: "var(--color-primary-light)" }} />
+              <div key={`bar-${idx}`} style={{ height: `${h}%`, borderRadius: 6, background: "#AFA9EC" }} />
             ))}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <div
+            style={{
+              flex: 1,
+              height: 34,
+              borderRadius: 8,
+              border: "1px solid var(--color-border)",
+              background: "var(--color-surface-sub)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 12,
+            }}
+          >
+            PDF 내보내기
+          </div>
+          <div
+            style={{
+              flex: 1,
+              height: 34,
+              borderRadius: 8,
+              border: "1px solid var(--color-border)",
+              background: "var(--color-surface-sub)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 12,
+            }}
+          >
+            PNG 내보내기
           </div>
         </div>
       </div>
@@ -508,7 +565,8 @@ export function OnboardingTour() {
   }
 
   if (previewStep) {
-    const layout = PREVIEW_LAYOUT[previewStep.step];
+    const layout = PREVIEW_LAYOUT;
+    const forceStaticPreview = previewStep.step === 8;
     const failed = previewFailed[previewStep.step];
     return (
       <div
@@ -526,7 +584,7 @@ export function OnboardingTour() {
       >
         <div
           style={{
-            width: "min(640px, 100%)",
+            width: "min(480px, 100%)",
             minWidth: 320,
             borderRadius: 14,
             background: "var(--color-surface)",
@@ -535,22 +593,22 @@ export function OnboardingTour() {
             transition: "opacity 0.3s ease",
           }}
         >
-          <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>{step} / 9</div>
-          <div style={{ marginTop: 4, fontSize: 18, fontWeight: 700, color: "var(--color-text-primary)" }}>{previewStep.title}</div>
+          <div style={{ fontSize: 12, color: "#7F77DD" }}>{step} / 9</div>
+          <div style={{ marginTop: 4, fontSize: 18, fontWeight: 500, color: "var(--color-text-primary)" }}>{previewStep.title}</div>
           <p style={{ margin: "6px 0 12px", color: "var(--color-text-secondary)" }}>{previewStep.description}</p>
 
           <div
             style={{
               position: "relative",
               height: layout.height,
-              borderRadius: 10,
+              borderRadius: 8,
               overflow: "hidden",
               border: "0.5px solid var(--color-border-tertiary, var(--color-border))",
-              background: "var(--color-surface-sub)",
-              marginBottom: 14,
+              background: "var(--color-background-secondary, var(--color-surface-sub))",
+              marginBottom: 16,
             }}
           >
-            {failed ? (
+            {forceStaticPreview || failed ? (
               <div
                 style={{
                   position: "absolute",
@@ -581,6 +639,7 @@ export function OnboardingTour() {
                 <iframe
                   title={`tour-preview-${previewStep.step}`}
                   src={previewStep.iframeSrc}
+                  sandbox="allow-same-origin allow-scripts"
                   onLoad={() => setPreviewLoaded((prev) => ({ ...prev, [previewStep.step]: true }))}
                   onError={() => setPreviewFailed((prev) => ({ ...prev, [previewStep.step]: true }))}
                   style={{

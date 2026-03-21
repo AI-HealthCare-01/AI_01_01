@@ -140,6 +140,9 @@ class ModerationQueueItem(BaseModel):
     queue_type: ModerationQueueType
     target_type: str
     target_id: str
+    target_public_id: str | None = None
+    target_title: str | None = None
+    target_preview: str | None = None
     source_type: str
     reason_code: str | None = None
     detail_text: str | None = None
@@ -156,6 +159,61 @@ class ModerationQueueGroup(BaseModel):
 
 class ModerationQueuesResponse(BaseModel):
     groups: list[ModerationQueueGroup]
+
+
+class ModerationActionCode(str, Enum):
+    hide = "hide"
+    restore = "restore"
+    delete = "delete"
+    dismiss = "dismiss"
+
+
+class ModerationQueueTargetAuthor(BaseModel):
+    user_id: str
+    display_name: str
+    is_anonymous: bool = False
+
+
+class ModerationQueuePostTarget(BaseModel):
+    post_id: str
+    feed_public_id: str
+    title: str | None = None
+    body_text: str
+    visibility_status: BoardVisibilityStatus
+    moderation_status: BoardModerationStatus
+    created_at: datetime
+    updated_at: datetime | None = None
+    author: ModerationQueueTargetAuthor
+
+
+class ModerationQueueCommentTarget(BaseModel):
+    comment_id: str
+    post_id: str
+    post_feed_public_id: str | None = None
+    body_text: str
+    visibility_status: str
+    created_at: datetime
+    updated_at: datetime | None = None
+    author: ModerationQueueTargetAuthor
+
+
+class ModerationQueueDetailResponse(BaseModel):
+    item: ModerationQueueItem
+    post: ModerationQueuePostTarget | None = None
+    comment: ModerationQueueCommentTarget | None = None
+
+
+class ModerationQueueActionRequest(BaseModel):
+    action_code: ModerationActionCode
+
+
+class ModerationQueueActionResponse(BaseModel):
+    result: str
+    queue_item_id: str
+    status: str
+    post_visibility_status: BoardVisibilityStatus | None = None
+    post_moderation_status: BoardModerationStatus | None = None
+    comment_visibility_status: str | None = None
 
 
 class SupportTicketType(str, Enum):

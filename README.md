@@ -48,8 +48,22 @@ Docker로 한번에 실행(권장):
 - 종료: `make docker-down`
   - 기본 포트가 점유된 경우 `docker-up` 스크립트가 대체 포트(3001/8010/5433/9100/4001)를 자동 선택해 출력한다.
   - `docker-up/down`은 루트 `.env`를 자동 로드한다.
-  - 기본 모드는 `USE_FIREBASE_AUTH_EMULATOR=false` (실 Firebase)다.
+  - `USE_FIREBASE_AUTH_EMULATOR=false`여도 실 Firebase 필수값이 비어 있으면 `docker-up`은 자동으로 에뮬레이터 모드로 전환한다.
+  - 실 Firebase를 강제로 쓰려면 `.env`에 `NEXT_PUBLIC_FIREBASE_*`, `FIREBASE_PROJECT_ID`를 모두 채운 뒤 `make docker-up-real`을 사용한다.
   - 에뮬레이터 모드는 `make docker-up-emulator` 또는 `USE_FIREBASE_AUTH_EMULATOR=true make docker-up` 으로 실행한다.
+
+EC2에서 외부 접속 테스트 시 추가 설정:
+- 루트 `.env`의 `CORS_ALLOW_ORIGINS`에 `http://<EC2_PUBLIC_IPV4>:3000` 추가
+- AWS Security Group Inbound 허용(테스트용)
+  - TCP `3000` from `0.0.0.0/0` (웹)
+  - TCP `8000` from `0.0.0.0/0` (API)
+
+도메인 분리 배포(`www`, `api`) 시:
+- Route53에서 `www.ozcodlngschool.com`과 `api.ozcodlngschool.com`을 같은 서버/ALB로 연결한다.
+- 웹은 `https://www.ozcodlngschool.com`으로 공개하고, API는 `https://api.ozcodlngschool.com`으로 공개한다.
+- 웹 빌드 env는 `WEB_API_BASE_URL=https://api.ozcodlngschool.com` 또는 `NEXT_PUBLIC_API_BASE_URL=https://api.ozcodlngschool.com`로 맞춘다.
+- API의 `CORS_ALLOW_ORIGINS`에는 `https://www.ozcodlngschool.com`, `https://ozcodlngschool.com`을 포함한다.
+- Nginx 예시는 [infra/nginx/prod.conf](/Users/admin/Desktop/Bootcamp/AI_01_01/infra/nginx/prod.conf) 와 [infra/nginx/prod_https.conf](/Users/admin/Desktop/Bootcamp/AI_01_01/infra/nginx/prod_https.conf)에 있다.
 
 에뮬레이터 로컬 개발:
 - Auth Emulator: `make auth-emulator`
@@ -98,6 +112,8 @@ Docker로 한번에 실행(권장):
 
 - 게시판: 피드/공지/북마크 탭 + 최신순 더보기 + 고유번호 검색
 - 모더레이션: 신고/유해언어/안전 큐 분리
+  - 1차 규칙 기반 키워드 필터 유지
+  - 2차 선택형 `kcELECTRA` 유해언어 모델 연동(`BOARD_TOXIC_MODEL_ENABLED=true`)
 - 문의/피드백: 티켓 생성/상세/재오픈 + 사용자 알림
 - 마이페이지: 개인 허브(회원정보/보안/활동로그/북마크/내글/내댓글/내문의/리포트보관함/동의)
 
@@ -118,8 +134,11 @@ Docker로 한번에 실행(권장):
   - `POST /v1/modeling/nowcast/predict`
   - `GET /v1/modeling/nowcast/history`
 - `make api-install`은 API 기본 개발 의존성과 함께 모델 런타임 extra(`ml`)를 설치
-- `model/` 번들(`docs/model_feature_columns.json`, `models/*.joblib`)을 API에서 직접 로딩
-- 누락 feature는 번들 샘플 row(`model/data/train_user_day_nowcast.csv`) 기반 기본값 보정
+- 모델 계약(`model/contracts/*.json`)을 단일 진실원천으로 사용
+- 기본 백엔드는 `baseline`이며, 가중치 없이도 API/웹 동작
+- `MODEL_BACKEND=artifact` + `MODEL_ARTIFACT_PATH`가 설정된 경우에만 가중치 로딩 시도
+  - artifact 로딩 실패 시 자동 baseline fallback
+- 누락 feature는 계약의 default 값으로 보정
 - 예측 이력은 `model_nowcast_prediction` 테이블에 저장(옵션)
 - 모델 재학습은 승인형 job 스캐폴드로 관리
   - `POST /v1/admin/model-ops/{model_change_id}/retraining-jobs`
@@ -139,6 +158,24 @@ Docker로 한번에 실행(권장):
   - `FIREBASE_PROJECT_ID`
   - `FIREBASE_ADMIN_PROJECT_ID`(미설정 시 `FIREBASE_PROJECT_ID` 사용)
   - `MODEL_BUNDLE_DIR=./model`
+  - `MODEL_BACKEND=baseline` (기본)
+  - `MODEL_ARTIFACT_PATH` (artifact 모드에서만)
+
+## 모니터링 설정
+
+- `NEXT_PUBLIC_GA_MEASUREMENT_ID`
+  - 값이 있으면 웹 전역에 Google Analytics 4 페이지 추적을 활성화한다.
+- `NEXT_PUBLIC_SENTRY_DSN`
+  - 브라우저 런타임 오류 추적용 DSN이다.
+- `SENTRY_DSN`
+  - 서버/엣지 런타임 오류 추적용 DSN이다.
+- `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE`, `SENTRY_TRACES_SAMPLE_RATE`
+  - 성능 트레이스 샘플링 비율이다. 기본값은 `0.1`.
+- `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`, `SENTRY_RELEASE`
+  - 배포 파이프라인에서 릴리즈 식별자와 소스맵 업로드를 붙일 때 사용할 값이다.
+  - 네 값이 모두 있으면 `apps/web/next.config.mjs`가 `withSentryConfig`를 활성화해 운영 빌드에서 sourcemap 업로드를 시도한다.
+  - `SENTRY_RELEASE`는 보통 git sha를 넣는다.
+- 개인정보/민감정보 보호를 위해 기본 설정에서 이메일/IP/cookie/request body/session replay는 수집하지 않는다.
 
 실 Firebase 실행 예시:
 - 로컬 프로세스: `make web-dev-real` + `make api-dev-real`

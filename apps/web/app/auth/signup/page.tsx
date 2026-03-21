@@ -15,7 +15,9 @@ import {
   PasswordInput,
   SectionContainer
 } from "../../../src/components/ui";
+import { ApiError, checkNicknameAvailability } from "../../../src/features/auth/api-client";
 import { useAuthContext, AuthRouteGuard } from "../../../src/features/auth";
+import { ANALYTICS_EVENTS, trackEvent } from "../../../src/features/monitoring";
 
 const COOLDOWN_MS = 800;
 
@@ -47,6 +49,9 @@ function mapSignupError(code: string): string {
   if (code.includes("nickname") && code.includes("string_too_short")) {
     return "닉네임은 2자 이상 입력해주세요.";
   }
+  if (code.includes("nickname_already_exists")) {
+    return "이미 생성된 닉네임입니다.";
+  }
   if (code.includes("coach_name") && code.includes("string_too_short")) {
     return "마음코치 이름은 2자 이상 입력해주세요.";
   }
@@ -69,6 +74,9 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [nicknameCheckState, setNicknameCheckState] = useState<"idle" | "checking" | "available" | "duplicate">("idle");
+  const [nicknameCheckedValue, setNicknameCheckedValue] = useState("");
+  const [nicknameMessage, setNicknameMessage] = useState<string | null>(null);
 
   const [termsRequired, setTermsRequired] = useState(false);
   const [privacyRequired, setPrivacyRequired] = useState(false);
@@ -79,6 +87,9 @@ export default function SignupPage() {
 
   const isValid = useMemo(() => {
     if (nickname.trim().length < 2) {
+      return false;
+    }
+    if (nicknameCheckState !== "available" || nicknameCheckedValue !== nickname.trim()) {
       return false;
     }
     if (coachName.trim().length < 2) {
@@ -94,7 +105,52 @@ export default function SignupPage() {
       return false;
     }
     return termsRequired && privacyRequired && ageRequired;
-  }, [ageRequired, coachName, email, nickname, password, passwordConfirm, privacyRequired, termsRequired]);
+  }, [
+    ageRequired,
+    coachName,
+    email,
+    nickname,
+    nicknameCheckState,
+    nicknameCheckedValue,
+    password,
+    passwordConfirm,
+    privacyRequired,
+    termsRequired
+  ]);
+
+  const onNicknameChange = (value: string) => {
+    setNickname(value);
+    setNicknameCheckState("idle");
+    setNicknameCheckedValue("");
+    setNicknameMessage(null);
+  };
+
+  const onCheckNickname = async () => {
+    const trimmed = nickname.trim();
+    if (trimmed.length < 2 || nicknameCheckState === "checking") {
+      return;
+    }
+    try {
+      setNicknameCheckState("checking");
+      setNicknameMessage(null);
+      const isAvailable = await checkNicknameAvailability(trimmed);
+      setNicknameCheckedValue(trimmed);
+      if (isAvailable) {
+        setNicknameCheckState("available");
+        setNicknameMessage("사용 가능한 닉네임입니다.");
+        return;
+      }
+      setNicknameCheckState("duplicate");
+      setNicknameMessage("이미 생성된 닉네임입니다.");
+    } catch (error) {
+      setNicknameCheckState("idle");
+      if (error instanceof ApiError && error.message.includes("nickname")) {
+        setNicknameMessage("이미 생성된 닉네임입니다.");
+      } else {
+        setNicknameMessage("닉네임 중복 확인에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      }
+    }
+  };
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -114,6 +170,10 @@ export default function SignupPage() {
         terms_required: termsRequired,
         privacy_required: privacyRequired,
         age_required: ageRequired
+      });
+
+      trackEvent(ANALYTICS_EVENTS.signupCompleted, {
+        has_coach_name: Boolean(coachName.trim())
       });
 
       setTimeout(() => {
@@ -145,8 +205,31 @@ export default function SignupPage() {
                   placeholder="닉네임을 입력하세요"
                   required
                   value={nickname}
-                  onChange={(event) => setNickname(event.target.value)}
-                  errorText={nickname.length > 0 && nickname.trim().length < 2 ? "닉네임은 2자 이상 입력해주세요." : undefined}
+                  onChange={(event) => onNicknameChange(event.target.value)}
+                  trailingAction={
+                    <button
+                      type="button"
+                      className="ms-input-toggle"
+                      onClick={() => void onCheckNickname()}
+                      disabled={nickname.trim().length < 2 || nicknameCheckState === "checking"}
+                    >
+                      {nicknameCheckState === "checking" ? "확인중" : "중복확인"}
+                    </button>
+                  }
+                  helperText={
+                    nicknameMessage && nicknameCheckState === "available"
+                      ? nicknameMessage
+                      : undefined
+                  }
+                  errorText={
+                    nickname.length > 0 && nickname.trim().length < 2
+                      ? "닉네임은 2자 이상 입력해주세요."
+                      : nicknameMessage && nicknameCheckState === "duplicate"
+                        ? nicknameMessage
+                        : nicknameMessage && nicknameCheckState === "idle"
+                          ? nicknameMessage
+                          : undefined
+                  }
                 />
                 <Input
                   label="마음코치 이름"
@@ -208,6 +291,9 @@ export default function SignupPage() {
                 </Card>
 
                 {errorMessage ? <Banner variant="danger" title="회원가입 실패" description={errorMessage} /> : null}
+                {nicknameCheckState !== "available" && nickname.trim().length >= 2 ? (
+                  <Banner variant="info" title="닉네임 확인 필요" description="닉네임 중복확인을 완료해야 회원가입할 수 있습니다." />
+                ) : null}
 
                 <Button fullWidth loading={isSubmitting} disabled={!isValid} type="submit">
                   회원가입

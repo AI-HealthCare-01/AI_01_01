@@ -43,7 +43,12 @@ services:
       AUTH_DATABASE_PATH: /data/auth_account.db
       DATABASE_URL: ${DATABASE_URL:-}
       MODEL_BUNDLE_DIR: /app/model
-      CORS_ALLOW_ORIGINS: http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001
+      BOARD_TOXIC_MODEL_ENABLED: ${BOARD_TOXIC_MODEL_ENABLED:-false}
+      BOARD_TOXIC_MODEL_NAME: ${BOARD_TOXIC_MODEL_NAME:-jinkyeongk/kcELECTRA-toxic-detector}
+      BOARD_TOXIC_MODEL_THRESHOLD: ${BOARD_TOXIC_MODEL_THRESHOLD:-0.82}
+      BOARD_TOXIC_MODEL_POSITIVE_LABELS: ${BOARD_TOXIC_MODEL_POSITIVE_LABELS:-toxic,hate,abusive,abuse,offensive,insult,obscene,label_1}
+      BOARD_TOXIC_MODEL_NEGATIVE_LABELS: ${BOARD_TOXIC_MODEL_NEGATIVE_LABELS:-clean,neutral,safe,non-toxic,non_toxic,label_0}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
       ADMIN_OWNER_EMAIL: ${ADMIN_OWNER_EMAIL:-}
       ADMIN_OWNER_FIREBASE_UID: ${ADMIN_OWNER_FIREBASE_UID:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -54,13 +59,15 @@ services:
     volumes:
       - mindsight_api_data:/data
       - ../../model:/app/model:ro
+    networks:
+      - ws
 
   web:
     build:
       context: ../..
       dockerfile: infra/docker/web.Dockerfile
       args:
-        NEXT_PUBLIC_API_BASE_URL: ${WEB_API_BASE_URL:-http://localhost:8000}
+        NEXT_PUBLIC_API_BASE_URL: ${WEB_API_BASE_URL:-}
         NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
         NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
         NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
@@ -74,7 +81,7 @@ services:
       api:
         condition: service_started
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${WEB_API_BASE_URL:-http://localhost:8000}
+      NEXT_PUBLIC_API_BASE_URL: ${WEB_API_BASE_URL:-}
       NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
       NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
       NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
@@ -84,7 +91,44 @@ services:
       NEXT_PUBLIC_AUTH_CONTINUE_BASE_URL: ${WEB_BASE_URL:-http://localhost:3000}
     ports:
       - "${WEB_PORT:-3000}:3000"
+    networks:
+      - ws
+
+  nginx:
+    image: nginx:latest
+    container_name: mindsight-nginx
+    depends_on:
+      - web
+      - api
+    volumes:
+      - ../../infra/nginx/prod_https.conf:/etc/nginx/conf.d/default.conf
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - ws
+
+  certbot:
+    image: certbot/certbot
+    container_name: auto-certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 48h & wait $${!}; done;'"
+    volumes:
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    depends_on:
+      - nginx
+
+networks:
+  ws:
+    name: ws
+    driver: bridge
 
 volumes:
   mindsight_postgres_data:
   mindsight_api_data:
+  certbot-conf:
+    name: certbot-conf
+  certbot-www:
+    name: certbot-www

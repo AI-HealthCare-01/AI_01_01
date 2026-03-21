@@ -159,7 +159,6 @@ export function AppShell({ brand = "MindSight", headerAction, navItems, children
     const cached = getAdminAccessCache(firebaseUser.uid);
     if (cached !== null) {
       setCanSeeAdminEntry(cached);
-      return;
     }
 
     let cancelled = false;
@@ -479,6 +478,7 @@ interface BaseFieldProps {
   errorText?: string;
   labelHint?: string;
   hideRequiredMark?: boolean;
+  trailingAction?: ReactNode;
 }
 
 export interface InputProps
@@ -491,6 +491,7 @@ export function Input({
   errorText,
   labelHint,
   hideRequiredMark,
+  trailingAction,
   id,
   className,
   required,
@@ -516,14 +517,28 @@ export function Input({
           </span>
         ) : null}
       </label>
-      <ShadInput
-        id={fieldId}
-        className={className}
-        aria-invalid={Boolean(errorText)}
-        aria-describedby={describedBy}
-        required={required}
-        {...props}
-      />
+      {trailingAction ? (
+        <div className="ms-input-wrap">
+          <ShadInput
+            id={fieldId}
+            className={className}
+            aria-invalid={Boolean(errorText)}
+            aria-describedby={describedBy}
+            required={required}
+            {...props}
+          />
+          {trailingAction}
+        </div>
+      ) : (
+        <ShadInput
+          id={fieldId}
+          className={className}
+          aria-invalid={Boolean(errorText)}
+          aria-describedby={describedBy}
+          required={required}
+          {...props}
+        />
+      )}
       {helperText ? (
         <p id={helperId} className="ms-field__meta">
           {helperText}

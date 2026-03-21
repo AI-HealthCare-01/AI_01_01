@@ -14,6 +14,7 @@ import {
   SectionContainer,
 } from "../../../src/components/ui";
 import { AuthRouteGuard, useAuthContext } from "../../../src/features/auth";
+import { ANALYTICS_EVENTS, trackEvent } from "../../../src/features/monitoring";
 import {
   completeAssessment,
   CoreApiError,
@@ -240,6 +241,11 @@ export default function OnboardingAssessmentPage() {
       if (!baselineDone && lastError) {
         throw lastError;
       }
+
+      trackEvent(ANALYTICS_EVENTS.baselineAssessmentCompleted, {
+        assessment_id: completed.assessment_id,
+        answered_count: answeredCount
+      });
 
       const goHome = () => {
         router.replace("/");

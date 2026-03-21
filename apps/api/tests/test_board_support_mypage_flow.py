@@ -164,6 +164,32 @@ def test_board_support_mypage_flow(tmp_path) -> None:
     assert queue_map["hate"]["queued_count"] >= 1
     assert queue_map["safety"]["queued_count"] >= 1
 
+    hate_item = queue_map["hate"]["items"][0]
+    hate_queue_item_id = str(hate_item["queue_item_id"])
+    moderation_detail = client.get(
+        f"/v1/admin/moderation/queues/{hate_queue_item_id}",
+        headers=_headers(admin_uid, admin_email),
+    )
+    assert moderation_detail.status_code == 200
+    if hate_item["target_type"] == "post":
+        assert moderation_detail.json()["post"]["post_id"] == post_id
+        assert moderation_detail.json()["post"]["body_text"]
+    else:
+        assert moderation_detail.json()["comment"]["post_id"] == post_id
+        assert moderation_detail.json()["comment"]["body_text"]
+
+    moderation_action = client.post(
+        f"/v1/admin/moderation/queues/{hate_queue_item_id}/action",
+        headers=_headers(admin_uid, admin_email),
+        json={"action_code": "hide"},
+    )
+    assert moderation_action.status_code == 200
+    assert moderation_action.json()["result"] == "hide"
+    if hate_item["target_type"] == "post":
+        assert moderation_action.json()["post_visibility_status"] == "hidden_by_moderator"
+    else:
+        assert moderation_action.json()["comment_visibility_status"] == "hidden_by_moderator"
+
     ticket_create = client.post(
         "/v1/support/tickets",
         headers=_headers(uid, email),

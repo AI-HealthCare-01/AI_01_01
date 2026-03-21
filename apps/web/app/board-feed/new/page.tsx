@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -19,11 +20,14 @@ import {
 import { AdminApiError, getAdminMe } from "../../../src/features/admin-console";
 import { AuthRouteGuard, useAuthContext } from "../../../src/features/auth";
 import { CommunityApiError, createBoardPost } from "../../../src/features/community";
+import { ANALYTICS_EVENTS, trackEvent } from "../../../src/features/monitoring";
 import { useEffect } from "react";
 
 const MAX_IMAGE_COUNT = 4;
 const MAX_LOCAL_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_POST_BODY_BYTES = 4500;
+const MAX_IMAGE_DIMENSION = 1600;
+const TARGET_IMAGE_BYTES = 1.5 * 1024 * 1024;
 
 function parseError(error: unknown): string {
   if (error instanceof CommunityApiError) {
@@ -32,6 +36,9 @@ function parseError(error: unknown): string {
     }
     if (error.message === "invalid_post_body_bytes") {
       return `본문은 UTF-8 기준 ${MAX_POST_BODY_BYTES.toLocaleString()}bytes 이내로 입력해주세요.`;
+    }
+    if (error.status === 413) {
+      return "첨부한 이미지 용량이 너무 큽니다. 이미지 수를 줄이거나 더 작은 이미지로 다시 시도해주세요.";
     }
     if (error.message === "Failed to fetch") {
       return "서버 연결이 원활하지 않습니다. 잠시 후 다시 시도해 주세요.";
@@ -71,6 +78,83 @@ function toDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(new Error("file_read_failed"));
     reader.readAsDataURL(file);
   });
+}
+
+function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("image_load_failed"));
+    image.src = url;
+  });
+}
+
+async function canvasToDataUrl(
+  canvas: HTMLCanvasElement,
+  mimeType: string,
+  quality?: number,
+): Promise<string> {
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, mimeType, quality);
+  });
+
+  if (!blob) {
+    throw new Error("image_encode_failed");
+  }
+
+  return toDataUrl(new File([blob], "resized-image", { type: blob.type }));
+}
+
+async function resizeLocalImage(file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("invalid_image_type");
+  }
+
+  if (file.type === "image/gif" || file.type === "image/svg+xml") {
+    if (file.size > MAX_LOCAL_IMAGE_BYTES) {
+      throw new Error("image_too_large_after_resize");
+    }
+    return toDataUrl(file);
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const image = await loadImageFromUrl(objectUrl);
+    const longestSide = Math.max(image.width, image.height, 1);
+    const scale = Math.min(1, MAX_IMAGE_DIMENSION / longestSide);
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("image_context_unavailable");
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+
+    const outputMimeType = file.type === "image/png" ? "image/png" : "image/jpeg";
+    const qualitySteps = outputMimeType === "image/png" ? [undefined] : [0.9, 0.8, 0.72, 0.6, 0.5];
+
+    for (const quality of qualitySteps) {
+      const dataUrl = await canvasToDataUrl(canvas, outputMimeType, quality);
+      const estimatedBytes = Math.ceil((dataUrl.length * 3) / 4);
+      if (estimatedBytes <= TARGET_IMAGE_BYTES || quality === qualitySteps[qualitySteps.length - 1]) {
+        if (estimatedBytes > MAX_LOCAL_IMAGE_BYTES) {
+          throw new Error("image_too_large_after_resize");
+        }
+        return dataUrl;
+      }
+    }
+
+    throw new Error("image_resize_failed");
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 export default function BoardFeedWritePage() {
@@ -174,17 +258,17 @@ export default function BoardFeedWritePage() {
           setErrorMessage("이미지 파일만 업로드할 수 있습니다.");
           return;
         }
-        if (file.size > MAX_LOCAL_IMAGE_BYTES) {
-          setErrorMessage("각 이미지는 5MB 이하로 업로드해주세요.");
-          return;
-        }
       }
 
-      const localDataUrls = await Promise.all(limited.map((file) => toDataUrl(file)));
+      const localDataUrls = await Promise.all(limited.map((file) => resizeLocalImage(file)));
       setImageUrls((previous) => [...previous, ...localDataUrls].slice(0, MAX_IMAGE_COUNT));
       setErrorMessage(null);
-    } catch {
-      setErrorMessage("이미지 파일을 읽는 중 오류가 발생했습니다.");
+    } catch (error) {
+      if (error instanceof Error && error.message === "image_too_large_after_resize") {
+        setErrorMessage("이미지를 자동으로 줄인 뒤에도 5MB를 초과했습니다. 더 작은 이미지로 다시 시도해주세요.");
+      } else {
+        setErrorMessage("이미지 파일을 처리하는 중 오류가 발생했습니다.");
+      }
     } finally {
       event.target.value = "";
     }
@@ -215,6 +299,13 @@ export default function BoardFeedWritePage() {
         is_notice: canChooseNoticeType && postType === "notice",
         tag_ids: parseCommaList(tagInput, 5),
         image_urls: imageUrls,
+      });
+
+      trackEvent(ANALYTICS_EVENTS.boardPostCreated, {
+        post_type: postType,
+        anonymous,
+        image_count: imageUrls.length,
+        has_title: Boolean(title.trim())
       });
 
       const query = new URLSearchParams({
@@ -315,6 +406,9 @@ export default function BoardFeedWritePage() {
                       multiple
                       onChange={(event) => void handlePickLocalImages(event)}
                     />
+                    <p className="ms-field__helper">
+                      최대 {MAX_IMAGE_COUNT}개까지 첨부할 수 있으며, 로컬 이미지는 업로드 전에 자동으로 리사이즈/압축됩니다.
+                    </p>
                   </div>
 
                   {imageUrls.length > 0 ? (

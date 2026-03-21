@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { GoogleAnalytics } from "@next/third-parties/google";
 
 import { AuthProvider } from "../src/features/auth";
+import { getGoogleAnalyticsId, MonitoringProvider } from "../src/features/monitoring";
 
 import "./globals.css";
 
@@ -8,6 +10,8 @@ export const metadata: Metadata = {
   title: "MindSight",
   description: "MindSight design system scaffold"
 };
+
+const googleAnalyticsId = getGoogleAnalyticsId();
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -33,7 +37,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body suppressHydrationWarning>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <MonitoringProvider>{children}</MonitoringProvider>
+        </AuthProvider>
+        {googleAnalyticsId ? <GoogleAnalytics gaId={googleAnalyticsId} /> : null}
       </body>
     </html>
   );

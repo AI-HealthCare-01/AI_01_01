@@ -32,6 +32,23 @@
 | modeling_integration | model/ 번들 연결 nowcast 서빙 + 승인형 재학습 job 구조 | `/v1/modeling/runtime`, `/v1/modeling/nowcast/*`, `/v1/admin/model-ops/*/retraining-jobs` 존재 | 웹 사용자 화면에서 모델 상태/예측 결과를 직접 확인하는 운영 UI는 제한적 | reconnect |
 | extra_internal_design_system | blueprint 기능 범위 외 내부 프리뷰는 운영 화면에서 분리/비노출 | 공개 `/design-system` 제거, 내부 전용 `/internal/design-system`으로 이동 | 내부 점검 경로는 유지되며 운영 메뉴에는 비노출 | keep |
 
+## Intentional Deviation Notes
+
+### 2026-03-21 - challenge same-domain sustained concurrency
+- blueprint reference:
+  - `blueprint/challenge/AGENTS.md` 규칙: 같은 도메인의 지속형 challenge 동시 활성화 금지
+- current implementation change:
+  - 지속형 challenge 활성화 시 "최대 3개" 제한은 유지
+  - "같은 도메인 중복 활성화 금지" 검증은 제거
+- reason:
+  - 제품 요구사항 변경으로 도메인과 무관하게 다중 챌린지 동시 수행 허용 필요
+- impact scope:
+  - API enrollment 생성 검증(`apps/api/app/core_inputs/store.py`)
+  - API 에러 코드 매핑(`apps/api/app/core_inputs/router.py`)
+  - 웹 enrollment 오류 문구 매핑(`apps/web/app/challenge/[challengeId]/enroll/page.tsx`)
+- follow-up:
+  - challenge blueprint의 slot rule 문구를 최신 정책에 맞춰 업데이트 필요
+
 ## Preview/Showcase 잔존 화면
 - 운영 사용자 화면 기준 잔존 항목 없음
 - 내부 점검 전용 라우트: `/internal/design-system`

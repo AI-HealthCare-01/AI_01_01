@@ -14,7 +14,10 @@ from .models import (
     BaselineAssessmentRequest,
     ChangeEmailAvailabilityRequest,
     ChangeEmailAvailabilityResponse,
+    DeleteAccountResponse,
     FirebaseIdentity,
+    NicknameAvailabilityRequest,
+    NicknameAvailabilityResponse,
     OnboardingProfileRequest,
     SessionBootstrapRequest,
     SessionContract,
@@ -104,6 +107,11 @@ def signup(
             coach_name=payload.coach_name,
         )
     except sqlite3.IntegrityError as exc:
+        if "nickname_already_exists" in str(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="nickname_already_exists",
+            ) from exc
         # Firebase 계정은 새로 생성되었지만 로컬 계정 쉘이 이전 UID로 남아있는 경우,
         # 이메일 기준으로 UID를 재연결해 가입 플로우를 복구한다.
         relinked = store.relink_firebase_uid_by_email(
@@ -121,6 +129,15 @@ def signup(
             status_code=status.HTTP_409_CONFLICT,
             detail="email_or_uid_already_exists",
         ) from exc
+
+
+@router.post("/auth/nickname/availability", response_model=NicknameAvailabilityResponse)
+def nickname_availability(
+    payload: NicknameAvailabilityRequest,
+    store: AuthStore = Depends(get_auth_store),
+) -> NicknameAvailabilityResponse:
+    duplicate = store.is_nickname_in_use(payload.nickname)
+    return NicknameAvailabilityResponse(is_available=not duplicate)
 
 
 @router.post("/auth/session/bootstrap", response_model=SessionContract)
@@ -180,6 +197,19 @@ def change_email_availability(
 
     duplicate = store.is_email_in_use(payload.new_email, exclude_user_id=user_id)
     return ChangeEmailAvailabilityResponse(is_available=not duplicate)
+
+
+@router.post("/auth/account/delete", response_model=DeleteAccountResponse)
+def delete_account(
+    identity: FirebaseIdentity = Depends(get_firebase_identity),
+    store: AuthStore = Depends(get_auth_store),
+) -> DeleteAccountResponse:
+    user_id = store.get_user_id_by_firebase_uid(identity.firebase_uid)
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="account_not_found")
+
+    store.mark_account_deleted(user_id)
+    return DeleteAccountResponse(result="deleted")
 
 
 @router.post("/onboarding/profile", response_model=SessionContract)

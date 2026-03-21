@@ -8,6 +8,8 @@ from pathlib import Path
 from app.auth.store import AuthStore
 from app.core_inputs.store import CoreInputStore
 
+from . import models as community_models
+from .moderation import ToxicPrediction, ToxicTextClassifier
 from .models import (
     BoardCommentCreateRequest,
     BoardCommentListItem,
@@ -63,6 +65,12 @@ HATE_KEYWORDS = [
     "혐오",
     "차별",
     "죽어",
+    "개새끼",
+    "씨발",
+    "시발",
+    "병신",
+    "좆",
+    "지랄",
     "fuck",
     "bitch",
     "asshole",
@@ -117,8 +125,9 @@ CONSENT_TYPE_TO_FIELD = {
 
 
 class CommunityStore:
-    def __init__(self, database_path: Path):
+    def __init__(self, database_path: Path, toxic_text_classifier: ToxicTextClassifier | None = None):
         self.database_path = database_path
+        self._toxic_text_classifier = toxic_text_classifier
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Ensure shared auth/core tables are ready.
@@ -590,12 +599,29 @@ class CommunityStore:
             raise ValueError("invalid_post_body_bytes")
         return normalized
 
-    def _detect_text_queue_types(self, text: str) -> set[ModerationQueueType]:
-        queue_types: set[ModerationQueueType] = set()
+    def _classify_toxic_text(self, text: str) -> ToxicPrediction | None:
+        if self._toxic_text_classifier is None:
+            return None
+        return self._toxic_text_classifier.classify(text)
+
+    def _detect_text_queue_types(
+        self,
+        text: str,
+    ) -> dict[ModerationQueueType, tuple[str, float]]:
+        queue_types: dict[ModerationQueueType, tuple[str, float]] = {}
         if self._text_contains_any(text, HATE_KEYWORDS):
-            queue_types.add(ModerationQueueType.hate)
+            queue_types[ModerationQueueType.hate] = ("rule_text_scan", 0.72)
         if self._text_contains_any(text, SAFETY_KEYWORDS):
-            queue_types.add(ModerationQueueType.safety)
+            queue_types[ModerationQueueType.safety] = ("rule_text_scan", 0.81)
+
+        toxic_prediction = self._classify_toxic_text(text)
+        if toxic_prediction is not None:
+            existing = queue_types.get(ModerationQueueType.hate)
+            source_type = "model_text_scan" if existing is None else "rule_model_text_scan"
+            confidence = toxic_prediction.score
+            if existing is not None:
+                confidence = max(confidence, existing[1])
+            queue_types[ModerationQueueType.hate] = (source_type, confidence)
         return queue_types
 
     def _insert_moderation_queue(
@@ -899,16 +925,16 @@ class CommunityStore:
                 )
 
             queue_types = self._detect_text_queue_types(body_text)
-            for queue_type in queue_types:
+            for queue_type, (source_type, confidence) in queue_types.items():
                 self._insert_moderation_queue(
                     conn,
                     queue_type=queue_type,
                     target_type="post",
                     target_id=post_id,
-                    source_type="model_text_scan",
+                    source_type=source_type,
                     reason_code=None,
                     detail_text=None,
-                    confidence=0.72 if queue_type == ModerationQueueType.hate else 0.81,
+                    confidence=confidence,
                 )
 
             if queue_types:
@@ -991,16 +1017,16 @@ class CommunityStore:
                 ),
             )
 
-            for queue_type in queue_types:
+            for queue_type, (source_type, confidence) in queue_types.items():
                 self._insert_moderation_queue(
                     conn,
                     queue_type=queue_type,
                     target_type="post",
                     target_id=post_id,
-                    source_type="model_text_scan",
+                    source_type=source_type,
                     reason_code=None,
                     detail_text=None,
-                    confidence=0.72 if queue_type == ModerationQueueType.hate else 0.81,
+                    confidence=confidence,
                 )
 
             conn.commit()
@@ -1140,16 +1166,16 @@ class CommunityStore:
             )
 
             queue_types = self._detect_text_queue_types(payload.body_text)
-            for queue_type in queue_types:
+            for queue_type, (source_type, confidence) in queue_types.items():
                 self._insert_moderation_queue(
                     conn,
                     queue_type=queue_type,
                     target_type="comment",
                     target_id=comment_id,
-                    source_type="model_text_scan",
+                    source_type=source_type,
                     reason_code=None,
                     detail_text=None,
-                    confidence=0.69 if queue_type == ModerationQueueType.hate else 0.78,
+                    confidence=confidence,
                 )
 
             conn.commit()
@@ -1218,6 +1244,151 @@ class CommunityStore:
                 )
 
             return items
+
+    def _build_moderation_queue_item(self, row: sqlite3.Row) -> ModerationQueueItem:
+        target_public_id = (
+            str(row["target_public_id"])
+            if "target_public_id" in row.keys() and row["target_public_id"]
+            else None
+        )
+        target_title = str(row["target_title"]) if "target_title" in row.keys() and row["target_title"] else None
+        target_preview = (
+            str(row["target_preview"]) if "target_preview" in row.keys() and row["target_preview"] else None
+        )
+        return ModerationQueueItem(
+            queue_item_id=str(row["queue_item_id"]),
+            queue_type=ModerationQueueType(str(row["queue_type"])),
+            target_type=str(row["target_type"]),
+            target_id=str(row["target_id"]),
+            target_public_id=target_public_id,
+            target_title=target_title,
+            target_preview=target_preview,
+            source_type=str(row["source_type"]),
+            reason_code=(str(row["reason_code"]) if row["reason_code"] else None),
+            detail_text=(str(row["detail_text"]) if row["detail_text"] else None),
+            confidence=(float(row["confidence"]) if row["confidence"] is not None else None),
+            status=str(row["status"]),
+            created_at=datetime.fromisoformat(str(row["created_at"])),
+        )
+
+    def _record_moderation_action(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        target_type: str,
+        target_id: str,
+        source_type: str,
+        action_code: str,
+        actor_user_id: str,
+    ) -> None:
+        conn.execute(
+            """
+            INSERT INTO board_moderation_event (
+              event_id,
+              target_type,
+              target_id,
+              source_type,
+              category_code,
+              confidence,
+              action_code,
+              actor_user_id,
+              created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"mev_{uuid.uuid4().hex}",
+                target_type,
+                target_id,
+                source_type,
+                None,
+                None,
+                action_code,
+                actor_user_id,
+                self._now_iso(),
+            ),
+        )
+
+    def _build_moderation_post_target(
+        self,
+        conn: sqlite3.Connection,
+        post_id: str,
+        viewer_user_id: str,
+    ) -> community_models.ModerationQueuePostTarget | None:
+        row = conn.execute(
+            """
+            SELECT bp.*,
+                   COALESCE(NULLIF(au.nickname, ''), NULLIF(au.coach_name, ''), '사용자') AS nickname
+            FROM board_post bp
+            LEFT JOIN account_user au ON au.user_id = bp.author_user_id
+            WHERE bp.post_id = ?
+            """,
+            (post_id,),
+        ).fetchone()
+        if not row:
+            return None
+        board_item = self._build_board_item(conn, row, viewer_user_id)
+        return community_models.ModerationQueuePostTarget(
+            post_id=board_item.post.post_id,
+            feed_public_id=board_item.post.feed_public_id,
+            title=board_item.post.title,
+            body_text=board_item.post.body_text,
+            visibility_status=board_item.post.visibility_status,
+            moderation_status=board_item.post.moderation_status,
+            created_at=board_item.post.created_at,
+            updated_at=board_item.post.updated_at,
+            author=community_models.ModerationQueueTargetAuthor(
+                user_id=board_item.author.author_user_id,
+                display_name=board_item.author.display_name,
+                is_anonymous=board_item.post.is_anonymous,
+            ),
+        )
+
+    def _build_moderation_comment_target(
+        self,
+        conn: sqlite3.Connection,
+        comment_id: str,
+        viewer_user_id: str,
+    ) -> community_models.ModerationQueueCommentTarget | None:
+        row = conn.execute(
+            """
+            SELECT
+              bc.comment_id,
+              bc.post_id,
+              bc.author_user_id,
+              bc.body_text,
+              bc.is_anonymous,
+              bc.visibility_status,
+              bc.created_at,
+              bc.updated_at,
+              bp.feed_public_id,
+              COALESCE(NULLIF(au.nickname, ''), NULLIF(au.coach_name, ''), '사용자') AS nickname
+            FROM board_comment bc
+            LEFT JOIN board_post bp ON bp.post_id = bc.post_id
+            LEFT JOIN account_user au ON au.user_id = bc.author_user_id
+            WHERE bc.comment_id = ?
+            """,
+            (comment_id,),
+        ).fetchone()
+        if not row:
+            return None
+        is_anonymous = bool(row["is_anonymous"])
+        display_name = str(row["nickname"]) if row["nickname"] else "사용자"
+        if is_anonymous and str(row["author_user_id"]) != viewer_user_id:
+            display_name = "익명"
+        return community_models.ModerationQueueCommentTarget(
+            comment_id=str(row["comment_id"]),
+            post_id=str(row["post_id"]),
+            post_feed_public_id=(str(row["feed_public_id"]) if row["feed_public_id"] else None),
+            body_text=str(row["body_text"]),
+            visibility_status=str(row["visibility_status"]),
+            created_at=datetime.fromisoformat(str(row["created_at"])),
+            updated_at=self._to_datetime(str(row["updated_at"])) if row["updated_at"] else None,
+            author=community_models.ModerationQueueTargetAuthor(
+                user_id=str(row["author_user_id"]),
+                display_name=display_name,
+                is_anonymous=is_anonymous,
+            ),
+        )
 
     def report_post(
         self,
@@ -1343,40 +1514,47 @@ class CommunityStore:
                 rows = conn.execute(
                     """
                     SELECT
-                      queue_item_id,
-                      queue_type,
-                      target_type,
-                      target_id,
-                      source_type,
-                      reason_code,
-                      detail_text,
-                      confidence,
-                      status,
-                      created_at
+                      bmq.queue_item_id,
+                      bmq.queue_type,
+                      bmq.target_type,
+                      bmq.target_id,
+                      CASE
+                        WHEN bmq.target_type = 'post' THEN bp.feed_public_id
+                        WHEN bmq.target_type = 'comment' THEN bp.feed_public_id
+                        ELSE NULL
+                      END AS target_public_id,
+                      CASE
+                        WHEN bmq.target_type = 'post' THEN bp.display_title
+                        WHEN bmq.target_type = 'comment' THEN '댓글'
+                        ELSE NULL
+                      END AS target_title,
+                      CASE
+                        WHEN bmq.target_type = 'post' THEN bp.body_preview
+                        WHEN bmq.target_type = 'comment' THEN substr(bc.body_text, 1, 120)
+                        ELSE NULL
+                      END AS target_preview,
+                      bmq.source_type,
+                      bmq.reason_code,
+                      bmq.detail_text,
+                      bmq.confidence,
+                      bmq.status,
+                      bmq.created_at
                     FROM board_moderation_queue
-                    WHERE queue_type = ?
-                      AND status = 'queued'
-                    ORDER BY datetime(created_at) DESC
+                    AS bmq
+                    LEFT JOIN board_post bp
+                      ON bmq.target_type = 'post' AND bp.post_id = bmq.target_id
+                    LEFT JOIN board_comment bc
+                      ON bmq.target_type = 'comment' AND bc.comment_id = bmq.target_id
+                    WHERE bmq.queue_type = ?
+                      AND bmq.status = 'queued'
+                    ORDER BY datetime(bmq.created_at) DESC
                     LIMIT ?
                     """,
                     (queue_type.value, resolved_limit),
                 ).fetchall()
 
                 items = [
-                    ModerationQueueItem(
-                        queue_item_id=str(row["queue_item_id"]),
-                        queue_type=ModerationQueueType(str(row["queue_type"])),
-                        target_type=str(row["target_type"]),
-                        target_id=str(row["target_id"]),
-                        source_type=str(row["source_type"]),
-                        reason_code=(str(row["reason_code"]) if row["reason_code"] else None),
-                        detail_text=(str(row["detail_text"]) if row["detail_text"] else None),
-                        confidence=(
-                            float(row["confidence"]) if row["confidence"] is not None else None
-                        ),
-                        status=str(row["status"]),
-                        created_at=datetime.fromisoformat(str(row["created_at"])),
-                    )
+                    self._build_moderation_queue_item(row)
                     for row in rows
                 ]
                 groups.append(
@@ -1387,7 +1565,164 @@ class CommunityStore:
                     )
                 )
 
-            return ModerationQueuesResponse(groups=groups)
+        return ModerationQueuesResponse(groups=groups)
+
+    def get_moderation_queue_detail(
+        self,
+        actor_user_id: str,
+        queue_item_id: str,
+    ) -> community_models.ModerationQueueDetailResponse:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                  queue_item_id,
+                  queue_type,
+                  target_type,
+                  target_id,
+                  source_type,
+                  reason_code,
+                  detail_text,
+                  confidence,
+                  status,
+                  created_at
+                FROM board_moderation_queue
+                WHERE queue_item_id = ?
+                """,
+                (queue_item_id,),
+            ).fetchone()
+            if not row:
+                raise ValueError("moderation_queue_item_not_found")
+
+            item = self._build_moderation_queue_item(row)
+            post = None
+            comment = None
+            if item.target_type == "post":
+                post = self._build_moderation_post_target(conn, item.target_id, actor_user_id)
+            elif item.target_type == "comment":
+                comment = self._build_moderation_comment_target(conn, item.target_id, actor_user_id)
+
+            return community_models.ModerationQueueDetailResponse(item=item, post=post, comment=comment)
+
+    def apply_moderation_queue_action(
+        self,
+        actor_user_id: str,
+        queue_item_id: str,
+        payload: community_models.ModerationQueueActionRequest,
+    ) -> community_models.ModerationQueueActionResponse:
+        now = self._now_iso()
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT queue_item_id, target_type, target_id, status
+                FROM board_moderation_queue
+                WHERE queue_item_id = ?
+                """,
+                (queue_item_id,),
+            ).fetchone()
+            if not row:
+                raise ValueError("moderation_queue_item_not_found")
+
+            target_type = str(row["target_type"])
+            target_id = str(row["target_id"])
+            action = payload.action_code
+            post_visibility_status = None
+            post_moderation_status = None
+            comment_visibility_status = None
+
+            if target_type == "post":
+                current = conn.execute(
+                    """
+                    SELECT visibility_status, moderation_status
+                    FROM board_post
+                    WHERE post_id = ?
+                    """,
+                    (target_id,),
+                ).fetchone()
+                if not current:
+                    raise ValueError("post_not_found")
+
+                if action == community_models.ModerationActionCode.hide:
+                    post_visibility_status = BoardVisibilityStatus.hidden_by_moderator
+                    post_moderation_status = BoardModerationStatus.actioned
+                elif action == community_models.ModerationActionCode.restore:
+                    post_visibility_status = BoardVisibilityStatus.visible
+                    post_moderation_status = BoardModerationStatus.clear
+                elif action == community_models.ModerationActionCode.delete:
+                    post_visibility_status = BoardVisibilityStatus.deleted
+                    post_moderation_status = BoardModerationStatus.actioned
+                else:
+                    post_visibility_status = BoardVisibilityStatus(str(current["visibility_status"]))
+                    post_moderation_status = BoardModerationStatus(str(current["moderation_status"]))
+
+                if action != community_models.ModerationActionCode.dismiss:
+                    conn.execute(
+                        """
+                        UPDATE board_post
+                        SET visibility_status = ?, moderation_status = ?, updated_at = ?
+                        WHERE post_id = ?
+                        """,
+                        (post_visibility_status.value, post_moderation_status.value, now, target_id),
+                    )
+            elif target_type == "comment":
+                current = conn.execute(
+                    """
+                    SELECT visibility_status
+                    FROM board_comment
+                    WHERE comment_id = ?
+                    """,
+                    (target_id,),
+                ).fetchone()
+                if not current:
+                    raise ValueError("comment_not_found")
+
+                if action == community_models.ModerationActionCode.hide:
+                    comment_visibility_status = "hidden_by_moderator"
+                elif action == community_models.ModerationActionCode.restore:
+                    comment_visibility_status = "visible"
+                elif action == community_models.ModerationActionCode.delete:
+                    comment_visibility_status = "deleted"
+                else:
+                    comment_visibility_status = str(current["visibility_status"])
+
+                if action != community_models.ModerationActionCode.dismiss:
+                    conn.execute(
+                        """
+                        UPDATE board_comment
+                        SET visibility_status = ?, updated_at = ?
+                        WHERE comment_id = ?
+                        """,
+                        (comment_visibility_status, now, target_id),
+                    )
+            else:
+                raise ValueError("moderation_target_unsupported")
+
+            conn.execute(
+                """
+                UPDATE board_moderation_queue
+                SET status = ?, detail_text = COALESCE(detail_text, ?)
+                WHERE queue_item_id = ?
+                """,
+                ("resolved", action.value, queue_item_id),
+            )
+            self._record_moderation_action(
+                conn,
+                target_type=target_type,
+                target_id=target_id,
+                source_type="admin_action",
+                action_code=action.value,
+                actor_user_id=actor_user_id,
+            )
+            conn.commit()
+
+        return community_models.ModerationQueueActionResponse(
+            result=action.value,
+            queue_item_id=queue_item_id,
+            status="resolved",
+            post_visibility_status=post_visibility_status,
+            post_moderation_status=post_moderation_status,
+            comment_visibility_status=comment_visibility_status,
+        )
 
     @staticmethod
     def _support_priority_and_sensitive(

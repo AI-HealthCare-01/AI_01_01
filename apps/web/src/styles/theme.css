@@ -49,6 +49,18 @@
   --color-text-muted: var(--color-text-tertiary);
   --color-shadow: 0 2px 8px rgba(44, 44, 58, 0.06);
 
+  /* Backward-compatible aliases for challenge progress widgets */
+  --color-bg: var(--color-semantic-page-bg);
+  --color-surface: var(--color-semantic-surface-bg);
+  --color-surface-sub: var(--color-semantic-surface-muted);
+  --color-border: var(--color-semantic-border-default);
+  --color-primary: var(--color-brand-primary);
+  --color-primary-light: var(--color-brand-primary-soft);
+  --color-sage: color-mix(in oklab, var(--color-status-success) 76%, black);
+  --color-sage-light: color-mix(in oklab, var(--color-status-success) 18%, white);
+  --color-text-muted: var(--color-text-tertiary);
+  --color-shadow: 0 2px 8px rgba(44, 44, 58, 0.06);
+
   --color-semantic-page-bg: var(--color-bg-base);
   --color-semantic-section-bg: var(--color-surface-alt);
   --color-semantic-surface-bg: var(--color-surface-base);
@@ -3271,6 +3283,53 @@ a {
 .ms-home-calendar-cell--selected {
   outline: var(--fx-focus-ring-width) solid color-mix(in oklab, var(--color-brand-primary) 68%, white);
   outline-offset: var(--fx-focus-ring-offset);
+}
+
+.ms-home-calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.ms-home-calendar-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-caption-size);
+  color: var(--color-semantic-text-secondary);
+}
+
+.ms-home-calendar-legend__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--color-semantic-border-default) 72%, white);
+  flex: 0 0 auto;
+}
+
+.ms-home-calendar-legend__dot--happy {
+  background: linear-gradient(145deg, #ffe0ef 0%, #ffd3e8 100%);
+  border-color: color-mix(in oklab, #f5a9cc 64%, white);
+}
+
+.ms-home-calendar-legend__dot--anxious {
+  background: linear-gradient(145deg, #fff4d9 0%, #ffedc5 100%);
+  border-color: color-mix(in oklab, #f0ce86 62%, white);
+}
+
+.ms-home-calendar-legend__dot--depressed {
+  background: linear-gradient(145deg, #deecff 0%, #d3e5ff 100%);
+  border-color: color-mix(in oklab, #9dc2f3 64%, white);
+}
+
+.ms-home-calendar-legend__dot--sleep {
+  background: linear-gradient(145deg, #eadfff 0%, #e2d6fb 100%);
+  border-color: color-mix(in oklab, #b89ce8 62%, white);
+}
+
+.ms-home-calendar-legend__text {
+  line-height: 1.4;
 }
 
 .ms-home-challenge-slots {

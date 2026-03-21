@@ -12,6 +12,7 @@ import {
   PageContainer,
   SectionContainer,
 } from "../../src/components/ui";
+import { MonthlyCheckinCalendar } from "../../src/components/checkin/MonthlyCheckinCalendar";
 import { AuthRouteGuard, useAuthContext } from "../../src/features/auth";
 import {
   ALL_ASSESSMENT_QUESTIONS,
@@ -23,18 +24,14 @@ import {
   completeAssessment,
   CoreApiError,
   getChallengeRecommendations,
+  listCheckinFeatures,
   listAssessmentHistory,
   saveAssessmentAnswer,
   startAssessment,
   type AssessmentSession,
+  type CheckinFeatureBundle,
 } from "../../src/features/core-inputs";
-
-type YearMonth = {
-  year: number;
-  month: number;
-};
-
-const ASSESSMENT_CALENDAR_WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
+import { getKstYearMonth, shiftMonth, type YearMonth } from "../../src/features/core-inputs/checkin-calendar";
 
 function parseError(error: unknown): string {
   if (error instanceof CoreApiError) {
@@ -96,53 +93,6 @@ function formatDate(value: string | null): string {
   return value.slice(0, 10);
 }
 
-function getKstYearMonth(value = new Date()): YearMonth {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-  }).formatToParts(value);
-
-  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
-    Number(parts.find((part) => part.type === type)?.value ?? "0");
-
-  return {
-    year: getPart("year"),
-    month: getPart("month"),
-  };
-}
-
-function shiftMonth(cursor: YearMonth, offset: number): YearMonth {
-  const next = new Date(Date.UTC(cursor.year, cursor.month - 1 + offset, 1));
-  return {
-    year: next.getUTCFullYear(),
-    month: next.getUTCMonth() + 1,
-  };
-}
-
-function buildMonthCalendarCells(cursor: YearMonth): Array<{ date: string | null; dayLabel: string }> {
-  const firstDay = new Date(Date.UTC(cursor.year, cursor.month - 1, 1)).getUTCDay();
-  const daysInMonth = new Date(Date.UTC(cursor.year, cursor.month, 0)).getUTCDate();
-  const cells: Array<{ date: string | null; dayLabel: string }> = [];
-
-  for (let index = 0; index < firstDay; index += 1) {
-    cells.push({ date: null, dayLabel: "" });
-  }
-
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    cells.push({
-      date: `${cursor.year}-${String(cursor.month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
-      dayLabel: String(day),
-    });
-  }
-
-  while (cells.length % 7 !== 0) {
-    cells.push({ date: null, dayLabel: "" });
-  }
-
-  return cells;
-}
-
 type QuestionPointer = {
   sectionIndex: number;
   questionIndex: number;
@@ -184,10 +134,12 @@ export default function AssessmentsPage() {
   const [showCompletionCard, setShowCompletionCard] = useState(false);
   const [selectedOptionKey, setSelectedOptionKey] = useState<string | null>(null);
   const [historyMonth, setHistoryMonth] = useState<YearMonth>(getKstYearMonth());
+  const [historyMonthCheckinFeatures, setHistoryMonthCheckinFeatures] = useState<CheckinFeatureBundle[]>([]);
   const [riskLevel, setRiskLevel] = useState<number | null>(null);
   const [riskMessage, setRiskMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
+  const [calendarLoading, setCalendarLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const runnerTopRef = useRef<HTMLDivElement | null>(null);
@@ -256,18 +208,33 @@ export default function AssessmentsPage() {
     return null;
   }, [answers]);
 
-  const completedDateSet = useMemo(() => {
+  const historyMonthRange = useMemo(() => {
+    const startDate = `${historyMonth.year}-${String(historyMonth.month).padStart(2, "0")}-01`;
+    const endDate = `${historyMonth.year}-${String(historyMonth.month).padStart(2, "0")}-${String(
+      new Date(Date.UTC(historyMonth.year, historyMonth.month, 0)).getUTCDate(),
+    ).padStart(2, "0")}`;
+
+    return {
+      start_date: startDate,
+      end_date: endDate,
+    };
+  }, [historyMonth]);
+
+  const historyMonthCheckinSet = useMemo(() => {
     const dates = new Set<string>();
-    for (const session of completedHistory) {
-      const value = formatDate(session.completed_at ?? session.started_at);
-      if (value !== "-") {
-        dates.add(value);
-      }
+    for (const feature of historyMonthCheckinFeatures) {
+      dates.add(feature.date);
     }
     return dates;
-  }, [completedHistory]);
+  }, [historyMonthCheckinFeatures]);
 
-  const historyCalendarCells = useMemo(() => buildMonthCalendarCells(historyMonth), [historyMonth]);
+  const historyMonthCheckinFeatureMap = useMemo(() => {
+    const map = new Map<string, CheckinFeatureBundle>();
+    for (const feature of historyMonthCheckinFeatures) {
+      map.set(feature.date, feature);
+    }
+    return map;
+  }, [historyMonthCheckinFeatures]);
 
   useEffect(() => {
     const run = async () => {
@@ -304,6 +271,26 @@ export default function AssessmentsPage() {
 
     void run();
   }, [firebaseUser]);
+
+  useEffect(() => {
+    const run = async () => {
+      if (!firebaseUser) {
+        return;
+      }
+
+      try {
+        setCalendarLoading(true);
+        const features = await listCheckinFeatures(firebaseUser, historyMonthRange);
+        setHistoryMonthCheckinFeatures(features);
+      } catch {
+        setHistoryMonthCheckinFeatures([]);
+      } finally {
+        setCalendarLoading(false);
+      }
+    };
+
+    void run();
+  }, [firebaseUser, historyMonthRange]);
 
   const onStart = async () => {
     if (!firebaseUser || working) {
@@ -534,12 +521,12 @@ export default function AssessmentsPage() {
                 </Card>
 
                 <Card className="ms-assessment-history-card" title="검사 이력" description="최신순">
-                  {completedHistory.length === 0 ? (
-                    <EmptyState title="검사 이력이 없습니다" description="검사 시작하기 버튼으로 첫 검사를 진행해보세요." />
-                  ) : (
-                    <div className="ms-assessment-history-split">
-                      <div className="ms-assessment-history-list">
-                        {completedHistory.map((session) => (
+                  <div className="ms-assessment-history-split">
+                    <div className="ms-assessment-history-list">
+                      {completedHistory.length === 0 ? (
+                        <EmptyState title="검사 이력이 없습니다" description="검사 시작하기 버튼으로 첫 검사를 진행해보세요." />
+                      ) : (
+                        completedHistory.map((session) => (
                           <article key={session.assessment_id} className="ms-assessment-history-item">
                             <div className="ms-assessment-history-item__head">
                               <p className="ms-assessment-history-item__date">
@@ -553,55 +540,46 @@ export default function AssessmentsPage() {
                               <Badge variant="info">불면 {session.scores.isi_total ?? "-"}/28</Badge>
                             </div>
                           </article>
-                        ))}
+                        ))
+                      )}
+                    </div>
+
+                    <Card title="월간 출석 캘린더" description={`${historyMonth.year}년 ${historyMonth.month}월 체크인 기록`}>
+                      <div className="ms-activity-log-calendar-nav">
+                        <Button size="sm" variant="secondary" onClick={() => setHistoryMonth((previous) => shiftMonth(previous, -1))}>
+                          이전
+                        </Button>
+                        <p className="ms-activity-log-calendar-nav__label">
+                          {historyMonth.year}년 {historyMonth.month}월
+                        </p>
+                        <Button size="sm" variant="secondary" onClick={() => setHistoryMonth((previous) => shiftMonth(previous, 1))}>
+                          다음
+                        </Button>
                       </div>
 
-                      <Card title="캘린더 보기" description="검사를 완료한 날짜를 표시합니다.">
-                        <div className="ms-activity-log-calendar-nav">
-                          <Button size="sm" variant="secondary" onClick={() => setHistoryMonth((previous) => shiftMonth(previous, -1))}>
-                            이전
-                          </Button>
-                          <p className="ms-activity-log-calendar-nav__label">
-                            {historyMonth.year}년 {historyMonth.month}월
-                          </p>
-                          <Button size="sm" variant="secondary" onClick={() => setHistoryMonth((previous) => shiftMonth(previous, 1))}>
-                            다음
-                          </Button>
+                      {calendarLoading ? (
+                        <div className="ms-stack">
+                          <div className="ms-home-calendar-weekdays" aria-hidden="true">
+                            {["일", "월", "화", "수", "목", "금", "토"].map((day) => (
+                              <span key={day}>{day}</span>
+                            ))}
+                          </div>
+                          <div className="ms-home-calendar-grid" aria-hidden="true">
+                            {Array.from({ length: 35 }).map((_, index) => (
+                              <span key={`assessment-calendar-skeleton-${index}`} className="ms-home-calendar-cell" />
+                            ))}
+                          </div>
                         </div>
-
-                        <div className="ms-home-calendar-weekdays">
-                          {ASSESSMENT_CALENDAR_WEEKDAYS.map((day) => (
-                            <span key={day}>{day}</span>
-                          ))}
-                        </div>
-                        <div className="ms-home-calendar-grid">
-                          {historyCalendarCells.map((cell, index) => {
-                            if (!cell.date) {
-                              return (
-                                <div
-                                  key={`assessment-calendar-empty-${index}`}
-                                  className="ms-home-calendar-cell ms-home-calendar-cell--empty"
-                                  aria-hidden="true"
-                                />
-                              );
-                            }
-                            const hasAssessment = completedDateSet.has(cell.date);
-                            return (
-                              <div
-                                key={cell.date}
-                                className={`ms-home-calendar-cell${
-                                  hasAssessment ? " ms-home-calendar-cell--active ms-home-calendar-cell--tone-happy" : ""
-                                }`}
-                                title={`${cell.date} · ${hasAssessment ? "검사 완료" : "기록 없음"}`}
-                              >
-                                {cell.dayLabel}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </Card>
-                    </div>
-                  )}
+                      ) : (
+                        <MonthlyCheckinCalendar
+                          month={historyMonth}
+                          checkedDateSet={historyMonthCheckinSet}
+                          featureMap={historyMonthCheckinFeatureMap}
+                          ariaLabel="심리검사 화면 월간 체크인 캘린더"
+                        />
+                      )}
+                    </Card>
+                  </div>
                 </Card>
               </div>
             ) : (

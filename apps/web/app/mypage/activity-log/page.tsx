@@ -20,6 +20,7 @@ import {
   Tabs,
   type TabItem,
 } from "../../../src/components/ui";
+import { MonthlyCheckinCalendar } from "../../../src/components/checkin/MonthlyCheckinCalendar";
 import { AuthRouteGuard, useAuthContext } from "../../../src/features/auth";
 import {
   CoreApiError,
@@ -29,13 +30,19 @@ import {
   type ActivityDashboardResponse,
   type ActivityLogDay,
   type CheckinFeatureBundle,
-  type SleepTotalBucket,
 } from "../../../src/features/core-inputs";
+import {
+  CALENDAR_TONE_LABEL,
+  CHECKIN_CALENDAR_WEEKDAYS,
+  getKstYearMonth,
+  resolveCalendarMoodTone,
+  shiftMonth,
+  type YearMonth,
+} from "../../../src/features/core-inputs/checkin-calendar";
 import { MyPageTabShell } from "../../../src/features/mypage/tab-shell";
 
 type PeriodOption = "7d" | "28d" | "custom";
 type ActivityFilter = "all" | "checkin" | "challenge" | "cbt" | "journal" | "assessment";
-type YearMonth = { year: number; month: number };
 
 const periodOptions = [
   { label: "최근 일주일", value: "7d" },
@@ -51,26 +58,6 @@ const filterTabs: TabItem<ActivityFilter>[] = [
   { label: "한줄일기", value: "journal", content: null },
   { label: "설문", value: "assessment", content: null },
 ];
-
-type CalendarMoodTone = "happy" | "anxious" | "depressed" | "sleep";
-
-const SLEEP_TOTAL_MIDPOINT_BY_BUCKET: Record<SleepTotalBucket, number> = {
-  lt_4h: 3.5,
-  h4_5: 4.5,
-  h5_6: 5.5,
-  h6_7: 6.5,
-  h7_8: 7.5,
-  ge_8h: 8.5,
-};
-
-const CALENDAR_TONE_LABEL: Record<CalendarMoodTone, string> = {
-  happy: "기분 좋음",
-  anxious: "불안 경향",
-  depressed: "우울 경향",
-  sleep: "수면 부족 경향",
-};
-
-const ACTIVITY_CALENDAR_WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
 
 function toDateString(input: Date): string {
   const y = input.getFullYear();
@@ -92,22 +79,6 @@ function getRange(period: PeriodOption): { start_date: string; end_date: string 
   };
 }
 
-function getKstDateInfo(value = new Date()): { year: number; month: number } {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-  }).formatToParts(value);
-
-  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
-    Number(parts.find((part) => part.type === type)?.value ?? "0");
-
-  return {
-    year: getPart("year"),
-    month: getPart("month"),
-  };
-}
-
 function getKstTodayString(value = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
@@ -115,14 +86,6 @@ function getKstTodayString(value = new Date()): string {
     month: "2-digit",
     day: "2-digit",
   }).format(value);
-}
-
-function shiftMonth(cursor: YearMonth, offset: number): YearMonth {
-  const next = new Date(Date.UTC(cursor.year, cursor.month - 1 + offset, 1));
-  return {
-    year: next.getUTCFullYear(),
-    month: next.getUTCMonth() + 1,
-  };
 }
 
 function getMonthRange(cursor: YearMonth): { start_date: string; end_date: string } {
@@ -180,50 +143,6 @@ function formatDate(value: string | null): string {
   return value.slice(0, 10);
 }
 
-function resolveCalendarMoodTone(feature: CheckinFeatureBundle | null | undefined): CalendarMoodTone | null {
-  if (!feature) {
-    return null;
-  }
-
-  const mood = feature.mood_1_5 ?? 3;
-  const anxiety = feature.anxiety_1_5 ?? 3;
-  const energy = feature.energy_1_5 ?? 3;
-  const sleepHours = feature.sleep_total_midpoint_hours ?? SLEEP_TOTAL_MIDPOINT_BY_BUCKET.h6_7;
-
-  const happyScore =
-    Math.max(0, mood - 3) * 1.35 +
-    Math.max(0, energy - 3) * 0.5 -
-    Math.max(0, anxiety - 3) * 0.35 -
-    Math.max(0, 6.2 - sleepHours) * 0.45;
-  const anxietyScore = Math.max(0, anxiety - 3) * 1.4 + Math.max(0, 3 - mood) * 0.25;
-  const depressedScore = Math.max(0, 3 - mood) * 1.25 + Math.max(0, 3 - energy) * 0.82;
-  const sleepScore = Math.max(0, 6.5 - sleepHours) * 1.28 + (sleepHours <= 5.5 ? 0.6 : 0);
-
-  if (happyScore >= Math.max(anxietyScore, depressedScore, sleepScore) && happyScore > 0.2) {
-    return "happy";
-  }
-  if (sleepScore >= anxietyScore && sleepScore >= depressedScore && sleepScore > 0.3) {
-    return "sleep";
-  }
-  if (anxietyScore >= depressedScore && anxietyScore > 0.2) {
-    return "anxious";
-  }
-  if (depressedScore > 0.2) {
-    return "depressed";
-  }
-
-  if (mood >= 4 && anxiety <= 3 && sleepHours >= 6) {
-    return "happy";
-  }
-  if (anxiety >= 4) {
-    return "anxious";
-  }
-  if (sleepHours < 6) {
-    return "sleep";
-  }
-  return "depressed";
-}
-
 export default function ActivityLogPage() {
   const { firebaseUser } = useAuthContext();
 
@@ -232,12 +151,13 @@ export default function ActivityLogPage() {
   const [period, setPeriod] = useState<PeriodOption>("7d");
   const [customStartDate, setCustomStartDate] = useState(initialCustomRange.start_date);
   const [customEndDate, setCustomEndDate] = useState(initialCustomRange.end_date);
-  const [calendarMonth, setCalendarMonth] = useState<YearMonth>(getKstDateInfo());
+  const [calendarMonth, setCalendarMonth] = useState<YearMonth>(getKstYearMonth());
   const [filter, setFilter] = useState<ActivityFilter>("all");
   const [rows, setRows] = useState<ActivityLogDay[]>([]);
   const [calendarRows, setCalendarRows] = useState<ActivityLogDay[]>([]);
   const [dashboard, setDashboard] = useState<ActivityDashboardResponse | null>(null);
   const [monthCheckinFeatures, setMonthCheckinFeatures] = useState<CheckinFeatureBundle[]>([]);
+  const [dashboardMonthCheckinFeatures, setDashboardMonthCheckinFeatures] = useState<CheckinFeatureBundle[]>([]);
   const [loading, setLoading] = useState(true);
   const [pendingCalendarScrollY, setPendingCalendarScrollY] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -272,6 +192,7 @@ export default function ActivityLogPage() {
   }, [customEndDate, customStartDate, period, filter]);
 
   const calendarRange = useMemo(() => getMonthRange(calendarMonth), [calendarMonth]);
+  const dashboardMonthRange = useMemo(() => getMonthRange(getKstYearMonth()), []);
 
   const load = useCallback(async () => {
     if (!firebaseUser) {
@@ -290,12 +211,16 @@ export default function ActivityLogPage() {
         return;
       }
 
-      const [activityLogResult, activityDashboardResult, checkinFeaturesResult, calendarLogResult] = await Promise.allSettled([
+      const [activityLogResult, activityDashboardResult, checkinFeaturesResult, dashboardCheckinFeaturesResult, calendarLogResult] = await Promise.allSettled([
         getActivityLog(firebaseUser, query),
         getDashboardActivity(firebaseUser),
         listCheckinFeatures(firebaseUser, {
           start_date: calendarRange.start_date,
           end_date: calendarRange.end_date,
+        }),
+        listCheckinFeatures(firebaseUser, {
+          start_date: dashboardMonthRange.start_date,
+          end_date: dashboardMonthRange.end_date,
         }),
         getActivityLog(firebaseUser, {
           start_date: calendarRange.start_date,
@@ -324,6 +249,12 @@ export default function ActivityLogPage() {
         setMonthCheckinFeatures([]);
       }
 
+      if (dashboardCheckinFeaturesResult.status === "fulfilled") {
+        setDashboardMonthCheckinFeatures(dashboardCheckinFeaturesResult.value);
+      } else {
+        setDashboardMonthCheckinFeatures([]);
+      }
+
       if (calendarLogResult.status === "fulfilled") {
         setCalendarRows(calendarLogResult.value);
       } else {
@@ -332,7 +263,7 @@ export default function ActivityLogPage() {
     } finally {
       setLoading(false);
     }
-  }, [calendarRange.end_date, calendarRange.start_date, customRangeError, firebaseUser, query]);
+  }, [calendarRange.end_date, calendarRange.start_date, customRangeError, dashboardMonthRange.end_date, dashboardMonthRange.start_date, firebaseUser, query]);
 
   useEffect(() => {
     void load();
@@ -363,6 +294,32 @@ export default function ActivityLogPage() {
     }
     return map;
   }, [calendarRows]);
+
+  const dashboardMonthCheckinFeatureMap = useMemo(() => {
+    const map = new Map<string, CheckinFeatureBundle>();
+    for (const feature of dashboardMonthCheckinFeatures) {
+      map.set(feature.date, feature);
+    }
+    return map;
+  }, [dashboardMonthCheckinFeatures]);
+
+  const dashboardCalendarCheckedDateSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const feature of dashboardMonthCheckinFeatures) {
+      set.add(feature.date);
+    }
+    return set;
+  }, [dashboardMonthCheckinFeatures]);
+
+  const dashboardCalendarMonth = useMemo(() => {
+    if (!dashboard) {
+      return null;
+    }
+    return {
+      year: dashboard.calendar.year,
+      month: dashboard.calendar.month,
+    } satisfies YearMonth;
+  }, [dashboard]);
 
   const calendarCells = useMemo(() => buildMonthCalendarCells(calendarMonth), [calendarMonth]);
 
@@ -440,29 +397,15 @@ export default function ActivityLogPage() {
                       </Card>
 
                       <Card title="월간 체크인 캘린더" description={`${dashboard.calendar.year}년 ${dashboard.calendar.month}월`}>
-                        <div className="ms-home-calendar-grid">
-                          {dashboard.calendar.days.map((day) => {
-                            const tone = day.checked_in
-                              ? resolveCalendarMoodTone(monthCheckinFeatureMap.get(day.date))
-                              : null;
-
-                            return (
-                              <div
-                                key={day.date}
-                                className={`ms-home-calendar-cell${day.checked_in ? " ms-home-calendar-cell--active" : ""}${
-                                  tone ? ` ms-home-calendar-cell--tone-${tone}` : ""
-                                }${day.is_today ? " ms-home-calendar-cell--today" : ""}${
-                                  day.is_today && day.checked_in ? " ms-home-calendar-cell--today-active" : ""
-                                }`}
-                                aria-label={`${day.date} 체크인 ${day.checked_in ? "있음" : "없음"}${
-                                  tone ? ` (${CALENDAR_TONE_LABEL[tone]})` : ""
-                                }`}
-                              >
-                                {day.date.slice(8, 10)}
-                              </div>
-                            );
-                          })}
-                        </div>
+                        {dashboardCalendarMonth ? (
+                          <MonthlyCheckinCalendar
+                            month={dashboardCalendarMonth}
+                            checkedDateSet={dashboardCalendarCheckedDateSet}
+                            featureMap={dashboardMonthCheckinFeatureMap}
+                            todayDate={kstToday}
+                            ariaLabel="마이페이지 월간 체크인 캘린더"
+                          />
+                        ) : null}
                       </Card>
                     </div>
 
@@ -623,7 +566,7 @@ export default function ActivityLogPage() {
                       </div>
 
                       <div className="ms-home-calendar-weekdays">
-                        {ACTIVITY_CALENDAR_WEEKDAYS.map((day) => (
+                        {CHECKIN_CALENDAR_WEEKDAYS.map((day) => (
                           <span key={day}>{day}</span>
                         ))}
                       </div>

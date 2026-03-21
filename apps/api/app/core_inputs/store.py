@@ -1853,11 +1853,8 @@ class CoreInputStore:
                     (user_id,),
                 ).fetchall()
 
-                active_domains = {str(row["domain"]) for row in active_sustained_rows}
                 if len(active_sustained_rows) >= 3:
                     raise ValueError("active_sustained_limit_reached")
-                if domain in active_domains:
-                    raise ValueError("active_domain_duplicate")
 
             enrollment_id = f"cen_{uuid.uuid4().hex}"
             now_iso = self._now_iso()

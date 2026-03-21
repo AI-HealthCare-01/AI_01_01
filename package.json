@@ -32,5 +32,8 @@
   },
   "devDependencies": {
     "firebase-tools": "^15.8.0"
+  },
+  "dependencies": {
+    "@sentry/nextjs": "^10.43.0"
   }
 }

@@ -15,6 +15,7 @@ import {
   Select,
 } from "../../src/components/ui";
 import { AuthRouteGuard, useAuthContext } from "../../src/features/auth";
+import { ANALYTICS_EVENTS, trackEvent } from "../../src/features/monitoring";
 import type { Gender } from "../../src/features/auth/types";
 
 type Step = "profile" | "baseline";
@@ -133,6 +134,12 @@ export default function OnboardingPage() {
       setErrorMessage(null);
 
       await saveOnboardingProfile(profilePayload);
+      trackEvent(ANALYTICS_EVENTS.onboardingProfileCompleted, {
+        birth_year: birthYear,
+        gender: gender || "unspecified",
+        personalization_optional: personalizationOptional,
+        model_improvement_optional: modelImprovementOptional
+      });
       setStep("baseline");
     } catch (error) {
       const code = error instanceof Error ? error.message : "unknown";
@@ -141,6 +148,12 @@ export default function OnboardingPage() {
         if (recovered) {
           try {
             await saveOnboardingProfile(profilePayload);
+            trackEvent(ANALYTICS_EVENTS.onboardingProfileCompleted, {
+              birth_year: birthYear,
+              gender: gender || "unspecified",
+              personalization_optional: personalizationOptional,
+              model_improvement_optional: modelImprovementOptional
+            });
             setStep("baseline");
             return;
           } catch (retryError) {

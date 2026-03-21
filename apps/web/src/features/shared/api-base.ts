@@ -1,5 +1,29 @@
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
+}
+
+function isIpv4Host(hostname: string): boolean {
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname);
+}
+
+function inferApiSubdomain(hostname: string): string | null {
+  if (isLoopbackHost(hostname) || isIpv4Host(hostname)) {
+    return null;
+  }
+
+  if (hostname.startsWith("api.")) {
+    return hostname;
+  }
+
+  if (hostname.startsWith("www.")) {
+    return `api.${hostname.slice(4)}`;
+  }
+
+  return `api.${hostname}`;
+}
+
 function normalizeBase(value: string): string {
   return value.trim().replace(/\/+$/, "");
 }
@@ -24,6 +48,11 @@ function inferRuntimeCandidates(): string[] {
 
   const { protocol, hostname, port } = window.location;
   const inferred: string[] = [];
+  const apiHost = inferApiSubdomain(hostname);
+
+  if (apiHost) {
+    pushCandidate(inferred, `${protocol}//${apiHost}`);
+  }
 
   pushCandidate(inferred, `${protocol}//${hostname}:8000`);
   pushCandidate(inferred, `${protocol}//${hostname}:8010`);

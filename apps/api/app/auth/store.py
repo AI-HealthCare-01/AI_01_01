@@ -43,6 +43,14 @@ class AuthStore:
         connection.row_factory = sqlite3.Row
         return connection
 
+    @staticmethod
+    def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        ).fetchone()
+        return row is not None
+
     def _initialize_schema(self) -> None:
         with self._connect() as conn:
             conn.executescript(
@@ -155,6 +163,10 @@ class AuthStore:
 
         return f"{prefix}{next_serial:08d}"
 
+    @staticmethod
+    def _deleted_identity(value: str, user_id: str) -> str:
+        return f"deleted__{user_id}__{value}"
+
     def create_or_get_signup_shell(
         self,
         firebase_uid: str,
@@ -172,6 +184,13 @@ class AuthStore:
                 "SELECT user_id FROM account_user WHERE firebase_uid = ?",
                 (firebase_uid,),
             ).fetchone()
+
+            if self._is_nickname_in_use_conn(
+                conn,
+                nickname,
+                exclude_user_id=str(existing["user_id"]) if existing else None,
+            ):
+                raise sqlite3.IntegrityError("nickname_already_exists")
 
             if existing:
                 user_id = str(existing["user_id"])
@@ -283,6 +302,44 @@ class AuthStore:
             )
             conn.commit()
             return self.get_session_contract_by_user_id(conn, user_id)
+
+    @staticmethod
+    def _normalize_nickname(value: str) -> str:
+        return " ".join(value.strip().split()).lower()
+
+    def _is_nickname_in_use_conn(
+        self,
+        conn: sqlite3.Connection,
+        nickname: str,
+        *,
+        exclude_user_id: str | None = None,
+    ) -> bool:
+        normalized = self._normalize_nickname(nickname)
+        if not normalized:
+            return False
+        params: list[object] = [normalized]
+        query = """
+            SELECT 1
+            FROM account_user
+            WHERE lower(trim(nickname)) = ?
+              AND account_status != ?
+        """
+        params.append(AccountStatus.deleted.value)
+        if exclude_user_id:
+            query += " AND user_id != ?"
+            params.append(exclude_user_id)
+        query += " LIMIT 1"
+        row = conn.execute(query, tuple(params)).fetchone()
+        return row is not None
+
+    def is_nickname_in_use(
+        self,
+        nickname: str,
+        *,
+        exclude_user_id: str | None = None,
+    ) -> bool:
+        with self._connect() as conn:
+            return self._is_nickname_in_use_conn(conn, nickname, exclude_user_id=exclude_user_id)
 
     def _store_signup_consents(
         self,
@@ -397,6 +454,55 @@ class AuthStore:
             )
             conn.commit()
             return self.get_session_contract_by_user_id(conn, user_id)
+
+    def mark_account_deleted(self, user_id: str) -> None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT user_id, firebase_uid, email, account_status
+                FROM account_user
+                WHERE user_id = ?
+                """,
+                (user_id,),
+            ).fetchone()
+            if not row:
+                raise ValueError("account_not_found")
+
+            if str(row["account_status"]) == AccountStatus.deleted.value:
+                return
+
+            now = self._now_iso()
+            conn.execute(
+                """
+                UPDATE account_user
+                SET firebase_uid = ?,
+                    email = ?,
+                    email_verified = 0,
+                    account_status = ?,
+                    updated_at = ?
+                WHERE user_id = ?
+                """,
+                (
+                    self._deleted_identity(str(row["firebase_uid"]), user_id),
+                    self._deleted_identity(str(row["email"]), user_id),
+                    AccountStatus.deleted.value,
+                    now,
+                    user_id,
+                ),
+            )
+
+            if self._table_exists(conn, "admin_account_role"):
+                conn.execute(
+                    """
+                    UPDATE admin_account_role
+                    SET is_active = 0,
+                        updated_at = ?
+                    WHERE admin_user_id = ?
+                    """,
+                    (now, user_id),
+                )
+
+            conn.commit()
 
     def sync_session_state(
         self,

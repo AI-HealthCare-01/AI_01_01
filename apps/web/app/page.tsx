@@ -17,7 +17,11 @@ import {
   Select,
   SectionContainer,
 } from "../src/components/ui";
+import { MonthlyCheckinCalendar } from "../src/components/checkin/MonthlyCheckinCalendar";
 import { useAuthContext } from "../src/features/auth";
+import { mapLoginErrorMessage } from "../src/features/auth/login-error";
+import { ANALYTICS_EVENTS, trackEvent } from "../src/features/monitoring";
+import { isOnboardingComplete, shouldGoOnboarding } from "../src/features/auth/status";
 import {
   CoreApiError,
   getActivityLog,
@@ -34,6 +38,7 @@ import {
   type CheckinPayload,
   type CheckinRecord,
 } from "../src/features/core-inputs";
+import { type YearMonth } from "../src/features/core-inputs/checkin-calendar";
 import {
   CommunityApiError,
   listBoardFeed,
@@ -109,8 +114,6 @@ const CHECKIN_ENERGY_OPTIONS = [
   { label: "5 · 매우 높음", value: "5" },
 ] as const;
 
-type CalendarMoodTone = "happy" | "anxious" | "depressed" | "sleep";
-
 const SLEEP_TOTAL_MIDPOINT_BY_BUCKET: Record<CheckinPayload["sleep_total_bucket"], number> = {
   lt_4h: 3.5,
   h4_5: 4.5,
@@ -118,13 +121,6 @@ const SLEEP_TOTAL_MIDPOINT_BY_BUCKET: Record<CheckinPayload["sleep_total_bucket"
   h6_7: 6.5,
   h7_8: 7.5,
   ge_8h: 8.5,
-};
-
-const CALENDAR_TONE_LABEL: Record<CalendarMoodTone, string> = {
-  happy: "기분 좋음",
-  anxious: "불안 경향",
-  depressed: "우울 경향",
-  sleep: "수면 부족 경향",
 };
 
 function toDateString(year: number, month: number, day: number): string {
@@ -174,32 +170,11 @@ function parseError(error: unknown): string {
   return "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 }
 
-function mapLoginError(code: string): string {
-  if (code.includes("auth/invalid-credential") || code.includes("auth/wrong-password")) {
-    return "이메일 또는 비밀번호를 다시 확인해주세요.";
-  }
-  if (code.includes("auth/user-not-found")) {
-    return "등록되지 않은 계정입니다.";
-  }
-  if (code.includes("firebase_token_invalid")) {
-    return "로그인은 되었지만 서버 세션 확인에 실패했습니다. 잠시 후 다시 시도해주세요.";
-  }
-  if (code.includes("missing_firebase_auth")) {
-    return "인증 토큰이 누락되었습니다. 페이지를 새로고침 후 다시 시도해주세요.";
-  }
-  if (code.includes("account_not_found")) {
-    return "계정 동기화가 완료되지 않았습니다. 잠시 후 다시 시도하거나 로그인 화면에서 재시도해주세요.";
-  }
-  if (code.includes("session_bootstrap_failed")) {
-    return "로그인 후 계정 상태를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.";
-  }
-  return "로그인에 실패했습니다. 잠시 후 다시 시도해주세요.";
-}
-
 function getAccessGuide(
   phase: "loading" | "signed_out" | "signed_in",
   emailVerified: boolean,
-  accountStatus: string | undefined,
+  onboardingComplete: boolean,
+  needsOnboarding: boolean,
 ): { title: string; description: string; route: string; cta: string } {
   if (phase !== "signed_in") {
     return {
@@ -219,7 +194,7 @@ function getAccessGuide(
     };
   }
 
-  if (accountStatus !== "active") {
+  if (needsOnboarding || !onboardingComplete) {
     return {
       title: "온보딩을 완료해 주세요",
       description: "출생년도, 동의, 초기 진단척도 입력이 끝나면 홈 데이터가 표시됩니다.",
@@ -411,50 +386,6 @@ function makeFeatureBundleFromPayload(record: CheckinRecord): CheckinFeatureBund
   };
 }
 
-function resolveCalendarMoodTone(feature: CheckinFeatureBundle | null | undefined): CalendarMoodTone | null {
-  if (!feature) {
-    return null;
-  }
-
-  const mood = feature.mood_1_5 ?? 3;
-  const anxiety = feature.anxiety_1_5 ?? 3;
-  const energy = feature.energy_1_5 ?? 3;
-  const sleepHours = feature.sleep_total_midpoint_hours ?? 6.5;
-
-  const happyScore =
-    Math.max(0, mood - 3) * 1.35 +
-    Math.max(0, energy - 3) * 0.5 -
-    Math.max(0, anxiety - 3) * 0.35 -
-    Math.max(0, 6.2 - sleepHours) * 0.45;
-  const anxietyScore = Math.max(0, anxiety - 3) * 1.4 + Math.max(0, 3 - mood) * 0.25;
-  const depressedScore = Math.max(0, 3 - mood) * 1.25 + Math.max(0, 3 - energy) * 0.82;
-  const sleepScore = Math.max(0, 6.5 - sleepHours) * 1.28 + (sleepHours <= 5.5 ? 0.6 : 0);
-
-  if (happyScore >= Math.max(anxietyScore, depressedScore, sleepScore) && happyScore > 0.2) {
-    return "happy";
-  }
-  if (sleepScore >= anxietyScore && sleepScore >= depressedScore && sleepScore > 0.3) {
-    return "sleep";
-  }
-  if (anxietyScore >= depressedScore && anxietyScore > 0.2) {
-    return "anxious";
-  }
-  if (depressedScore > 0.2) {
-    return "depressed";
-  }
-
-  if (mood >= 4 && anxiety <= 3 && sleepHours >= 6) {
-    return "happy";
-  }
-  if (anxiety >= 4) {
-    return "anxious";
-  }
-  if (sleepHours < 6) {
-    return "sleep";
-  }
-  return "depressed";
-}
-
 export default function HomePage() {
   const router = useRouter();
   const { firebaseUser, session, phase, signInWithEmail } = useAuthContext();
@@ -484,18 +415,16 @@ export default function HomePage() {
 
   const accountStatus = session?.account.account_status;
   const emailVerified = Boolean(firebaseUser?.emailVerified);
-  const isActive = phase === "signed_in" && emailVerified && accountStatus === "active";
-  const accessGuide = getAccessGuide(phase, emailVerified, accountStatus);
+  const onboardingComplete = isOnboardingComplete(session);
+  const onboardingNeeded = shouldGoOnboarding(session);
+  const isActive = phase === "signed_in" && emailVerified && onboardingComplete && !onboardingNeeded;
+  const accessGuide = getAccessGuide(phase, emailVerified, onboardingComplete, onboardingNeeded);
 
   const kstNow = getKstDateInfo();
   const dayGreetingMessage = getDayGreetingMessage(kstNow.hour);
   const nickname = session?.account.nickname || "사용자";
 
-  const monthDays = useMemo(() => new Date(kstNow.year, kstNow.month, 0).getDate(), [kstNow.month, kstNow.year]);
-  const monthStartWeekday = useMemo(
-    () => new Date(Date.UTC(kstNow.year, kstNow.month - 1, 1, 12)).getUTCDay(),
-    [kstNow.month, kstNow.year],
-  );
+  const calendarMonth = useMemo<YearMonth>(() => ({ year: kstNow.year, month: kstNow.month }), [kstNow.month, kstNow.year]);
 
   const monthCheckinSet = useMemo(() => {
     const set = new Set<string>();
@@ -553,9 +482,31 @@ export default function HomePage() {
   const cbtReflectionDone = pendingCbtReflectionCount === 0;
   const cbtFullyDone = cbtDialogueDone && cbtReflectionDone;
   const nextAssessmentDate = useMemo(() => resolveNextAssessmentDate(assessmentHistory), [assessmentHistory]);
-  const assessmentDue = !nextAssessmentDate || kstNow.date >= nextAssessmentDate;
+  const completedAssessmentToday = useMemo(() => {
+    if (todaySummary?.has_assessment) {
+      return true;
+    }
+    return assessmentHistory.some((item) => {
+      if (item.status !== "completed") {
+        return false;
+      }
+      const completedDate = normalizeIsoDate(item.completed_at) ?? normalizeIsoDate(item.started_at);
+      return completedDate === kstNow.date;
+    });
+  }, [assessmentHistory, kstNow.date, todaySummary?.has_assessment]);
+  const fallbackNextAssessmentDate = useMemo(
+    () => (completedAssessmentToday ? addDaysToIsoDate(kstNow.date, 28) : null),
+    [completedAssessmentToday, kstNow.date],
+  );
+  const effectiveNextAssessmentDate = nextAssessmentDate ?? fallbackNextAssessmentDate;
+  const assessmentScheduled = Boolean(
+    effectiveNextAssessmentDate &&
+      (completedAssessmentToday || kstNow.date < effectiveNextAssessmentDate),
+  );
   const assessmentPendingLabel =
-    assessmentDue || !nextAssessmentDate ? "검사하기" : `예정: ${formatDayMonth(nextAssessmentDate)}`;
+    assessmentScheduled && effectiveNextAssessmentDate
+      ? `예정: ${formatDayMonth(effectiveNextAssessmentDate)}`
+      : "검사하기";
 
   const todayActions = [
     {
@@ -590,8 +541,8 @@ export default function HomePage() {
       key: "assessment",
       label: "심리상태 검사",
       pendingActionLabel: assessmentPendingLabel,
-      done: Boolean(todaySummary?.has_assessment),
-      disabled: !assessmentDue,
+      done: false,
+      disabled: assessmentScheduled,
       href: "/assessments",
     },
   ] as const;
@@ -606,15 +557,15 @@ export default function HomePage() {
       return;
     }
 
-    if (accountStatus === "active_onboarding_required") {
+    if (onboardingNeeded) {
       router.replace("/onboarding");
       return;
     }
 
-    if (accountStatus && accountStatus !== "active") {
+    if (accountStatus && ["restricted", "suspended", "deleted"].includes(accountStatus)) {
       router.replace("/auth/login");
     }
-  }, [accountStatus, emailVerified, firebaseUser, phase, router]);
+  }, [accountStatus, emailVerified, firebaseUser, onboardingNeeded, phase, router]);
 
   const onLandingLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -636,7 +587,7 @@ export default function HomePage() {
         return;
       }
 
-      if (nextSession.account.account_status === "active") {
+      if (isOnboardingComplete(nextSession)) {
         router.replace("/");
         return;
       }
@@ -644,7 +595,7 @@ export default function HomePage() {
       router.replace("/onboarding");
     } catch (error) {
       const code = error instanceof Error ? error.message : "unknown";
-      setLandingError(mapLoginError(code));
+      setLandingError(mapLoginErrorMessage(code));
     } finally {
       setLandingSubmitting(false);
     }
@@ -840,6 +791,13 @@ export default function HomePage() {
 
       setCheckinRecord(nextRecord);
       setCheckinPayload(nextRecord.payload ?? payload);
+      trackEvent(ANALYTICS_EVENTS.checkinSubmitted, {
+        source: "home",
+        is_edit: Boolean(checkinRecord && checkinRecord.current_version_no > 0),
+        mood_1_5: payload.mood_1_5,
+        anxiety_1_5: payload.anxiety_1_5,
+        energy_1_5: payload.energy_1_5
+      });
       setCheckinNotice("오늘 체크인이 저장되었습니다.");
       triggerCheckinSwitchMotion();
       await load();
@@ -900,6 +858,7 @@ export default function HomePage() {
                   비밀번호 찾기
                 </Link>
               </div>
+
             </Card>
           </div>
         </div>
@@ -1084,51 +1043,13 @@ export default function HomePage() {
                   {loading ? (
                     <LoadingSkeleton lines={5} />
                   ) : (
-                    <>
-                      <div className="ms-home-calendar-weekdays" aria-hidden="true">
-                        <span>일</span>
-                        <span>월</span>
-                        <span>화</span>
-                        <span>수</span>
-                        <span>목</span>
-                        <span>금</span>
-                        <span>토</span>
-                      </div>
-                      <div className="ms-home-calendar-grid" role="grid" aria-label="월간 체크인 캘린더">
-                        {Array.from({ length: monthStartWeekday + monthDays }).map((_, index) => {
-                          if (index < monthStartWeekday) {
-                            return <span key={`empty-${index}`} className="ms-home-calendar-cell ms-home-calendar-cell--empty" aria-hidden="true" />;
-                          }
-
-                          const day = index - monthStartWeekday + 1;
-                          const dateKey = toDateString(kstNow.year, kstNow.month, day);
-                          const isActiveCell = monthCheckinSet.has(dateKey);
-                          const isToday = day === kstNow.day;
-                          const moodTone = isActiveCell
-                            ? resolveCalendarMoodTone(monthCheckinFeatureMap.get(dateKey))
-                            : null;
-
-                          return (
-                            <span
-                              key={dateKey}
-                              className={`ms-home-calendar-cell${isActiveCell ? " ms-home-calendar-cell--active" : ""}${
-                                moodTone ? ` ms-home-calendar-cell--tone-${moodTone}` : ""
-                              }${
-                                isToday ? " ms-home-calendar-cell--today" : ""
-                              }${
-                                isToday && isActiveCell ? " ms-home-calendar-cell--today-active" : ""
-                              }`}
-                              role="gridcell"
-                              aria-label={`${dateKey}${isActiveCell ? " 체크인 완료" : ""}${
-                                moodTone ? ` (${CALENDAR_TONE_LABEL[moodTone]})` : ""
-                              }`}
-                            >
-                              {day}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </>
+                    <MonthlyCheckinCalendar
+                      month={calendarMonth}
+                      checkedDateSet={monthCheckinSet}
+                      featureMap={monthCheckinFeatureMap}
+                      todayDate={kstNow.date}
+                      ariaLabel="홈 월간 체크인 캘린더"
+                    />
                   )}
                 </Card>
 

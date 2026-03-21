@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -433,12 +434,34 @@ function BoardFeedContent() {
       [postId]: !isOpen,
     }));
 
-    if (isOpen || commentsByPost[postId]) {
+    if (isOpen) {
       return;
     }
 
     await loadComments(postId);
   };
+
+  useEffect(() => {
+    if (!firebaseUser) {
+      return;
+    }
+
+    const openPostIds = Object.entries(expandedCommentMap)
+      .filter(([, isOpen]) => isOpen)
+      .map(([postId]) => postId);
+
+    if (openPostIds.length === 0) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void Promise.all(openPostIds.map((postId) => loadComments(postId)));
+    }, 10000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [expandedCommentMap, firebaseUser, loadComments]);
 
   const handleSubmitComment = async (postId: string) => {
     if (!firebaseUser) {
@@ -648,8 +671,8 @@ function BoardFeedContent() {
                                   </p>
                                 </div>
                                 <div className="ms-board-cafe-row__stats">
-                                  <span>댓 {item.engagement.comment_count}</span>
-                                  <span>좋 {item.engagement.like_count}</span>
+                                  <span>♥ {item.engagement.like_count}</span>
+                                  <span>댓글 {item.engagement.comment_count}</span>
                                 </div>
                               </button>
                             );

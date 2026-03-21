@@ -4,6 +4,9 @@ import { useState } from 'react'
 interface Props {
   type: 'morning' | 'sleep'
   onComplete?: (count: number) => void
+  onSubmitComplete?: () => void
+  submitting?: boolean
+  completed?: boolean
 }
 
 const ITEMS = {
@@ -23,9 +26,16 @@ const ITEMS = {
   ],
 }
 
-export function ChallengeChecklist({ type, onComplete }: Props) {
+export function ChallengeChecklist({
+  type,
+  onComplete,
+  onSubmitComplete,
+  submitting = false,
+  completed = false,
+}: Props) {
   const items = ITEMS[type]
   const [checked, setChecked] = useState<Set<number>>(new Set())
+  const allChecked = checked.size === items.length
 
   const toggle = (i: number) => {
     setChecked(prev => {
@@ -56,6 +66,17 @@ export function ChallengeChecklist({ type, onComplete }: Props) {
           <span className={`cl-text ${checked.has(i) ? 'done' : ''}`}>{item}</span>
         </div>
       ))}
+      {onSubmitComplete ? (
+        <div className="cl-complete-row">
+          <button
+            className="ct-btn-primary cl-complete-btn"
+            onClick={onSubmitComplete}
+            disabled={!allChecked || submitting || completed}
+          >
+            {completed ? '오늘 완료됨' : submitting ? '저장 중...' : '오늘 완료'}
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }

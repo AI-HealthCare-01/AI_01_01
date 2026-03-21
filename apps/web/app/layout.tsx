@@ -7,8 +7,12 @@ import { getGoogleAnalyticsId, MonitoringProvider } from "../src/features/monito
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MindSight",
-  description: "MindSight design system scaffold"
+  title: "MindMe",
+  description: "MindMe design system scaffold",
+  applicationName: "MindMe",
+  openGraph: {
+    siteName: "MindMe",
+  },
 };
 
 const googleAnalyticsId = getGoogleAnalyticsId();

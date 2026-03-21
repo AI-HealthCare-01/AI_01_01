@@ -811,12 +811,12 @@ export default function HomePage() {
 
   if (phase === "signed_out") {
     return (
-      <main className="ms-landing-page" aria-label="Mindsight 랜딩">
+      <main className="ms-landing-page" aria-label="MindMe 랜딩">
         <div className="ms-landing-page__card">
           <div className="ms-landing-page__content">
             <section className="ms-landing-copy" aria-label="서비스 소개">
               <h1 className="ms-landing-copy__title">
-                <span className="ms-landing-copy__title-line">MindSight</span>
+                <span className="ms-landing-copy__title-line">MindMe</span>
               </h1>
               <p className="ms-landing-copy__subtitle">당신의 회복 루틴을 함께합니다.</p>
               <p className="ms-landing-copy__description">

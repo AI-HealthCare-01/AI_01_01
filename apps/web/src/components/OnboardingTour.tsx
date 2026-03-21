@@ -129,7 +129,7 @@ function previewFallback(step: PreviewStep["step"]): JSX.Element {
           overflow: "hidden",
         }}
       >
-        <div style={{ height: 52, borderBottom: "1px solid var(--color-border)", padding: "14px 18px", fontWeight: 700 }}>MindSight</div>
+        <div style={{ height: 52, borderBottom: "1px solid var(--color-border)", padding: "14px 18px", fontWeight: 700 }}>MindMe</div>
         <div style={{ height: 40, borderBottom: "1px solid var(--color-border)", padding: "10px 18px", color: "var(--color-text-secondary)" }}>
           CBT 대화 · 세션
         </div>
@@ -207,7 +207,7 @@ function previewFallback(step: PreviewStep["step"]): JSX.Element {
           overflow: "hidden",
         }}
       >
-        <div style={{ height: 52, borderBottom: "1px solid var(--color-border)", padding: "14px 18px", fontWeight: 700 }}>MindSight</div>
+        <div style={{ height: 52, borderBottom: "1px solid var(--color-border)", padding: "14px 18px", fontWeight: 700 }}>MindMe</div>
         <div style={{ height: 40, borderBottom: "1px solid var(--color-border)", padding: "10px 18px", color: "var(--color-text-secondary)" }}>
           챌린지 · 카탈로그
         </div>
@@ -277,7 +277,7 @@ function previewFallback(step: PreviewStep["step"]): JSX.Element {
         overflow: "hidden",
       }}
     >
-      <div style={{ height: 52, borderBottom: "1px solid var(--color-border)", padding: "14px 18px", fontWeight: 700 }}>MindSight</div>
+      <div style={{ height: 52, borderBottom: "1px solid var(--color-border)", padding: "14px 18px", fontWeight: 700 }}>MindMe</div>
       <div style={{ height: 40, borderBottom: "1px solid var(--color-border)", padding: "10px 18px", color: "var(--color-text-secondary)" }}>
         리포트 · 요약
       </div>

@@ -215,12 +215,6 @@ export function SunlightWidget({ onChange, onComplete, redirectPath = '/challeng
     setSkipRequested(false)
   }
 
-  const skipTimer = () => {
-    if (intervalRef.current) clearInterval(intervalRef.current)
-    setSkipRequested(true)
-    setTimerStatus('paused')
-  }
-
   const completeChallenge = async () => {
     if (!payload || !canNext || submitting || submitted) return
     try {
@@ -358,8 +352,6 @@ export function SunlightWidget({ onChange, onComplete, redirectPath = '/challeng
               </>
             ) : null}
           </div>
-
-          <button className="sw-skip" onClick={skipTimer}>건너뛰기</button>
         </div>
       ) : null}
 

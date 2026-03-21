@@ -18,6 +18,7 @@ type PreviewStep = {
 };
 
 type Rect = { top: number; left: number; width: number; height: number };
+type PreviewLayout = { scale: number; width: number; height: number; contentHeight: number };
 
 const SPOTLIGHT_STEPS: SpotlightStep[] = [
   {
@@ -71,6 +72,12 @@ const PREVIEW_STEPS: PreviewStep[] = [
   },
 ];
 
+const PREVIEW_LAYOUT: Record<PreviewStep["step"], PreviewLayout> = {
+  6: { scale: 0.3, width: 900, height: 175, contentHeight: 580 },
+  7: { scale: 0.3, width: 900, height: 150, contentHeight: 500 },
+  8: { scale: 0.3, width: 900, height: 145, contentHeight: 480 },
+};
+
 function getSpotlightRect(step: SpotlightStep): Rect | null {
   const target = document.getElementById(step.id);
   if (!target) {
@@ -103,25 +110,135 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function previewFallback(title: string): JSX.Element {
+function previewFallback(step: PreviewStep["step"]): JSX.Element {
+  if (step === 6) {
+    return (
+      <div
+        style={{
+          height: "100%",
+          borderRadius: 10,
+          border: "1px solid var(--color-border)",
+          background: "var(--color-surface)",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ height: 52, borderBottom: "1px solid var(--color-border)", padding: "14px 18px", fontWeight: 700 }}>MindSight</div>
+        <div style={{ height: 40, borderBottom: "1px solid var(--color-border)", padding: "10px 18px", color: "var(--color-text-secondary)" }}>
+          CBT 대화 · 세션
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "220px 1fr 220px", gap: 12, height: "calc(100% - 92px)", padding: 12 }}>
+          <div style={{ borderRadius: 10, background: "var(--color-surface-sub)", border: "1px solid var(--color-border)", padding: 10 }}>
+            {["상황 정리", "생각 찾기", "감정 확인", "증거 탐색", "대안 생각", "정리와 조언"].map((label) => (
+              <div
+                key={label}
+                style={{
+                  height: 34,
+                  borderRadius: 8,
+                  marginBottom: 8,
+                  background: "var(--color-surface)",
+                  border: "1px solid var(--color-border)",
+                  padding: "8px 10px",
+                  fontSize: 12,
+                }}
+              >
+                {label}
+              </div>
+            ))}
+          </div>
+          <div style={{ borderRadius: 10, background: "var(--color-surface-sub)", border: "1px solid var(--color-border)", padding: 12 }}>
+            <div style={{ width: "60%", height: 28, borderRadius: 999, background: "var(--color-surface)", border: "1px solid var(--color-border)", marginBottom: 8 }} />
+            <div style={{ width: "74%", height: 28, borderRadius: 999, background: "var(--color-primary-light)", marginBottom: 8 }} />
+            <div style={{ width: "65%", height: 28, borderRadius: 999, background: "var(--color-surface)", border: "1px solid var(--color-border)" }} />
+          </div>
+          <div style={{ borderRadius: 10, background: "var(--color-surface-sub)", border: "1px solid var(--color-border)", padding: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>세션 체크포인트</div>
+            <div style={{ height: 72, borderRadius: 8, background: "var(--color-surface)", border: "1px solid var(--color-border)", marginBottom: 8 }} />
+            <div style={{ height: 72, borderRadius: 8, background: "var(--color-surface)", border: "1px solid var(--color-border)" }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 7) {
+    return (
+      <div
+        style={{
+          height: "100%",
+          borderRadius: 10,
+          border: "1px solid var(--color-border)",
+          background: "var(--color-surface)",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ height: 52, borderBottom: "1px solid var(--color-border)", padding: "14px 18px", fontWeight: 700 }}>MindSight</div>
+        <div style={{ height: 40, borderBottom: "1px solid var(--color-border)", padding: "10px 18px", color: "var(--color-text-secondary)" }}>
+          챌린지 · 카탈로그
+        </div>
+        <div style={{ padding: 14 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>챌린지 카탈로그</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <div
+                key={`challenge-${idx}`}
+                style={{
+                  height: 150,
+                  borderRadius: 10,
+                  border: "1px solid var(--color-border)",
+                  background: "var(--color-surface-sub)",
+                  padding: 10,
+                }}
+              >
+                <div style={{ height: 66, borderRadius: 8, background: "var(--color-surface)" }} />
+                <div style={{ marginTop: 8, height: 10, borderRadius: 999, background: "var(--color-surface)" }} />
+                <div style={{ marginTop: 6, width: "70%", height: 10, borderRadius: 999, background: "var(--color-surface)" }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
         height: "100%",
         borderRadius: 10,
         border: "1px solid var(--color-border)",
-        background: "var(--color-surface-sub)",
-        padding: 10,
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
+        background: "var(--color-surface)",
+        overflow: "hidden",
       }}
     >
-      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-secondary)" }}>{title} 미리보기</div>
-      <div style={{ height: 10, borderRadius: 999, background: "var(--color-surface)" }} />
-      <div style={{ height: 10, borderRadius: 999, background: "var(--color-surface)" }} />
-      <div style={{ height: 10, width: "75%", borderRadius: 999, background: "var(--color-surface)" }} />
-      <div style={{ marginTop: "auto", height: 22, borderRadius: 8, background: "var(--color-primary-light)" }} />
+      <div style={{ height: 52, borderBottom: "1px solid var(--color-border)", padding: "14px 18px", fontWeight: 700 }}>MindSight</div>
+      <div style={{ height: 40, borderBottom: "1px solid var(--color-border)", padding: "10px 18px", color: "var(--color-text-secondary)" }}>
+        리포트 · 요약
+      </div>
+      <div style={{ padding: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 12 }}>
+          {["우울", "불안", "불면"].map((label) => (
+            <div
+              key={label}
+              style={{
+                borderRadius: 8,
+                border: "1px solid var(--color-border)",
+                background: "var(--color-surface-sub)",
+                padding: 8,
+              }}
+            >
+              <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6 }}>{label}</div>
+              <div style={{ height: 18, borderRadius: 6, background: "var(--color-primary-light)" }} />
+            </div>
+          ))}
+        </div>
+        <div style={{ height: 220, borderRadius: 10, border: "1px solid var(--color-border)", background: "var(--color-surface-sub)", padding: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, alignItems: "end", height: "100%" }}>
+            {[24, 44, 30, 58, 36, 49, 42].map((h, idx) => (
+              <div key={`bar-${idx}`} style={{ height: `${h}%`, borderRadius: 6, background: "var(--color-primary-light)" }} />
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -391,6 +508,7 @@ export function OnboardingTour() {
   }
 
   if (previewStep) {
+    const layout = PREVIEW_LAYOUT[previewStep.step];
     const failed = previewFailed[previewStep.step];
     return (
       <div
@@ -409,6 +527,7 @@ export function OnboardingTour() {
         <div
           style={{
             width: "min(640px, 100%)",
+            minWidth: 320,
             borderRadius: 14,
             background: "var(--color-surface)",
             border: "1px solid var(--color-border)",
@@ -423,31 +542,54 @@ export function OnboardingTour() {
           <div
             style={{
               position: "relative",
-              height: 140,
+              height: layout.height,
               borderRadius: 10,
               overflow: "hidden",
-              border: "1px solid var(--color-border)",
+              border: "0.5px solid var(--color-border-tertiary, var(--color-border))",
               background: "var(--color-surface-sub)",
               marginBottom: 14,
             }}
           >
             {failed ? (
-              previewFallback(previewStep.title)
-            ) : (
-              <iframe
-                title={`tour-preview-${previewStep.step}`}
-                src={previewStep.iframeSrc}
-                onLoad={() => setPreviewLoaded((prev) => ({ ...prev, [previewStep.step]: true }))}
-                onError={() => setPreviewFailed((prev) => ({ ...prev, [previewStep.step]: true }))}
+              <div
                 style={{
-                  transform: "scale(0.5)",
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: layout.width,
+                  height: layout.contentHeight,
+                  transform: `scale(${layout.scale})`,
                   transformOrigin: "top left",
-                  width: "200%",
-                  height: "200%",
                   pointerEvents: "none",
-                  border: "none",
                 }}
-              />
+              >
+                {previewFallback(previewStep.step)}
+              </div>
+            ) : (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: layout.width,
+                  height: layout.contentHeight,
+                  transform: `scale(${layout.scale})`,
+                  transformOrigin: "top left",
+                  pointerEvents: "none",
+                }}
+              >
+                <iframe
+                  title={`tour-preview-${previewStep.step}`}
+                  src={previewStep.iframeSrc}
+                  onLoad={() => setPreviewLoaded((prev) => ({ ...prev, [previewStep.step]: true }))}
+                  onError={() => setPreviewFailed((prev) => ({ ...prev, [previewStep.step]: true }))}
+                  style={{
+                    width: layout.width,
+                    height: layout.contentHeight,
+                    border: "none",
+                  }}
+                />
+              </div>
             )}
           </div>
 

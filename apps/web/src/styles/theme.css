@@ -5922,6 +5922,10 @@ a {
 .cl-check{width:10px;height:6px;border-left:2px solid white;border-bottom:2px solid white;transform:rotate(-45deg) translateY(-1px)}
 .cl-text{font-size:13px;color:var(--color-text-primary);transition:all .15s}
 .cl-text.done{color:var(--color-text-muted);text-decoration:line-through}
+.cl-complete-row{margin-top:14px;display:flex}
+.cl-complete-btn{width:100%}
+.cl-complete-btn:disabled{opacity:.45;cursor:not-allowed}
+.cl-complete-btn:disabled:hover{opacity:.45}
 .map-wrap{padding:4px 0}
 .map-grid{display:flex;gap:8px;margin-bottom:14px}
 .map-btn{flex:1;padding:12px 6px;border-radius:10px;border:1.5px solid var(--color-border);background:var(--color-surface-sub);cursor:pointer;text-align:center;transition:all .15s;font-family:inherit}

@@ -280,6 +280,7 @@ export function InterpersonalMapWidget({ onChange, onComplete, redirectPath = '/
   const [step, setStep] = useState<Step>(1)
   const [mood, setMood] = useState('')
   const [nameInput, setNameInput] = useState('')
+  const [isNameComposing, setIsNameComposing] = useState(false)
   const [people, setPeople] = useState<string[]>([])
   const [placements, setPlacements] = useState<Record<string, string>>({})
   const [closeness, setCloseness] = useState<Record<string, string>>({})
@@ -616,7 +617,13 @@ export function InterpersonalMapWidget({ onChange, onComplete, redirectPath = '/
               className="imw-input"
               value={nameInput}
               onChange={(e) => setNameInput(e.target.value)}
+              onCompositionStart={() => setIsNameComposing(true)}
+              onCompositionEnd={() => setIsNameComposing(false)}
               onKeyDown={(e) => {
+                // Ignore Enter while IME composition is active to prevent trailing-char ghost entries.
+                if (isNameComposing || e.nativeEvent.isComposing || e.keyCode === 229) {
+                  return
+                }
                 if (e.key === 'Enter') {
                   e.preventDefault()
                   onAddPerson()

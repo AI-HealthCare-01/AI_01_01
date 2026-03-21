@@ -54,7 +54,6 @@ def _map_store_error(error: ValueError) -> HTTPException:
     if code in {
         "checkin_already_exists",
         "active_sustained_limit_reached",
-        "active_domain_duplicate",
         "enrollment_not_active",
     }:
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=code)

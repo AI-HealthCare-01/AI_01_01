@@ -30,9 +30,6 @@ function parseError(error: unknown): string {
     if (error.message === "active_sustained_limit_reached") {
       return "지속형 챌린지는 동시에 최대 3개까지 활성화할 수 있습니다.";
     }
-    if (error.message === "active_domain_duplicate") {
-      return "같은 도메인의 지속형 챌린지는 동시에 2개 이상 활성화할 수 없습니다.";
-    }
     if (error.message === "Failed to fetch") {
       return "서버 연결이 원활하지 않습니다. 잠시 후 다시 시도해 주세요.";
     }

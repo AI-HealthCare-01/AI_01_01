@@ -79,6 +79,12 @@ const PREVIEW_LAYOUT: PreviewLayout = {
   contentHeight: 645,
 };
 
+const PREVIEW_SCROLL_DISTANCE: Record<PreviewStep["step"], string> = {
+  6: "-420px",
+  7: "-380px",
+  8: "-320px",
+};
+
 function getSpotlightRect(step: SpotlightStep): Rect | null {
   const target = document.getElementById(step.id);
   if (!target) {
@@ -127,7 +133,7 @@ function previewFallback(step: PreviewStep["step"]): JSX.Element {
         <div style={{ height: 40, borderBottom: "1px solid var(--color-border)", padding: "10px 18px", color: "var(--color-text-secondary)" }}>
           CBT 대화 · 세션
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "220px 1fr 220px", gap: 12, height: "calc(100% - 92px)", padding: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "220px 1fr 220px", gap: 12, height: 360, padding: 12 }}>
           <div style={{ borderRadius: 10, background: "var(--color-surface-sub)", border: "1px solid var(--color-border)", padding: 10 }}>
             {["상황 정리", "생각 찾기", "감정 확인", "증거 탐색", "대안 생각", "정리와 조언"].map((label) => (
               <div
@@ -157,6 +163,35 @@ function previewFallback(step: PreviewStep["step"]): JSX.Element {
             <div style={{ height: 72, borderRadius: 8, background: "var(--color-surface)", border: "1px solid var(--color-border)" }} />
           </div>
         </div>
+        <div style={{ padding: "0 12px 12px" }}>
+          <div style={{ borderRadius: 10, border: "1px solid var(--color-border)", background: "var(--color-surface-sub)", padding: 10, marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>회고하기</div>
+            {["2026-03-18 · 자동사고 패턴 정리", "2026-03-16 · 감정 반응 완화 연습", "2026-03-14 · 대안 생각 도출"].map((item) => (
+              <div
+                key={item}
+                style={{
+                  height: 32,
+                  borderRadius: 8,
+                  border: "1px solid var(--color-border)",
+                  background: "var(--color-surface)",
+                  padding: "7px 10px",
+                  fontSize: 12,
+                  marginBottom: 6,
+                }}
+              >
+                {item}
+              </div>
+            ))}
+          </div>
+          <div style={{ borderRadius: 10, border: "1px solid var(--color-border)", background: "var(--color-surface-sub)", padding: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>돌아보기</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, alignItems: "end", height: 90 }}>
+              {[38, 52, 44, 66, 58].map((h, idx) => (
+                <div key={`cbt-timeline-${idx}`} style={{ height: `${h}%`, borderRadius: 6, background: "#AFA9EC" }} />
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -178,10 +213,10 @@ function previewFallback(step: PreviewStep["step"]): JSX.Element {
         </div>
         <div style={{ padding: 14 }}>
           <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>챌린지 카탈로그</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {Array.from({ length: 4 }).map((_, idx) => (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            {["모닝 패턴 만들기", "햇빛 10분", "산책 10분", "5분 명상"].map((title) => (
               <div
-                key={`challenge-${idx}`}
+                key={`challenge-top-${title}`}
                 style={{
                   height: 150,
                   borderRadius: 10,
@@ -191,8 +226,39 @@ function previewFallback(step: PreviewStep["step"]): JSX.Element {
                 }}
               >
                 <div style={{ height: 66, borderRadius: 8, background: "var(--color-surface)" }} />
-                <div style={{ marginTop: 8, height: 10, borderRadius: 999, background: "var(--color-surface)" }} />
-                <div style={{ marginTop: 6, width: "70%", height: 10, borderRadius: 999, background: "var(--color-surface)" }} />
+                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600 }}>{title}</div>
+                <div style={{ marginTop: 4, fontSize: 11, color: "var(--color-text-secondary)" }}>작은 습관을 매일 기록해요</div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+                  <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 999, background: "var(--color-surface)" }}>루틴</span>
+                  <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 999, background: "var(--color-primary-light)" }}>시작 가능</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+            {[
+              "감각 탐험 5-4-3-2-1",
+              "수면 패턴 만들기",
+              "대인관계 지도",
+              "자신감 리스트",
+              "내 물고기를 살려줘",
+            ].map((title) => (
+              <div
+                key={`challenge-catalog-${title}`}
+                style={{
+                  minHeight: 120,
+                  borderRadius: 10,
+                  border: "1px solid var(--color-border)",
+                  background: "var(--color-surface-sub)",
+                  padding: 8,
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{title}</div>
+                <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginBottom: 6 }}>하루 10분 기록 루틴</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                  <span style={{ fontSize: 9, padding: "2px 5px", borderRadius: 999, background: "var(--color-surface)" }}>마음관리</span>
+                  <span style={{ fontSize: 9, padding: "2px 5px", borderRadius: 999, background: "var(--color-primary-light)" }}>시작 가능</span>
+                </div>
               </div>
             ))}
           </div>
@@ -262,6 +328,32 @@ function previewFallback(step: PreviewStep["step"]): JSX.Element {
               <div key={`bar-${idx}`} style={{ height: `${h}%`, borderRadius: 6, background: "#AFA9EC" }} />
             ))}
           </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+          <div style={{ borderRadius: 8, border: "1px solid var(--color-border)", background: "var(--color-surface-sub)", padding: 8 }}>
+            <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>평균 수면 시간</div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>6시간 45분</div>
+          </div>
+          <div style={{ borderRadius: 8, border: "1px solid var(--color-border)", background: "var(--color-surface-sub)", padding: 8 }}>
+            <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>평균 기상 시간</div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>07:08</div>
+          </div>
+        </div>
+        <div style={{ borderRadius: 8, border: "1px solid var(--color-border)", background: "var(--color-surface-sub)", padding: 8, marginTop: 8 }}>
+          <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6 }}>체크인 요약</div>
+          {[
+            { label: "기분", value: "3.9" },
+            { label: "불안", value: "2.1" },
+            { label: "에너지", value: "3.4" },
+          ].map((item) => (
+            <div key={item.label} style={{ display: "grid", gridTemplateColumns: "58px 1fr 36px", gap: 6, alignItems: "center", marginBottom: 6 }}>
+              <span style={{ fontSize: 11 }}>{item.label}</span>
+              <span style={{ height: 8, borderRadius: 999, background: "var(--color-surface)" }}>
+                <span style={{ display: "block", height: "100%", width: `${Number(item.value) * 20}%`, borderRadius: 999, background: "#AFA9EC" }} />
+              </span>
+              <span style={{ fontSize: 10, color: "var(--color-text-secondary)" }}>{item.value}</span>
+            </div>
+          ))}
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
           <div
@@ -566,7 +658,7 @@ export function OnboardingTour() {
 
   if (previewStep) {
     const layout = PREVIEW_LAYOUT;
-    const forceStaticPreview = previewStep.step === 8;
+    const forceStaticPreview = true;
     const failed = previewFailed[previewStep.step];
     return (
       <div
@@ -610,46 +702,77 @@ export function OnboardingTour() {
           >
             {forceStaticPreview || failed ? (
               <div
+                className="mockup-inner"
                 style={{
                   position: "absolute",
                   top: 0,
                   left: 0,
                   width: layout.width,
                   height: layout.contentHeight,
-                  transform: `scale(${layout.scale})`,
-                  transformOrigin: "top left",
+                  willChange: "transform",
                   pointerEvents: "none",
                 }}
               >
-                {previewFallback(previewStep.step)}
+                <div
+                  style={{
+                    transform: `scale(${layout.scale})`,
+                    transformOrigin: "top left",
+                  }}
+                >
+                  <div
+                    className="mockup-scroll"
+                    style={{
+                      ["--scroll-distance" as string]: PREVIEW_SCROLL_DISTANCE[previewStep.step],
+                    }}
+                  >
+                    {previewFallback(previewStep.step)}
+                  </div>
+                </div>
               </div>
             ) : (
               <div
+                className="mockup-inner"
                 style={{
                   position: "absolute",
                   top: 0,
                   left: 0,
                   width: layout.width,
                   height: layout.contentHeight,
-                  transform: `scale(${layout.scale})`,
-                  transformOrigin: "top left",
+                  willChange: "transform",
                   pointerEvents: "none",
                 }}
               >
-                <iframe
-                  title={`tour-preview-${previewStep.step}`}
-                  src={previewStep.iframeSrc}
-                  sandbox="allow-same-origin allow-scripts"
-                  onLoad={() => setPreviewLoaded((prev) => ({ ...prev, [previewStep.step]: true }))}
-                  onError={() => setPreviewFailed((prev) => ({ ...prev, [previewStep.step]: true }))}
+                <div
                   style={{
-                    width: layout.width,
-                    height: layout.contentHeight,
-                    border: "none",
+                    transform: `scale(${layout.scale})`,
+                    transformOrigin: "top left",
                   }}
-                />
+                >
+                  <div
+                    className="mockup-scroll"
+                    style={{
+                      ["--scroll-distance" as string]: PREVIEW_SCROLL_DISTANCE[previewStep.step],
+                    }}
+                  >
+                    <iframe
+                      title={`tour-preview-${previewStep.step}`}
+                      src={previewStep.iframeSrc}
+                      sandbox="allow-same-origin allow-scripts"
+                      onLoad={() => setPreviewLoaded((prev) => ({ ...prev, [previewStep.step]: true }))}
+                      onError={() => setPreviewFailed((prev) => ({ ...prev, [previewStep.step]: true }))}
+                      style={{
+                        width: layout.width,
+                        height: layout.contentHeight,
+                        border: "none",
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
             )}
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 4, marginTop: 6, marginBottom: 10 }}>
+            <div className="scroll-dot" style={{ width: 16, height: 3, borderRadius: 2, background: "#7F77DD" }} />
           </div>
 
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
@@ -683,6 +806,50 @@ export function OnboardingTour() {
             </button>
           </div>
         </div>
+        <style jsx>{`
+          @keyframes mockupScroll {
+            0% {
+              transform: translateY(0);
+            }
+            10% {
+              transform: translateY(0);
+            }
+            80% {
+              transform: translateY(var(--scroll-distance));
+            }
+            90% {
+              transform: translateY(var(--scroll-distance));
+            }
+            100% {
+              transform: translateY(0);
+            }
+          }
+          @keyframes scrollDot {
+            0%,
+            10% {
+              transform: translateX(0);
+              opacity: 1;
+            }
+            80%,
+            90% {
+              transform: translateX(24px);
+              opacity: 1;
+            }
+            100% {
+              transform: translateX(0);
+              opacity: 1;
+            }
+          }
+          .mockup-scroll {
+            animation: mockupScroll 8s ease-in-out infinite;
+          }
+          .mockup-inner:hover .mockup-scroll {
+            animation-play-state: paused;
+          }
+          .scroll-dot {
+            animation: scrollDot 8s linear infinite;
+          }
+        `}</style>
       </div>
     );
   }

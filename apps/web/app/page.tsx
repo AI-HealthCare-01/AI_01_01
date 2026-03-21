@@ -17,6 +17,7 @@ import {
   Select,
   SectionContainer,
 } from "../src/components/ui";
+import { OnboardingTour } from "../src/components/OnboardingTour";
 import { MonthlyCheckinCalendar } from "../src/components/checkin/MonthlyCheckinCalendar";
 import { useAuthContext } from "../src/features/auth";
 import { mapLoginErrorMessage } from "../src/features/auth/login-error";
@@ -886,6 +887,7 @@ export default function HomePage() {
             {checkinErrorMessage ? <Banner variant="danger" title="체크인 저장 실패" description={checkinErrorMessage} /> : null}
 
             <div className="ms-home-v3">
+              <OnboardingTour />
               <header className="ms-home-v3__intro">
                 <h1 className="ms-home-v3__title">{nickname}님, 안녕하세요!</h1>
                 <p className="ms-home-v3__subtitle">{dayGreetingMessage}</p>
@@ -893,6 +895,7 @@ export default function HomePage() {
 
               <div className="ms-home-v3__grid">
                 <Card
+                  id="tour-checkin"
                   className="ms-home-v3__card"
                   title={checkinCompleted ? "오늘의 활동" : "Check-in"}
                   description={checkinCompleted ? "오늘 완료할 활동을 순서대로 진행해보세요." : "오늘 상태를 기록해주세요."}
@@ -1036,6 +1039,7 @@ export default function HomePage() {
                 </Card>
 
                 <Card
+                  id="tour-calendar"
                   className="ms-home-v3__card"
                   title="월간 출석 캘린더"
                   description={`${kstNow.year}년 ${kstNow.month}월 체크인 기록`}
@@ -1053,7 +1057,7 @@ export default function HomePage() {
                   )}
                 </Card>
 
-                <Card className="ms-home-v3__card" title="진행 중인 챌린지" description="최대 3개까지 동시에 진행할 수 있습니다.">
+                <Card id="tour-challenge" className="ms-home-v3__card" title="진행 중인 챌린지" description="최대 3개까지 동시에 진행할 수 있습니다.">
                   {loading ? (
                     <LoadingSkeleton lines={3} />
                   ) : (
@@ -1107,7 +1111,7 @@ export default function HomePage() {
                   )}
                 </Card>
 
-                <Card className="ms-home-v3__card" title="인기글">
+                <Card id="tour-posts" className="ms-home-v3__card" title="인기글">
                   {loading ? (
                     <LoadingSkeleton lines={4} />
                   ) : popularPosts.length === 0 ? (

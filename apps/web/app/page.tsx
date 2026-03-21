@@ -870,6 +870,7 @@ export default function HomePage() {
   return (
     <AppShell>
       <PageContainer size="lg">
+        <OnboardingTour />
         {!isActive ? (
           <SectionContainer title="접근 상태 확인" description="이메일 확인 및 온보딩 완료 후 개인 홈이 열립니다.">
             <Card title={accessGuide.title} description={accessGuide.description}>
@@ -887,7 +888,6 @@ export default function HomePage() {
             {checkinErrorMessage ? <Banner variant="danger" title="체크인 저장 실패" description={checkinErrorMessage} /> : null}
 
             <div className="ms-home-v3">
-              <OnboardingTour />
               <header className="ms-home-v3__intro">
                 <h1 className="ms-home-v3__title">{nickname}님, 안녕하세요!</h1>
                 <p className="ms-home-v3__subtitle">{dayGreetingMessage}</p>

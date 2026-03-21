@@ -4,6 +4,7 @@ import { useState } from 'react'
 interface Props {
   type: 'morning' | 'sleep'
   onComplete?: (count: number) => void
+  onCompletionStateChange?: (completed: boolean) => void
   onSubmitComplete?: () => void
   submitting?: boolean
   completed?: boolean
@@ -29,6 +30,7 @@ const ITEMS = {
 export function ChallengeChecklist({
   type,
   onComplete,
+  onCompletionStateChange,
   onSubmitComplete,
   submitting = false,
   completed = false,
@@ -45,6 +47,7 @@ export function ChallengeChecklist({
         next.add(i)
         if (next.size === items.length) onComplete?.(items.length)
       }
+      onCompletionStateChange?.(next.size === items.length)
       return next
     })
   }

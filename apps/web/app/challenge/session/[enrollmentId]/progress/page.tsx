@@ -589,6 +589,9 @@ export default function ChallengeProgressPage() {
                               {detail.challenge.challenge_id === "CH_ACT_001" && (
                                 <ChallengeChecklist
                                   type="morning"
+                                  onCompletionStateChange={(isCompleted) => {
+                                    setExecutionChecks(new Array(detail.template_steps.length).fill(isCompleted));
+                                  }}
                                   onSubmitComplete={() => void onSaveDailyRun()}
                                   submitting={savingDailyRun}
                                   completed={todayCompleted}
@@ -597,6 +600,9 @@ export default function ChallengeProgressPage() {
                               {detail.challenge.challenge_id === "CH_SLEEP_001" && (
                                 <ChallengeChecklist
                                   type="sleep"
+                                  onCompletionStateChange={(isCompleted) => {
+                                    setExecutionChecks(new Array(detail.template_steps.length).fill(isCompleted));
+                                  }}
                                   onSubmitComplete={() => void onSaveDailyRun()}
                                   submitting={savingDailyRun}
                                   completed={todayCompleted}

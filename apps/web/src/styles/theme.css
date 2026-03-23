@@ -3054,10 +3054,6 @@ a {
   gap: var(--space-2);
 }
 
-.ms-home-checkin-box .ms-select {
-  background: var(--color-semantic-surface-muted);
-}
-
 .ms-home-today-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3236,7 +3232,7 @@ a {
   align-items: center;
   justify-content: center;
   font-size: var(--font-caption-size);
-  background: var(--color-semantic-surface-muted);
+  background: var(--bg-elevated);
   color: var(--color-semantic-text-secondary);
 }
 
@@ -3348,7 +3344,6 @@ a {
   appearance: none;
   border: 1px solid color-mix(in oklab, var(--color-brand-primary) 36%, white);
   border-radius: var(--radius-lg);
-  background-color: var(--color-semantic-surface-muted);
   background: linear-gradient(
     145deg,
     color-mix(in oklab, var(--color-brand-primary-soft) 52%, transparent) 0%,

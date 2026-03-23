@@ -472,14 +472,6 @@ select.ms-select {
 }
 
 /* 화면별 카드/섹션 다크 오버라이드 */
-[data-theme="dark"] [class*="ms-challenge"],
-[data-theme="dark"] [class*="ms-progress"],
-[data-theme="dark"] [class*="ms-activity"] {
-  background: var(--bg-elevated) !important;
-  border-color: var(--border-default) !important;
-  color: var(--text-primary) !important;
-}
-
 [data-theme="dark"] [class*="ms-diary"],
 [data-theme="dark"] [class*="ms-journal"] {
   background: var(--bg-elevated) !important;

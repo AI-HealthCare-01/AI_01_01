@@ -19,6 +19,9 @@ type PreviewStep = {
 
 type Rect = { top: number; left: number; width: number; height: number };
 type PreviewLayout = { scale: number; width: number; height: number; contentHeight: number };
+type OnboardingTourProps = {
+  storageKey?: string;
+};
 
 const SPOTLIGHT_STEPS: SpotlightStep[] = [
   {
@@ -392,12 +395,16 @@ function previewFallback(step: PreviewStep["step"]): JSX.Element {
   );
 }
 
-export function OnboardingTour() {
+function hasSeenTour(storageKey: string): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return window.localStorage.getItem(storageKey) === "true";
+}
+
+export function OnboardingTour({ storageKey = "hasSeenTour:v2" }: OnboardingTourProps) {
   const [visible, setVisible] = useState(() => {
-    if (typeof window === "undefined") {
-      return false;
-    }
-    return window.localStorage.getItem("hasSeenTour") !== "true";
+    return !hasSeenTour(storageKey);
   });
   const [step, setStep] = useState<number>(1);
   const [spotlightRect, setSpotlightRect] = useState<Rect | null>(null);
@@ -408,7 +415,7 @@ export function OnboardingTour() {
   const previewStep = useMemo(() => PREVIEW_STEPS.find((item) => item.step === step) ?? null, [step]);
 
   const finishTour = (scrollToCheckin: boolean) => {
-    localStorage.setItem("hasSeenTour", "true");
+    localStorage.setItem(storageKey, "true");
     setVisible(false);
     if (scrollToCheckin) {
       document.getElementById("tour-checkin")?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -417,6 +424,11 @@ export function OnboardingTour() {
 
   const onNext = () => setStep((prev) => Math.min(9, prev + 1));
   const onPrev = () => setStep((prev) => Math.max(1, prev - 1));
+
+  useEffect(() => {
+    setVisible(!hasSeenTour(storageKey));
+    setStep(1);
+  }, [storageKey]);
 
   useEffect(() => {
     if (!visible || !spotlightStep) {

@@ -3122,13 +3122,13 @@ a {
 }
 
 .ms-home-today-action--done {
-  border-color: color-mix(in oklab, #b8c1d0 70%, white);
+  border-color: color-mix(in oklab, var(--color-brand-primary) 48%, white);
   background: linear-gradient(
     145deg,
-    color-mix(in oklab, #d8dde7 56%, transparent) 0%,
-    color-mix(in oklab, #c6cedb 48%, transparent) 100%
+    color-mix(in oklab, var(--color-brand-primary-soft) 58%, transparent) 0%,
+    color-mix(in oklab, var(--color-brand-primary) 26%, transparent) 100%
   );
-  color: color-mix(in oklab, #5f6778 76%, black);
+  color: color-mix(in oklab, #2f3769 76%, black);
   backdrop-filter: blur(14px) saturate(96%);
   -webkit-backdrop-filter: blur(14px) saturate(96%);
   box-shadow:
@@ -3137,13 +3137,13 @@ a {
 }
 
 .ms-home-today-action--scheduled {
-  border-color: color-mix(in oklab, #b8c1d0 70%, white);
+  border-color: color-mix(in oklab, var(--color-brand-primary) 44%, white);
   background: linear-gradient(
     145deg,
-    color-mix(in oklab, #d8dde7 56%, transparent) 0%,
-    color-mix(in oklab, #c6cedb 48%, transparent) 100%
+    color-mix(in oklab, var(--color-brand-primary-soft) 52%, transparent) 0%,
+    color-mix(in oklab, var(--color-brand-primary) 22%, transparent) 100%
   );
-  color: color-mix(in oklab, #666f80 76%, black);
+  color: color-mix(in oklab, #33407a 72%, black);
   backdrop-filter: blur(14px) saturate(96%);
   -webkit-backdrop-filter: blur(14px) saturate(96%);
   box-shadow:
@@ -3206,8 +3206,8 @@ a {
 
 .ms-home-today-action--done .ms-home-today-action__cta,
 .ms-home-today-action--scheduled .ms-home-today-action__cta {
-  border-color: color-mix(in oklab, #b9c1d0 76%, white);
-  background: color-mix(in oklab, #dde3ed 92%, white);
+  border-color: color-mix(in oklab, var(--color-brand-primary) 44%, white);
+  background: color-mix(in oklab, var(--color-brand-primary-soft) 86%, white);
   box-shadow: none;
 }
 
@@ -3375,13 +3375,13 @@ a {
 .ms-home-challenge-slot--disabled {
   background: linear-gradient(
     145deg,
-    color-mix(in oklab, #d8dde7 56%, transparent) 0%,
-    color-mix(in oklab, #c6cedb 48%, transparent) 100%
+    color-mix(in oklab, var(--color-brand-primary-soft) 56%, transparent) 0%,
+    color-mix(in oklab, var(--color-brand-primary) 24%, transparent) 100%
   );
-  border-color: color-mix(in oklab, #b8c1d0 70%, white);
-  color: color-mix(in oklab, #5f6879 76%, black);
+  border-color: color-mix(in oklab, var(--color-brand-primary) 46%, white);
+  color: color-mix(in oklab, #2d3766 72%, black);
   cursor: default;
-  filter: grayscale(0.9) saturate(0.18);
+  filter: saturate(0.86);
   backdrop-filter: blur(14px) saturate(96%);
   -webkit-backdrop-filter: blur(14px) saturate(96%);
   box-shadow:
@@ -3428,16 +3428,16 @@ a {
 }
 
 .ms-home-challenge-slot--disabled .ms-home-challenge-slot__progress-track {
-  background: color-mix(in oklab, #c4ccd9 82%, white);
+  background: color-mix(in oklab, var(--color-brand-primary-soft) 70%, white);
 }
 
 .ms-home-challenge-slot--disabled .ms-home-challenge-slot__progress-fill {
-  background: color-mix(in oklab, #8f99ab 78%, white);
+  background: color-mix(in oklab, var(--color-brand-primary) 74%, white);
 }
 
 .ms-home-challenge-slot--disabled .ms-home-challenge-slot__title,
 .ms-home-challenge-slot--disabled .ms-home-challenge-slot__meta {
-  color: color-mix(in oklab, #596173 76%, black);
+  color: color-mix(in oklab, #2d3766 72%, black);
 }
 
 .ms-home-challenge-slot--add {

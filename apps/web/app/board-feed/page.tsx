@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import {
@@ -176,6 +176,7 @@ function BoardFeedContent() {
   const [commentsLoadingMap, setCommentsLoadingMap] = useState<Record<string, boolean>>({});
   const [commentDraftMap, setCommentDraftMap] = useState<Record<string, string>>({});
   const [commentSubmittingMap, setCommentSubmittingMap] = useState<Record<string, boolean>>({});
+  const commentSubmitLocksRef = useRef<Record<string, boolean>>({});
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editTitleMap, setEditTitleMap] = useState<Record<string, string>>({});
   const [editBodyMap, setEditBodyMap] = useState<Record<string, string>>({});
@@ -467,6 +468,9 @@ function BoardFeedContent() {
     if (!firebaseUser) {
       return;
     }
+    if (commentSubmitLocksRef.current[postId]) {
+      return;
+    }
 
     const draft = commentDraftMap[postId] ?? "";
     const bodyText = draft.trim();
@@ -474,6 +478,7 @@ function BoardFeedContent() {
       return;
     }
 
+    commentSubmitLocksRef.current[postId] = true;
     setCommentSubmittingMap((previous) => ({ ...previous, [postId]: true }));
     try {
       await createBoardComment(firebaseUser, postId, { body_text: bodyText, is_anonymous: false });
@@ -482,6 +487,7 @@ function BoardFeedContent() {
     } catch (error) {
       setActionMessage(parseError(error));
     } finally {
+      commentSubmitLocksRef.current[postId] = false;
       setCommentSubmittingMap((previous) => ({ ...previous, [postId]: false }));
     }
   };
@@ -853,6 +859,7 @@ function BoardFeedContent() {
                                       className="ms-board-comment-editor__input"
                                       placeholder="댓글을 입력하세요"
                                       maxLength={500}
+                                      disabled={commentSubmitting}
                                       value={commentDraft}
                                       onChange={(event) =>
                                         setCommentDraftMap((previous) => ({
@@ -872,6 +879,7 @@ function BoardFeedContent() {
                                         size="sm"
                                         className="ms-board-comment-editor__submit"
                                         loading={commentSubmitting}
+                                        disabled={commentSubmitting || !commentDraft.trim()}
                                         onClick={() => void handleSubmitComment(postId)}
                                       >
                                         댓글 등록

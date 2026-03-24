@@ -1,7 +1,7 @@
 "use client";
 
 import type { User } from "firebase/auth";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   Badge,
@@ -114,6 +114,7 @@ export function FeedStream({
   const [commentsLoadingMap, setCommentsLoadingMap] = useState<Record<string, boolean>>({});
   const [commentDraftMap, setCommentDraftMap] = useState<Record<string, string>>({});
   const [commentSubmittingMap, setCommentSubmittingMap] = useState<Record<string, boolean>>({});
+  const commentSubmitLocksRef = useRef<Record<string, boolean>>({});
 
   const loadComments = async (postId: string) => {
     if (!firebaseUser) {
@@ -214,12 +215,16 @@ export function FeedStream({
     if (!firebaseUser) {
       return;
     }
+    if (commentSubmitLocksRef.current[postId]) {
+      return;
+    }
 
     const bodyText = (commentDraftMap[postId] ?? "").trim();
     if (!bodyText) {
       return;
     }
 
+    commentSubmitLocksRef.current[postId] = true;
     setCommentSubmittingMap((previous) => ({ ...previous, [postId]: true }));
     try {
       await createBoardComment(firebaseUser, postId, { body_text: bodyText, is_anonymous: false });
@@ -228,6 +233,7 @@ export function FeedStream({
     } catch (error) {
       setActionMessage(parseError(error));
     } finally {
+      commentSubmitLocksRef.current[postId] = false;
       setCommentSubmittingMap((previous) => ({ ...previous, [postId]: false }));
     }
   };
@@ -352,6 +358,7 @@ export function FeedStream({
                         className="ms-board-comment-editor__input"
                         placeholder="댓글을 입력하세요"
                         maxLength={500}
+                        disabled={commentSubmitting}
                         value={commentDraft}
                         onChange={(event) =>
                           setCommentDraftMap((previous) => ({
@@ -371,6 +378,7 @@ export function FeedStream({
                           size="sm"
                           className="ms-board-comment-editor__submit"
                           loading={commentSubmitting}
+                          disabled={commentSubmitting || !commentDraft.trim()}
                           onClick={() => void handleSubmitComment(postId)}
                         >
                           댓글 등록

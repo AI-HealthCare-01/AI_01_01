@@ -248,7 +248,7 @@ select.ms-select {
 }
 
 .ms-home-checkin-box,
-[class^="ms-home-"] {
+.ms-home-v3__card {
   background: var(--bg-surface) !important;
   color: var(--text-primary) !important;
   border-color: var(--border-default) !important;

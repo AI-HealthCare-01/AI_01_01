@@ -66,7 +66,7 @@ function AdminConsoleShellBody({ children }: { children: ReactNode }) {
 
   return (
     <AppShell
-      brand="MindSight Admin"
+      brand="MindMe Admin"
       headerAction={
         me ? (
           <div className="ms-row">

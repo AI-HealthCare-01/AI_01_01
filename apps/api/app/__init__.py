@@ -1,1 +1,1 @@
-"""MindSight API package."""
+"""MindMe API package."""

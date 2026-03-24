@@ -3309,7 +3309,7 @@ class InsightsStore:
         png.extend(
             self._png_chunk(
                 b"tEXt",
-                b"Software\x00MindSight report export (name/nickname excluded)",
+                b"Software\x00MindMe report export (name/nickname excluded)",
             )
         )
         png.extend(self._png_chunk(b"IDAT", compressed))

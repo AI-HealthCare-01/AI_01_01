@@ -24,7 +24,7 @@ def _load_cors_origins() -> list[str]:
     ]
 
 
-app = FastAPI(title="MindSight API", version="0.1.0")
+app = FastAPI(title="MindMe API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_load_cors_origins(),

@@ -144,7 +144,7 @@ export default function DesignSystemPreview() {
     >
       <PageContainer size="lg">
         <SectionContainer
-          title="Mindsight Design System Preview"
+          title="MindMe Design System Preview"
           description="디자이너/개발자/리뷰어가 토큰과 공통 컴포넌트를 한 화면에서 검토하기 위한 내부 프리뷰 페이지"
         >
           <Banner

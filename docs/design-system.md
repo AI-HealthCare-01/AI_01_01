@@ -1,4 +1,4 @@
-# MindSight Design System
+# MindMe Design System
 
 ## 목적
 기능 구조를 유지한 상태에서, `blueprint` 기반 화면 전반에 동일한 시각 규칙을 적용하기 위한 디자인 시스템 레이어를 정의한다.
@@ -13,7 +13,7 @@
 - `apps/web/src/design-system/tokens.ts`
 - `apps/web/src/styles/theme.css`
 - `apps/web/src/components/shadcn/` (base primitives)
-- `apps/web/src/components/ui/index.tsx` (Mindsight wrappers)
+- `apps/web/src/components/ui/index.tsx` (MindMe wrappers)
 - `apps/web/app/internal/design-system/page.tsx`
 - `apps/web/src/features/design-system/design-system-preview.tsx`
 

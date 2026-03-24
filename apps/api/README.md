@@ -1,6 +1,6 @@
 # apps/api
 
-Python API scaffold for MindSight.
+Python API scaffold for MindMe.
 
 ## Local Run
 

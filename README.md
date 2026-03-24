@@ -1,6 +1,6 @@
-# MindSight Monorepo
+# MindMe Monorepo
 
-MindSight 서비스의 웹/API/모델/인프라를 함께 운영하는 모노레포입니다.
+MindMe 서비스의 웹/API/모델/인프라를 함께 운영하는 모노레포입니다.
 구현 기준은 `blueprint/`이며, 민감정보/권한/안전 원칙을 우선합니다.
 
 ## 핵심 원칙

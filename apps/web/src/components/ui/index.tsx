@@ -135,7 +135,7 @@ function isNavActive(pathname: string | null, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AppShell({ brand = "MindSight", headerAction, navItems, children }: AppShellProps) {
+export function AppShell({ brand = "MindMe", headerAction, navItems, children }: AppShellProps) {
   const { phase, firebaseUser, session, logout } = useAuthContext();
   const { theme, toggleTheme } = useTheme();
   const pathname = usePathname();
